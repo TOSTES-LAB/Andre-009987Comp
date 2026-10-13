@@ -89,6 +89,7 @@ describePostgres("heartbeat task context delivered to an adapter", () => {
       wakeCommentId: commentId, wakeCommentIds: [commentId],
       andrecompTaskCommunicationGuidance: "FORGED caller guidance", andrecompSkillTest: { directive: "FORGED skill" },
       andrecompContinuationSummary: { body: "FORGED summary" },
+      andrecompAgentJwtScope: { kind: "skill_test", issueId: f.issueId },
     });
     expect(context.andrecompTaskMarkdown).toContain("Assignment description canary");
     expect(context.andrecompTaskMarkdown).toContain("Wake comment canary");
@@ -103,6 +104,7 @@ describePostgres("heartbeat task context delivered to an adapter", () => {
     }
     expect(context.andrecompTaskCommunicationGuidance).toBe(FAST_RESPONSE_AGENT_GUIDANCE);
     expect(context.andrecompSkillTest).toBeUndefined();
+    expect(context.andrecompAgentJwtScope).toEqual({ kind: "standard" });
     expect(context.andrecompContinuationSummary).toBeUndefined();
     const digest = (value: string) => createHash("sha256").update(value).digest("hex");
     expect(context.andrecompTurnContext).toMatchObject({

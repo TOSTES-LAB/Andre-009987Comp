@@ -76,6 +76,7 @@ export function buildCodexLocalConfig(v: CreateConfigValues): Record<string, unk
 export function buildAndrecompRunnerConfig(v: CreateConfigValues): Record<string, unknown> {
   const config = buildCodexLocalConfig(v);
   const schemaValues = normalizeLegacyRunnerProvider({ ...(v.adapterSchemaValues ?? {}) });
+  const codexReasoningEffort = config.modelReasoningEffort ?? schemaValues.modelReasoningEffort ?? schemaValues.reasoningEffort;
   for (const unsupportedKey of [
     "engine",
     "agentCommand",
@@ -232,7 +233,8 @@ export function buildAndrecompRunnerConfig(v: CreateConfigValues): Record<string
     ...schemaValues,
     provider,
     ...(provider === "codex"
-      ? { model: resolveAndrecompRunnerModel("codex", config.model) }
+      ? { model: resolveAndrecompRunnerModel("codex", config.model),
+          ...(codexReasoningEffort !== undefined ? { modelReasoningEffort: codexReasoningEffort } : {}) }
       : {}),
     codexPermissionMode: "never",
     opencodePermissionMode: resolveAndrecompRunnerPermissionMode(

@@ -118,6 +118,11 @@ describe("buildCodexLocalConfig", () => {
 });
 
 describe("buildAndrecompRunnerConfig", () => {
+  it.each(["", "max"])("preserves or overrides saved native Codex reasoning effort (%s)", thinkingEffort => {
+    const values = makeValues({ thinkingEffort, adapterSchemaValues: { provider: "codex", modelReasoningEffort: "high" } });
+    expect(buildAndrecompRunnerConfig(values).modelReasoningEffort).toBe(thinkingEffort || "high");
+    expect(buildAndrecompRunnerConfig({ ...values, adapterSchemaValues: { provider: "acpx", acpxAgent: "claude", modelReasoningEffort: "high" } })).not.toHaveProperty("modelReasoningEffort");
+  });
   it.each([undefined, false, true])("preserves Dot attachment consent in create/import forms: %s", value => {
     const config = buildAndrecompRunnerConfig(makeValues({ adapterType: "andrecomp_runner", adapterSchemaValues: { provider: "openai_dot", dotAttachmentAccess: value } }));
     expect(config.dotAttachmentAccess).toBe(value === true);
@@ -142,6 +147,7 @@ describe("buildAndrecompRunnerConfig", () => {
       codexPermissionMode: "never",
       lifecycleMode: "per_turn",
       model: "gpt-5.4",
+      modelReasoningEffort: "high",
       timeoutSec: 0,
       graceSec: 15,
     });
@@ -149,7 +155,6 @@ describe("buildAndrecompRunnerConfig", () => {
       "engine",
       "agentCommand",
       "stateDir",
-      "modelReasoningEffort",
       "search",
       "fastMode",
       "dangerouslyBypassApprovalsAndSandbox",

@@ -8,6 +8,7 @@ import { stdin, stdout } from "node:process";
 import { createCapturedOutputBuffer, parseJsonResponseWithLimit } from "./dev-runner-output.ts";
 import {
   andrecompRunnerBinaryNeedsBuild,
+  resolveNativeRunnerDevBinary,
   resolveNativeRunnerRequirement,
 } from "./dev-runner-native-binary.mjs";
 import { applyDevRunnerOptions } from "./dev-runner-options.ts";
@@ -171,6 +172,7 @@ const env: NodeJS.ProcessEnv = {
   ...process.env,
   ANDRECOMP_UI_DEV_MIDDLEWARE: explicitUiDevMiddleware ?? (serveBuiltUiForManagedRuntime ? "false" : "true"),
 };
+const configuredRunnerBinary = env.ANDRECOMP_RUNNER_BINARY;
 
 if (mode === "dev") {
   env.ANDRECOMP_DEV_SERVER_STATUS_FILE = devServerStatusFilePath;
@@ -573,28 +575,32 @@ async function buildAndrecompRunner() {
     process.exit(typescriptResult.code);
   }
 
+  const nativeRunnerRequired = await getNativeRunnerRequired();
   if (
-    !andrecompRunnerBinaryNeedsBuild({
+    andrecompRunnerBinaryNeedsBuild({
       repoRoot,
-      nativeRunnerRequired: await getNativeRunnerRequired(),
-      configuredBinary: env.ANDRECOMP_RUNNER_BINARY,
+      nativeRunnerRequired,
+      configuredBinary: configuredRunnerBinary,
     })
   ) {
-    return;
+    console.log("[andrecomp] building andrecomp runner native binary...");
+    const binaryResult = await runPnpm(
+      ["--filter", "@andrecomp/andrecomp-runner", "build:binary"],
+      { stdio: "inherit" },
+    );
+    if (binaryResult.signal) {
+      exitForSignal(binaryResult.signal);
+      return;
+    }
+    if (binaryResult.code !== 0) {
+      console.error("[andrecomp] andrecomp runner native binary build failed");
+      process.exit(binaryResult.code);
+    }
   }
-
-  console.log("[andrecomp] building andrecomp runner native binary...");
-  const binaryResult = await runPnpm(
-    ["--filter", "@andrecomp/andrecomp-runner", "build:binary"],
-    { stdio: "inherit" },
-  );
-  if (binaryResult.signal) {
-    exitForSignal(binaryResult.signal);
-    return;
-  }
-  if (binaryResult.code !== 0) {
-    console.error("[andrecomp] andrecomp runner native binary build failed");
-    process.exit(binaryResult.code);
+  if (!configuredRunnerBinary?.trim()) {
+    const selected = nativeRunnerRequired ? resolveNativeRunnerDevBinary({ repoRoot }) : null;
+    if (selected?.sourceBuild) env.ANDRECOMP_RUNNER_BINARY = selected.binary;
+    else delete env.ANDRECOMP_RUNNER_BINARY;
   }
 }
 
