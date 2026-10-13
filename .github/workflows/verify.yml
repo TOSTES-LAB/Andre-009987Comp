@@ -1,0 +1,43 @@
+name: verify
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [orig, new]
+        part: [typecheck, 1/8, 2/8, 3/8, 4/8, 5/8, 6/8, 7/8, 8/8]
+    env:
+      SRC_OWNER: ${{ secrets.SRC_OWNER }}
+      SRC_NAME: ${{ secrets.SRC_NAME }}
+      NEW_NAME: andrecomp
+      DST_OWNER: andrecomp
+      CAMEL: "1"
+      DST_SLUG: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: self
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.SRC_OWNER }}/${{ secrets.SRC_NAME }}
+          ref: 4a641d0980fdaffc4c4e805f6f0a8809eb5702f2
+          path: up
+      - if: matrix.variant == 'new'
+        working-directory: up
+        run: cp -r ../self/.obscure . && node .obscure/transform.mjs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+      - working-directory: up
+        run: pnpm install --frozen-lockfile
+      - if: matrix.part == 'typecheck'
+        working-directory: up
+        run: pnpm run typecheck
+      - if: matrix.part != 'typecheck'
+        working-directory: up
+        run: npx vitest run --shard=${{ matrix.part }} --reporter=dot
