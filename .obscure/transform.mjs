@@ -1,6 +1,7 @@
 // Rebrands the upstream snapshot checked out in the current directory.
 // Names come from env so this file carries none of them.
 import { execFileSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -73,10 +74,12 @@ for (const { mode, file } of entries) {
   if (DROP.some((r) => r.test(file))) { fs.rmSync(file, { force: true }); continue; }
   if (mode === "120000") {
     // Symlink: rename the link and its target, never read through it (it may point at a folder).
-    const target = rebrand(fs.readlinkSync(file));
+    // Windows checkouts store links as plain files holding the target; keep that form there (local dry runs only).
+    const plain = fs.lstatSync(file).isFile();
+    const target = rebrand(plain ? fs.readFileSync(file, "utf8") : fs.readlinkSync(file));
     fs.rmSync(file);
     fs.mkdirSync(path.dirname(rebrand(file)), { recursive: true });
-    fs.symlinkSync(target, rebrand(file));
+    if (plain) fs.writeFileSync(rebrand(file), target); else fs.symlinkSync(target, rebrand(file));
     continue;
   }
 
@@ -94,6 +97,25 @@ for (const { mode, file } of entries) {
     fs.mkdirSync(path.dirname(to), { recursive: true });
     fs.renameSync(file, to);
   }
+}
+
+// pnpm-lock stores base32(md5) of each patch file, so renamed patches need fresh hashes.
+if (fs.existsSync("pnpm-lock.yaml")) {
+  const b32 = (buf) => {
+    const a = "abcdefghijklmnopqrstuvwxyz234567";
+    let bits = 0, val = 0, out = "";
+    for (const byte of buf) {
+      val = ((val << 8) | byte) & 0xffff;
+      bits += 8;
+      while (bits >= 5) { out += a[(val >>> (bits - 5)) & 31]; bits -= 5; }
+    }
+    return bits > 0 ? out + a[(val << (5 - bits)) & 31] : out;
+  };
+  const patchHash = (p) => b32(crypto.createHash("md5").update(fs.readFileSync(p, "utf8").replace(/\r\n/g, "\n")).digest());
+  const lock = fs.readFileSync("pnpm-lock.yaml", "utf8");
+  const out = lock.replace(/hash: (\S+)(\r?\n\s+path: )(\S+)/g, (all, _h, mid, p) =>
+    fs.existsSync(p) ? `hash: ${patchHash(p)}${mid}${p}` : all);
+  if (out !== lock) fs.writeFileSync("pnpm-lock.yaml", out);
 }
 
 fs.copyFileSync(".obscure/README.md", "README.md");
