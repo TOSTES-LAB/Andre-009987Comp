@@ -1,0 +1,40 @@
+name: sync
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+concurrency: sync
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      SRC_OWNER: ${{ secrets.SRC_OWNER }}
+      SRC_NAME: ${{ secrets.SRC_NAME }}
+      NEW_NAME: andrecomp
+      DST_OWNER: andrecomp
+      CAMEL: "1"
+      DST_SLUG: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # SYNC_TOKEN only when the repo once held upstream workflow files
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
+      - name: Rebuild snapshot
+        run: |
+          git fetch -q --depth 1 "https://github.com/$SRC_OWNER/$SRC_NAME.git" HEAD
+          git read-tree --reset -u FETCH_HEAD
+          git checkout HEAD -- .obscure .github/workflows/sync.yml
+          node .obscure/transform.mjs
+          git add -A
+          if git diff --cached --quiet; then
+            # Public repos lose scheduled runs after 60 idle days, so commit every 50 even without changes
+            [ $(( $(date +%s) - $(git log -1 --format=%ct) )) -gt 4320000 ] || exit 0
+          fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q --allow-empty -m sync
+          git push
