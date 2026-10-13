@@ -169,6 +169,13 @@ const meta = {
           "Capability, status, active-turn, and pending-control states for the issue composer session-goal widget.",
       },
     },
+    andrecomp: {
+      "capabilities": [
+        "runs-adapters/session"
+      ],
+      "implementation": "production",
+      "boundary": "fixtures"
+    },
   },
 } satisfies Meta<typeof SessionGoalStates>;
 

@@ -218,6 +218,13 @@ const meta: Meta = {
   parameters: {
     layout: "fullscreen",
     a11y: { test: "todo" },
+    andrecomp: {
+      "capabilities": [
+        "documents-artifacts/attachments"
+      ],
+      "implementation": "production",
+      "boundary": "fixtures"
+    },
   },
 };
 

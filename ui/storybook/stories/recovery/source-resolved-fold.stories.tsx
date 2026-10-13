@@ -57,7 +57,16 @@ const meta = {
   id: "andrecomp-source-resolved-fold",
   title: "Projects and execution/Recovery/Andrecomp/Source-resolved Fold",
   component: DefaultPanel,
-  parameters: { layout: "fullscreen" },
+  parameters: { layout: "fullscreen",
+    andrecomp: {
+      "capabilities": [
+        "recovery/diagnosis",
+        "recovery/source-action"
+      ],
+      "implementation": "production",
+      "boundary": "fixtures"
+    },
+  },
 } satisfies Meta<typeof DefaultPanel>;
 
 export default meta;

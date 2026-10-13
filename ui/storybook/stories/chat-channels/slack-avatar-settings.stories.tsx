@@ -12,6 +12,14 @@ const meta = {
           "The production avatar section in a Settings layout fixture. Download remains available after onboarding; upload instructions expand in place.",
       },
     },
+    andrecomp: {
+      "capabilities": [
+        "chat-channels/identity"
+      ],
+      "status": "current",
+      "implementation": "production",
+      "boundary": "fixtures"
+    },
   },
 } satisfies Meta<typeof SlackAvatarSettingsPreview>;
 export default meta;

@@ -577,7 +577,17 @@ const meta = {
   id: "andrecomp-source-issue-recovery",
   title: "Projects and execution/Recovery/Andrecomp/Source Issue Recovery",
   component: AllStatesPanel,
-  parameters: { layout: "fullscreen" },
+  parameters: { layout: "fullscreen",
+    andrecomp: {
+      "capabilities": [
+        "recovery/diagnosis",
+        "recovery/source-action"
+      ],
+      "implementation": "production",
+      "boundary": "fixtures",
+      "notes": "Source review confirms ordinary recovery fixtures remain applicable after the native-owner resolution gate; native-owner stop verification has its own suite."
+    },
+  },
 } satisfies Meta<typeof AllStatesPanel>;
 
 export default meta;
