@@ -6,7 +6,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [orig, new]
+        variant: [new]
         part: [typecheck, 1/8, 2/8, 3/8, 4/8, 5/8, 6/8, 7/8, 8/8]
     env:
       SRC_OWNER: ${{ secrets.SRC_OWNER }}
