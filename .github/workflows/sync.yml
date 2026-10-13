@@ -31,7 +31,8 @@ jobs:
           git read-tree --reset -u FETCH_HEAD
           git checkout HEAD -- .obscure .github/workflows/sync.yml
           node .obscure/transform.mjs
-          git add -A
+          # --force: upstream may track files under its own ignore rules, and renamed ones would be skipped
+          git add -A --force
           if git diff --cached --quiet; then
             # Public repos lose scheduled runs after 60 idle days, so commit every 50 even without changes
             [ $(( $(date +%s) - $(git log -1 --format=%ct) )) -gt 4320000 ] || exit 0
