@@ -1,0 +1,383 @@
+{
+  "schemaVersion": 1,
+  "rows": [
+    {
+      "id": "mcp:andrecompMe",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompMe",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L290:andrecompme",
+      "primaryDisposition": "control_plane_owned",
+      "semanticOperation": "injected_actor_context",
+      "expectedMockState": "runtime_decision_record"
+    },
+    {
+      "id": "mcp:andrecompInboxLite",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompInboxLite",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L296:andrecompinboxlite",
+      "primaryDisposition": "control_plane_owned",
+      "semanticOperation": "runner_work_selection",
+      "expectedMockState": "runtime_decision_record"
+    },
+    {
+      "id": "mcp:andrecompListAgents",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompListAgents",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L302:andrecomplistagents",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "list_agents",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompListSkills",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompListSkills",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L308:andrecomplistskills",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "list_company_skills",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompGetAgent",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompGetAgent",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L314:andrecompgetagent",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "get_agent",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompListIssues",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompListIssues",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L323:andrecomplistissues",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "search_tasks",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompGetIssue",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompGetIssue",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L338:andrecompgetissue",
+      "primaryDisposition": "always_agent_tool",
+      "semanticOperation": "get_task_context",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompGetHeartbeatContext",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompGetHeartbeatContext",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L344:andrecompgetheartbeatcontext",
+      "primaryDisposition": "always_agent_tool",
+      "semanticOperation": "get_task_context",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompListComments",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompListComments",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L353:andrecomplistcomments",
+      "primaryDisposition": "always_agent_tool",
+      "semanticOperation": "get_task_history",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompGetComment",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompGetComment",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L366:andrecompgetcomment",
+      "primaryDisposition": "always_agent_tool",
+      "semanticOperation": "get_task_history",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompListIssueApprovals",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompListIssueApprovals",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L373:andrecomplistissueapprovals",
+      "primaryDisposition": "always_agent_tool",
+      "semanticOperation": "get_task_context",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompListDocuments",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompListDocuments",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L379:andrecomplistdocuments",
+      "primaryDisposition": "always_agent_tool",
+      "semanticOperation": "list_documents",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompGetDocument",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompGetDocument",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L385:andrecompgetdocument",
+      "primaryDisposition": "always_agent_tool",
+      "semanticOperation": "read_document",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompListDocumentRevisions",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompListDocumentRevisions",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L392:andrecomplistdocumentrevisions",
+      "primaryDisposition": "always_agent_tool",
+      "semanticOperation": "list_document_revisions",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompListProjects",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompListProjects",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L402:andrecomplistprojects",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "list_projects",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompGetProject",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompGetProject",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L408:andrecompgetproject",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "get_project",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompGetIssueWorkspaceRuntime",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompGetIssueWorkspaceRuntime",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L417:andrecompgetissueworkspaceruntime",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "get_workspace_runtime",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompControlIssueWorkspaceServices",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompControlIssueWorkspaceServices",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L423:andrecompcontrolissueworkspaceservices",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "control_workspace_service",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompWaitForIssueWorkspaceService",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompWaitForIssueWorkspaceService",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L440:andrecompwaitforissueworkspaceservice",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "wait_for_workspace_service",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompListGoals",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompListGoals",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L466:andrecomplistgoals",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "list_goals",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompGetGoal",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompGetGoal",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L472:andrecompgetgoal",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "get_goal",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompListApprovals",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompListApprovals",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L478:andrecomplistapprovals",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "list_approvals",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompCreateApproval",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompCreateApproval",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L487:andrecompcreateapproval",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "request_approval",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompGetApproval",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompGetApproval",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L496:andrecompgetapproval",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "get_approval",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompGetApprovalIssues",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompGetApprovalIssues",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L502:andrecompgetapprovalissues",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "get_approval_context",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompListApprovalComments",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompListApprovalComments",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L508:andrecomplistapprovalcomments",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "get_approval_context",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompCreateIssue",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompCreateIssue",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L514:andrecompcreateissue",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "create_task",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompUpdateIssue",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompUpdateIssue",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L521:andrecompupdateissue",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "semantic_task_disposition",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompCheckoutIssue",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompCheckoutIssue",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L528:andrecompcheckoutissue",
+      "primaryDisposition": "control_plane_owned",
+      "semanticOperation": "atomic_checkout",
+      "expectedMockState": "runtime_decision_record"
+    },
+    {
+      "id": "mcp:andrecompReleaseIssue",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompReleaseIssue",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L540:andrecompreleaseissue",
+      "primaryDisposition": "control_plane_owned",
+      "semanticOperation": "runtime_release",
+      "expectedMockState": "runtime_decision_record"
+    },
+    {
+      "id": "mcp:andrecompAddComment",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompAddComment",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L546:andrecompaddcomment",
+      "primaryDisposition": "always_agent_tool",
+      "semanticOperation": "report_progress",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompSuggestTasks",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompSuggestTasks",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L553:andrecompsuggesttasks",
+      "primaryDisposition": "always_agent_tool",
+      "semanticOperation": "request_human_input",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompAskUserQuestions",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompAskUserQuestions",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L565:andrecompaskuserquestions",
+      "primaryDisposition": "always_agent_tool",
+      "semanticOperation": "request_human_input",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompRequestConfirmation",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompRequestConfirmation",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L577:andrecomprequestconfirmation",
+      "primaryDisposition": "always_agent_tool",
+      "semanticOperation": "request_human_input",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompRequestCheckboxConfirmation",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompRequestCheckboxConfirmation",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L589:andrecomprequestcheckboxconfirmation",
+      "primaryDisposition": "always_agent_tool",
+      "semanticOperation": "request_human_input",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompUpsertIssueDocument",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompUpsertIssueDocument",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L601:andrecompupsertissuedocument",
+      "primaryDisposition": "always_agent_tool",
+      "semanticOperation": "write_document",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompRestoreIssueDocumentRevision",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompRestoreIssueDocumentRevision",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L612:andrecomprestoreissuedocumentrevision",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "restore_document_revision",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompLinkIssueApproval",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompLinkIssueApproval",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L627:andrecomplinkissueapproval",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "link_approval",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompUnlinkIssueApproval",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompUnlinkIssueApproval",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L636:andrecompunlinkissueapproval",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "unlink_approval",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompApprovalDecision",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompApprovalDecision",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L646:andrecompapprovaldecision",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "decide_approval",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompAddApprovalComment",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompAddApprovalComment",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L668:andrecompaddapprovalcomment",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "comment_on_approval",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "mcp:andrecompApiRequest",
+      "kind": "legacy_mcp_tool",
+      "name": "andrecompApiRequest",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts#L677:andrecompapirequest",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "test_only_api_escape_hatch",
+      "expectedMockState": "operation_result"
+    }
+  ]
+}

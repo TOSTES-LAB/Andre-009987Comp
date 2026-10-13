@@ -1,0 +1,797 @@
+import * as p from "@clack/prompts";
+import path from "node:path";
+import pc from "picocolors";
+import {
+  AUTH_BASE_URL_MODES,
+  BIND_MODES,
+  DEPLOYMENT_EXPOSURES,
+  DEPLOYMENT_MODES,
+  SECRET_PROVIDERS,
+  STORAGE_PROVIDERS,
+  inferBindModeFromHost,
+  resolveRuntimeBind,
+  type BindMode,
+  type AuthBaseUrlMode,
+  type DeploymentExposure,
+  type DeploymentMode,
+  type SecretProvider,
+  type StorageProvider,
+} from "@andrecomp/shared";
+import {
+  backupInvalidConfig,
+  configExists,
+  readConfig,
+  resolveConfigPath,
+  writeConfig,
+} from "../config/store.js";
+import {
+  findAndrecompConfigKeyWarnings,
+  type AndrecompConfig,
+} from "../config/schema.js";
+import { ensureAgentJwtSecret, ensureToolActionSigningSecret, resolveAgentJwtEnvFile } from "../config/env.js";
+import { ensureLocalSecretsKeyFile } from "../config/secrets-key.js";
+import { promptDatabase } from "../prompts/database.js";
+import { promptLlm } from "../prompts/llm.js";
+import { promptLogging } from "../prompts/logging.js";
+import { defaultSecretsConfig } from "../prompts/secrets.js";
+import { defaultStorageConfig, promptStorage } from "../prompts/storage.js";
+import { promptServer } from "../prompts/server.js";
+import { buildPresetServerConfig } from "../config/server-bind.js";
+import {
+  describeLocalInstancePaths,
+  expandHomePrefix,
+  resolveDefaultBackupDir,
+  resolveDefaultEmbeddedPostgresDir,
+  resolveDefaultLogsDir,
+  resolveAndrecompInstanceId,
+} from "../config/home.js";
+import { bootstrapCeoInvite } from "./auth-bootstrap-ceo.js";
+import { printAndrecompCliBanner } from "../utils/banner.js";
+import {
+  getTelemetryClient,
+  trackInstallStarted,
+  trackInstallCompleted,
+} from "../telemetry.js";
+import {
+  handleOnboardService,
+  handoffToOnboardedService,
+  shouldOfferForegroundStart,
+} from "../onboard-service.js";
+import { readInstallManifest, isManagedExecutable } from "../install-store.js";
+
+type SetupMode = "quickstart" | "advanced";
+
+type OnboardOptions = {
+  config?: string;
+  run?: boolean;
+  yes?: boolean;
+  invokedByRun?: boolean;
+  bind?: BindMode;
+  installService?: boolean;
+};
+
+type OnboardDefaults = Pick<AndrecompConfig, "database" | "logging" | "server" | "auth" | "storage" | "secrets">;
+
+const TAILNET_BIND_WARNING =
+  "No Tailscale address was detected during setup. The saved config will stay on loopback until Tailscale is available or ANDRECOMP_TAILNET_BIND_HOST is set.";
+
+const ONBOARD_ENV_KEYS = [
+  "ANDRECOMP_PUBLIC_URL",
+  "DATABASE_URL",
+  "ANDRECOMP_DB_BACKUP_ENABLED",
+  "ANDRECOMP_DB_BACKUP_INTERVAL_MINUTES",
+  "ANDRECOMP_DB_BACKUP_RETENTION_DAYS",
+  "ANDRECOMP_DB_BACKUP_DIR",
+  "ANDRECOMP_DEPLOYMENT_MODE",
+  "ANDRECOMP_DEPLOYMENT_EXPOSURE",
+  "ANDRECOMP_BIND",
+  "ANDRECOMP_BIND_HOST",
+  "ANDRECOMP_TAILNET_BIND_HOST",
+  "HOST",
+  "PORT",
+  "SERVE_UI",
+  "ANDRECOMP_ALLOWED_HOSTNAMES",
+  "ANDRECOMP_AUTH_BASE_URL_MODE",
+  "ANDRECOMP_AUTH_PUBLIC_BASE_URL",
+  "BETTER_AUTH_URL",
+  "BETTER_AUTH_BASE_URL",
+  "ANDRECOMP_STORAGE_PROVIDER",
+  "ANDRECOMP_STORAGE_LOCAL_DIR",
+  "ANDRECOMP_STORAGE_S3_BUCKET",
+  "ANDRECOMP_STORAGE_S3_REGION",
+  "ANDRECOMP_STORAGE_S3_ENDPOINT",
+  "ANDRECOMP_STORAGE_S3_PREFIX",
+  "ANDRECOMP_STORAGE_S3_FORCE_PATH_STYLE",
+  "ANDRECOMP_SECRETS_PROVIDER",
+  "ANDRECOMP_SECRETS_STRICT_MODE",
+  "ANDRECOMP_SECRETS_MASTER_KEY_FILE",
+] as const;
+
+function parseBooleanFromEnv(rawValue: string | undefined): boolean | null {
+  if (rawValue === undefined) return null;
+  const lower = rawValue.trim().toLowerCase();
+  if (lower === "true" || lower === "1" || lower === "yes") return true;
+  if (lower === "false" || lower === "0" || lower === "no") return false;
+  return null;
+}
+
+async function runOnboardedForeground(configPath: string): Promise<void> {
+  const previousOpenOnListen = process.env.ANDRECOMP_OPEN_ON_LISTEN;
+  const browserDisabled = parseBooleanFromEnv(process.env.ANDRECOMP_NO_BROWSER) === true;
+  const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+
+  // The server consumes this flag in its listen callback. Keep it scoped to
+  // this foreground start so a later in-process restart does not open another
+  // tab. Explicit configuration wins over the interactive default, while the
+  // broad no-browser switch wins over an earlier explicit opt-in.
+  if (browserDisabled) {
+    process.env.ANDRECOMP_OPEN_ON_LISTEN = "false";
+  } else if (interactive && previousOpenOnListen === undefined) {
+    process.env.ANDRECOMP_OPEN_ON_LISTEN = "true";
+  }
+
+  try {
+    const { runCommand } = await import("./run.js");
+    await runCommand({ config: configPath, repair: true, yes: true });
+  } finally {
+    if (previousOpenOnListen === undefined) {
+      delete process.env.ANDRECOMP_OPEN_ON_LISTEN;
+    } else {
+      process.env.ANDRECOMP_OPEN_ON_LISTEN = previousOpenOnListen;
+    }
+  }
+}
+
+function parseNumberFromEnv(rawValue: string | undefined): number | null {
+  if (!rawValue) return null;
+  const parsed = Number(rawValue);
+  if (!Number.isFinite(parsed)) return null;
+  return parsed;
+}
+
+function parseEnumFromEnv<T extends string>(rawValue: string | undefined, allowedValues: readonly T[]): T | null {
+  if (!rawValue) return null;
+  return allowedValues.includes(rawValue as T) ? (rawValue as T) : null;
+}
+
+function resolvePathFromEnv(rawValue: string | undefined): string | null {
+  if (!rawValue || rawValue.trim().length === 0) return null;
+  return path.resolve(expandHomePrefix(rawValue.trim()));
+}
+
+function describeServerBinding(server: Pick<AndrecompConfig["server"], "bind" | "customBindHost" | "host" | "port">): string {
+  const bind = server.bind ?? inferBindModeFromHost(server.host);
+  const detail =
+    bind === "custom"
+      ? server.customBindHost ?? server.host
+      : bind === "tailnet"
+        ? "detected tailscale address"
+        : server.host;
+  return `${bind}${detail ? ` (${detail})` : ""}:${server.port}`;
+}
+
+function quickstartDefaultsFromEnv(opts?: { preferTrustedLocal?: boolean }): {
+  defaults: OnboardDefaults;
+  usedEnvKeys: string[];
+  ignoredEnvKeys: Array<{ key: string; reason: string }>;
+} {
+  const preferTrustedLocal = opts?.preferTrustedLocal ?? false;
+  const instanceId = resolveAndrecompInstanceId();
+  const defaultStorage = defaultStorageConfig();
+  const defaultSecrets = defaultSecretsConfig();
+  const databaseUrl = process.env.DATABASE_URL?.trim() || undefined;
+  const publicUrl = preferTrustedLocal
+    ? undefined
+    : (
+      process.env.ANDRECOMP_PUBLIC_URL?.trim() ||
+      process.env.ANDRECOMP_AUTH_PUBLIC_BASE_URL?.trim() ||
+      process.env.BETTER_AUTH_URL?.trim() ||
+      process.env.BETTER_AUTH_BASE_URL?.trim() ||
+      undefined
+    );
+  const deploymentMode = preferTrustedLocal
+    ? "local_trusted"
+    : (parseEnumFromEnv<DeploymentMode>(process.env.ANDRECOMP_DEPLOYMENT_MODE, DEPLOYMENT_MODES) ?? "local_trusted");
+  const deploymentExposureFromEnv = parseEnumFromEnv<DeploymentExposure>(
+    process.env.ANDRECOMP_DEPLOYMENT_EXPOSURE,
+    DEPLOYMENT_EXPOSURES,
+  );
+  const deploymentExposure =
+    deploymentMode === "local_trusted" ? "private" : (deploymentExposureFromEnv ?? "private");
+  const bindFromEnv = parseEnumFromEnv<BindMode>(process.env.ANDRECOMP_BIND, BIND_MODES);
+  const customBindHostFromEnv = process.env.ANDRECOMP_BIND_HOST?.trim() || undefined;
+  const hostFromEnv = process.env.HOST?.trim() || undefined;
+  const configuredBindHost = customBindHostFromEnv ?? hostFromEnv;
+  const bind = preferTrustedLocal
+    ? "loopback"
+    : (
+      deploymentMode === "local_trusted"
+        ? "loopback"
+        : (bindFromEnv ?? (configuredBindHost ? inferBindModeFromHost(configuredBindHost) : "lan"))
+    );
+  const resolvedBind = resolveRuntimeBind({
+    bind,
+    host: hostFromEnv ?? (bind === "loopback" ? "127.0.0.1" : "0.0.0.0"),
+    customBindHost: customBindHostFromEnv,
+    tailnetBindHost: process.env.ANDRECOMP_TAILNET_BIND_HOST?.trim(),
+  });
+  const authPublicBaseUrl = publicUrl;
+  const authBaseUrlModeFromEnv = parseEnumFromEnv<AuthBaseUrlMode>(
+    process.env.ANDRECOMP_AUTH_BASE_URL_MODE,
+    AUTH_BASE_URL_MODES,
+  );
+  const authBaseUrlMode = authBaseUrlModeFromEnv ?? (authPublicBaseUrl ? "explicit" : "auto");
+  const allowedHostnamesFromEnv = process.env.ANDRECOMP_ALLOWED_HOSTNAMES
+    ? process.env.ANDRECOMP_ALLOWED_HOSTNAMES
+      .split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter((value) => value.length > 0)
+    : [];
+  const hostnameFromPublicUrl = publicUrl
+    ? (() => {
+      try {
+        return new URL(publicUrl).hostname.trim().toLowerCase();
+      } catch {
+        return null;
+      }
+    })()
+    : null;
+  const storageProvider =
+    parseEnumFromEnv<StorageProvider>(process.env.ANDRECOMP_STORAGE_PROVIDER, STORAGE_PROVIDERS) ??
+    defaultStorage.provider;
+  const secretsProvider =
+    parseEnumFromEnv<SecretProvider>(process.env.ANDRECOMP_SECRETS_PROVIDER, SECRET_PROVIDERS) ??
+    defaultSecrets.provider;
+  const databaseBackupEnabled = parseBooleanFromEnv(process.env.ANDRECOMP_DB_BACKUP_ENABLED) ?? true;
+  const databaseBackupIntervalMinutes = Math.max(
+    1,
+    parseNumberFromEnv(process.env.ANDRECOMP_DB_BACKUP_INTERVAL_MINUTES) ?? 60,
+  );
+  const databaseBackupRetentionDays = Math.max(
+    1,
+    parseNumberFromEnv(process.env.ANDRECOMP_DB_BACKUP_RETENTION_DAYS) ?? 30,
+  );
+  const defaults: OnboardDefaults = {
+    database: {
+      mode: databaseUrl ? "postgres" : "embedded-postgres",
+      ...(databaseUrl ? { connectionString: databaseUrl } : {}),
+      embeddedPostgresDataDir: resolveDefaultEmbeddedPostgresDir(instanceId),
+      embeddedPostgresPort: 54329,
+      backup: {
+        enabled: databaseBackupEnabled,
+        intervalMinutes: databaseBackupIntervalMinutes,
+        retentionDays: databaseBackupRetentionDays,
+        dir: resolvePathFromEnv(process.env.ANDRECOMP_DB_BACKUP_DIR) ?? resolveDefaultBackupDir(instanceId),
+      },
+    },
+    logging: {
+      mode: "file",
+      logDir: resolveDefaultLogsDir(instanceId),
+    },
+    server: {
+      deploymentMode,
+      exposure: deploymentExposure,
+      bind: resolvedBind.bind,
+      ...(resolvedBind.customBindHost ? { customBindHost: resolvedBind.customBindHost } : {}),
+      host: resolvedBind.host,
+      port: Number(process.env.PORT) || 3100,
+      allowedHostnames: Array.from(new Set([...allowedHostnamesFromEnv, ...(hostnameFromPublicUrl ? [hostnameFromPublicUrl] : [])])),
+      serveUi: parseBooleanFromEnv(process.env.SERVE_UI) ?? true,
+    },
+    auth: {
+      baseUrlMode: authBaseUrlMode,
+      disableSignUp: false,
+      ...(authPublicBaseUrl ? { publicBaseUrl: authPublicBaseUrl } : {}),
+    },
+    storage: {
+      provider: storageProvider,
+      localDisk: {
+        baseDir:
+          resolvePathFromEnv(process.env.ANDRECOMP_STORAGE_LOCAL_DIR) ?? defaultStorage.localDisk.baseDir,
+      },
+      s3: {
+        bucket: process.env.ANDRECOMP_STORAGE_S3_BUCKET ?? defaultStorage.s3.bucket,
+        region: process.env.ANDRECOMP_STORAGE_S3_REGION ?? defaultStorage.s3.region,
+        endpoint: process.env.ANDRECOMP_STORAGE_S3_ENDPOINT ?? defaultStorage.s3.endpoint,
+        prefix: process.env.ANDRECOMP_STORAGE_S3_PREFIX ?? defaultStorage.s3.prefix,
+        forcePathStyle:
+          parseBooleanFromEnv(process.env.ANDRECOMP_STORAGE_S3_FORCE_PATH_STYLE) ??
+          defaultStorage.s3.forcePathStyle,
+      },
+    },
+    secrets: {
+      provider: secretsProvider,
+      strictMode: parseBooleanFromEnv(process.env.ANDRECOMP_SECRETS_STRICT_MODE) ?? defaultSecrets.strictMode,
+      localEncrypted: {
+        keyFilePath:
+          resolvePathFromEnv(process.env.ANDRECOMP_SECRETS_MASTER_KEY_FILE) ??
+          defaultSecrets.localEncrypted.keyFilePath,
+      },
+    },
+  };
+  const ignoredEnvKeys: Array<{ key: string; reason: string }> = [];
+  if (preferTrustedLocal) {
+    const forcedLocalReason = "Ignored because --yes quickstart forces trusted local loopback defaults";
+    for (const key of [
+      "ANDRECOMP_DEPLOYMENT_MODE",
+      "ANDRECOMP_DEPLOYMENT_EXPOSURE",
+      "ANDRECOMP_BIND",
+      "ANDRECOMP_BIND_HOST",
+      "HOST",
+      "ANDRECOMP_AUTH_BASE_URL_MODE",
+      "ANDRECOMP_AUTH_PUBLIC_BASE_URL",
+      "ANDRECOMP_PUBLIC_URL",
+      "BETTER_AUTH_URL",
+      "BETTER_AUTH_BASE_URL",
+    ] as const) {
+      if (process.env[key] !== undefined) {
+        ignoredEnvKeys.push({ key, reason: forcedLocalReason });
+      }
+    }
+  }
+  if (deploymentMode === "local_trusted" && process.env.ANDRECOMP_DEPLOYMENT_EXPOSURE !== undefined) {
+    ignoredEnvKeys.push({
+      key: "ANDRECOMP_DEPLOYMENT_EXPOSURE",
+      reason: "Ignored because deployment mode local_trusted always forces private exposure",
+    });
+  }
+  if (deploymentMode === "local_trusted" && process.env.ANDRECOMP_BIND !== undefined) {
+    ignoredEnvKeys.push({
+      key: "ANDRECOMP_BIND",
+      reason: "Ignored because deployment mode local_trusted always uses loopback reachability",
+    });
+  }
+  if (deploymentMode === "local_trusted" && process.env.ANDRECOMP_BIND_HOST !== undefined) {
+    ignoredEnvKeys.push({
+      key: "ANDRECOMP_BIND_HOST",
+      reason: "Ignored because deployment mode local_trusted always uses loopback reachability",
+    });
+  }
+  if (deploymentMode === "local_trusted" && process.env.HOST !== undefined) {
+    ignoredEnvKeys.push({
+      key: "HOST",
+      reason: "Ignored because deployment mode local_trusted always uses loopback reachability",
+    });
+  }
+
+  const ignoredKeySet = new Set(ignoredEnvKeys.map((entry) => entry.key));
+  const usedEnvKeys = ONBOARD_ENV_KEYS.filter(
+    (key) => process.env[key] !== undefined && !ignoredKeySet.has(key),
+  );
+  return { defaults, usedEnvKeys, ignoredEnvKeys };
+}
+
+function canCreateBootstrapInviteImmediately(config: Pick<AndrecompConfig, "database" | "server">): boolean {
+  return config.server.deploymentMode === "authenticated" && config.database.mode !== "embedded-postgres";
+}
+
+export function isEphemeralNpxExecution(entrypoint = process.argv[1]): boolean {
+  if (!entrypoint) return false;
+  const normalized = entrypoint.replaceAll("\\", "/");
+  return normalized.includes("/_npx/") || normalized.includes("/npm/_npx/");
+}
+
+function printManagedInstallHint(): void {
+  const manifest = readInstallManifest();
+  if (manifest && isManagedExecutable(process.argv[1], manifest)) return;
+  if (!isEphemeralNpxExecution()) return;
+  p.log.info(
+    `This npx run is temporary. Use ${pc.cyan("andrecomp install")} for atomic updates, rollback, and service support.`,
+  );
+}
+
+export async function onboard(opts: OnboardOptions): Promise<void> {
+  if (opts.bind && !["loopback", "lan", "tailnet"].includes(opts.bind)) {
+    throw new Error(`Unsupported bind preset for onboard: ${opts.bind}. Use loopback, lan, or tailnet.`);
+  }
+
+  printAndrecompCliBanner();
+  p.intro(pc.bgCyan(pc.black(" andrecomp onboard ")));
+  const configPath = resolveConfigPath(opts.config);
+  const instance = describeLocalInstancePaths(resolveAndrecompInstanceId());
+  p.log.message(
+    pc.dim(
+      `Local home: ${instance.homeDir} | instance: ${instance.instanceId} | config: ${configPath}`,
+    ),
+  );
+
+  let existingConfig: AndrecompConfig | null = null;
+  let invalidBackupPath: string | undefined;
+  if (configExists(opts.config)) {
+    p.log.message(pc.dim(`${configPath} exists`));
+
+    try {
+      existingConfig = readConfig(opts.config);
+      for (const warning of findAndrecompConfigKeyWarnings(existingConfig)) {
+        p.log.warn(`Unknown config key ${warning.path}; did you mean ${warning.suggestion}? It will be preserved.`);
+      }
+    } catch (err) {
+      const backupPath = backupInvalidConfig(opts.config);
+      p.log.warn(
+        `Existing config is invalid. Preserved the original bytes at ${backupPath}.\n${err instanceof Error ? err.message : String(err)}`,
+      );
+
+      const canConfirmRepair =
+        opts.yes !== true &&
+        opts.invokedByRun !== true &&
+        process.stdin.isTTY === true &&
+        process.stdout.isTTY === true;
+      if (!canConfirmRepair) {
+        p.log.error(
+          `Refusing to replace ${configPath} without confirmation. Rerun interactively to repair from defaults; the original and ${backupPath} are unchanged.`,
+        );
+        p.outro("");
+        process.exitCode = 1;
+        return;
+      }
+
+      const repair = await p.confirm({
+        message: `Repair from defaults? The invalid original is backed up at ${backupPath}.`,
+        initialValue: false,
+      });
+      if (p.isCancel(repair) || !repair) {
+        p.cancel(`Configuration left unchanged. Invalid backup: ${backupPath}`);
+        process.exitCode = 1;
+        return;
+      }
+      invalidBackupPath = backupPath;
+    }
+  }
+
+  if (existingConfig) {
+    p.log.message(
+      pc.dim("Existing Andrecomp install detected; keeping the current configuration unchanged."),
+    );
+    p.log.message(pc.dim(`Use ${pc.cyan("andrecomp configure")} if you want to change settings.`));
+
+    const jwtSecret = ensureAgentJwtSecret(configPath);
+    const envFilePath = resolveAgentJwtEnvFile(configPath);
+    if (jwtSecret.created) {
+      p.log.success(`Created ${pc.cyan("ANDRECOMP_AGENT_JWT_SECRET")} in ${pc.dim(envFilePath)}`);
+    } else if (process.env.ANDRECOMP_AGENT_JWT_SECRET?.trim()) {
+      p.log.info(`Using existing ${pc.cyan("ANDRECOMP_AGENT_JWT_SECRET")} from environment`);
+    } else {
+      p.log.info(`Using existing ${pc.cyan("ANDRECOMP_AGENT_JWT_SECRET")} in ${pc.dim(envFilePath)}`);
+    }
+    const toolActionSigningSecret = ensureToolActionSigningSecret(configPath);
+    if (toolActionSigningSecret.created) {
+      p.log.success(`Created ${pc.cyan("ANDRECOMP_TOOL_ACTION_SIGNING_SECRET")} in ${pc.dim(envFilePath)}`);
+    }
+
+    const keyResult = ensureLocalSecretsKeyFile(existingConfig, configPath);
+    if (keyResult.status === "created") {
+      p.log.success(`Created local secrets key file at ${pc.dim(keyResult.path)}`);
+    } else if (keyResult.status === "existing") {
+      p.log.message(pc.dim(`Using existing local secrets key file at ${keyResult.path}`));
+    }
+
+    p.note(
+      [
+        "Existing config preserved",
+        `Database: ${existingConfig.database.mode}`,
+        existingConfig.llm ? `LLM: ${existingConfig.llm.provider}` : "LLM: not configured",
+        `Logging: ${existingConfig.logging.mode} -> ${existingConfig.logging.logDir}`,
+        `Server: ${existingConfig.server.deploymentMode}/${existingConfig.server.exposure} @ ${describeServerBinding(existingConfig.server)}`,
+        `Allowed hosts: ${existingConfig.server.allowedHostnames.length > 0 ? existingConfig.server.allowedHostnames.join(", ") : "(loopback only)"}`,
+        `Auth URL mode: ${existingConfig.auth.baseUrlMode}${existingConfig.auth.publicBaseUrl ? ` (${existingConfig.auth.publicBaseUrl})` : ""}`,
+        `Storage: ${existingConfig.storage.provider}`,
+        `Secrets: ${existingConfig.secrets.provider} (strict mode ${existingConfig.secrets.strictMode ? "on" : "off"})`,
+        "Agent auth: ANDRECOMP_AGENT_JWT_SECRET configured",
+      ].join("\n"),
+      "Configuration ready",
+    );
+
+    p.note(
+      [
+        `Run: ${pc.cyan("andrecomp run")}`,
+        `Reconfigure later: ${pc.cyan("andrecomp configure")}`,
+        `Diagnose setup: ${pc.cyan("andrecomp doctor")}`,
+      ].join("\n"),
+      "Next commands",
+    );
+
+    printManagedInstallHint();
+    const serviceInstalled = await handleOnboardService(opts);
+    if (serviceInstalled) {
+      await handoffToOnboardedService(existingConfig);
+    }
+
+    let shouldRunNow = !serviceInstalled && (opts.run === true || opts.yes === true);
+    if (shouldOfferForegroundStart({ serviceInstalled, startAlreadyDecided: shouldRunNow, invokedByRun: opts.invokedByRun === true, interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY) })) {
+      const answer = await p.confirm({
+        message: "Start Andrecomp now?",
+        initialValue: true,
+      });
+      if (!p.isCancel(answer)) {
+        shouldRunNow = answer;
+      }
+    }
+
+    if (shouldRunNow && !opts.invokedByRun) {
+      await runOnboardedForeground(configPath);
+      return;
+    }
+
+    p.outro("Existing Andrecomp setup is ready.");
+    return;
+  }
+
+  let setupMode: SetupMode = "quickstart";
+  if (opts.yes) {
+    p.log.message(
+      pc.dim(
+        opts.bind
+          ? `\`--yes\` enabled: using Quickstart defaults with bind=${opts.bind}.`
+          : "`--yes` enabled: using Quickstart defaults.",
+      ),
+    );
+  } else {
+    const setupModeChoice = await p.select({
+      message: "Choose setup path",
+      options: [
+        {
+          value: "quickstart" as const,
+          label: "Quickstart",
+          hint: "Recommended: local defaults + ready to run",
+        },
+        {
+          value: "advanced" as const,
+          label: "Advanced setup",
+          hint: "Customize database, server, storage, and more",
+        },
+      ],
+      initialValue: "quickstart",
+    });
+    if (p.isCancel(setupModeChoice)) {
+      p.cancel("Setup cancelled.");
+      return;
+    }
+    setupMode = setupModeChoice as SetupMode;
+  }
+
+  const tc = getTelemetryClient();
+  if (tc) trackInstallStarted(tc);
+
+  let llm: AndrecompConfig["llm"] | undefined;
+  const { defaults: derivedDefaults, usedEnvKeys, ignoredEnvKeys } = quickstartDefaultsFromEnv({
+    preferTrustedLocal: opts.yes === true && !opts.bind,
+  });
+  let {
+    database,
+    logging,
+    server,
+    auth,
+    storage,
+    secrets,
+  } = derivedDefaults;
+
+  if (opts.bind === "loopback" || opts.bind === "lan" || opts.bind === "tailnet") {
+    const preset = buildPresetServerConfig(opts.bind, {
+      port: server.port,
+      allowedHostnames: server.allowedHostnames,
+      serveUi: server.serveUi,
+    });
+    server = preset.server;
+    auth = preset.auth;
+    if (opts.bind === "tailnet" && server.host === "127.0.0.1") {
+      p.log.warn(TAILNET_BIND_WARNING);
+    }
+  }
+
+  if (setupMode === "advanced") {
+    p.log.step(pc.bold("Database"));
+    database = await promptDatabase(database);
+
+    if (database.mode === "postgres" && database.connectionString) {
+      const s = p.spinner();
+      s.start("Testing database connection...");
+      try {
+        const { createDb } = await import("@andrecomp/db");
+        const db = createDb(database.connectionString);
+        await db.execute("SELECT 1");
+        s.stop("Database connection successful");
+      } catch {
+        s.stop(pc.yellow("Could not connect to database — you can fix this later with `andrecomp doctor`"));
+      }
+    }
+
+    p.log.step(pc.bold("LLM Provider"));
+    llm = await promptLlm();
+
+    if (llm?.apiKey) {
+      const s = p.spinner();
+      s.start("Validating API key...");
+      try {
+        if (llm.provider === "claude") {
+          const res = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "x-api-key": llm.apiKey,
+              "anthropic-version": "2023-06-01",
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "claude-sonnet-4-5-20250929",
+              max_tokens: 1,
+              messages: [{ role: "user", content: "hi" }],
+            }),
+          });
+          if (res.ok || res.status === 400) {
+            s.stop("API key is valid");
+          } else if (res.status === 401) {
+            s.stop(pc.yellow("API key appears invalid — you can update it later"));
+          } else {
+            s.stop(pc.yellow("Could not validate API key — continuing anyway"));
+          }
+        } else {
+          const res = await fetch("https://api.openai.com/v1/models", {
+            headers: { Authorization: `Bearer ${llm.apiKey}` },
+          });
+          if (res.ok) {
+            s.stop("API key is valid");
+          } else if (res.status === 401) {
+            s.stop(pc.yellow("API key appears invalid — you can update it later"));
+          } else {
+            s.stop(pc.yellow("Could not validate API key — continuing anyway"));
+          }
+        }
+      } catch {
+        s.stop(pc.yellow("Could not reach API — continuing anyway"));
+      }
+    }
+
+    p.log.step(pc.bold("Logging"));
+    logging = await promptLogging();
+
+    p.log.step(pc.bold("Server"));
+    ({ server, auth } = await promptServer({ currentServer: server, currentAuth: auth }));
+
+    p.log.step(pc.bold("Storage"));
+    storage = await promptStorage(storage);
+
+    p.log.step(pc.bold("Secrets"));
+    const secretsDefaults = defaultSecretsConfig();
+    secrets = {
+      provider: secrets.provider ?? secretsDefaults.provider,
+      strictMode: secrets.strictMode ?? secretsDefaults.strictMode,
+      localEncrypted: {
+        keyFilePath: secrets.localEncrypted?.keyFilePath ?? secretsDefaults.localEncrypted.keyFilePath,
+      },
+    };
+    p.log.message(
+      pc.dim(
+        `Using defaults: provider=${secrets.provider}, strictMode=${secrets.strictMode}, keyFile=${secrets.localEncrypted.keyFilePath}`,
+      ),
+    );
+  } else {
+    p.log.step(pc.bold("Quickstart"));
+    p.log.message(
+      pc.dim(
+        opts.bind
+          ? `Using quickstart defaults with bind=${opts.bind}.`
+          : `Using quickstart defaults: ${server.deploymentMode}/${server.exposure} @ ${describeServerBinding(server)}.`,
+      ),
+    );
+    if (usedEnvKeys.length > 0) {
+      p.log.message(pc.dim(`Environment-aware defaults active (${usedEnvKeys.length} env var(s) detected).`));
+    } else {
+      p.log.message(
+        pc.dim("No environment overrides detected: embedded database, file storage, local encrypted secrets."),
+      );
+    }
+    for (const ignored of ignoredEnvKeys) {
+      p.log.message(pc.dim(`Ignored ${ignored.key}: ${ignored.reason}`));
+    }
+  }
+
+  const jwtSecret = ensureAgentJwtSecret(configPath);
+  const envFilePath = resolveAgentJwtEnvFile(configPath);
+  if (jwtSecret.created) {
+    p.log.success(`Created ${pc.cyan("ANDRECOMP_AGENT_JWT_SECRET")} in ${pc.dim(envFilePath)}`);
+  } else if (process.env.ANDRECOMP_AGENT_JWT_SECRET?.trim()) {
+    p.log.info(`Using existing ${pc.cyan("ANDRECOMP_AGENT_JWT_SECRET")} from environment`);
+  } else {
+    p.log.info(`Using existing ${pc.cyan("ANDRECOMP_AGENT_JWT_SECRET")} in ${pc.dim(envFilePath)}`);
+  }
+  const toolActionSigningSecret = ensureToolActionSigningSecret(configPath);
+  if (toolActionSigningSecret.created) {
+    p.log.success(`Created ${pc.cyan("ANDRECOMP_TOOL_ACTION_SIGNING_SECRET")} in ${pc.dim(envFilePath)}`);
+  }
+
+  const config: AndrecompConfig = {
+    $meta: {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      source: "onboard",
+    },
+    ...(llm && { llm }),
+    database,
+    logging,
+    server,
+    auth,
+    telemetry: {
+      enabled: true,
+    },
+    storage,
+    secrets,
+  };
+
+  const keyResult = ensureLocalSecretsKeyFile(config, configPath);
+  if (keyResult.status === "created") {
+    p.log.success(`Created local secrets key file at ${pc.dim(keyResult.path)}`);
+  } else if (keyResult.status === "existing") {
+    p.log.message(pc.dim(`Using existing local secrets key file at ${keyResult.path}`));
+  }
+
+  writeConfig(config, opts.config, {
+    invalidBackupPath,
+  });
+
+  if (tc) trackInstallCompleted(tc, {
+    adapterType: server.deploymentMode,
+  });
+
+  p.note(
+    [
+      `Database: ${database.mode}`,
+      llm ? `LLM: ${llm.provider}` : "LLM: not configured",
+      `Logging: ${logging.mode} -> ${logging.logDir}`,
+      `Server: ${server.deploymentMode}/${server.exposure} @ ${describeServerBinding(server)}`,
+      `Allowed hosts: ${server.allowedHostnames.length > 0 ? server.allowedHostnames.join(", ") : "(loopback only)"}`,
+      `Auth URL mode: ${auth.baseUrlMode}${auth.publicBaseUrl ? ` (${auth.publicBaseUrl})` : ""}`,
+      `Storage: ${storage.provider}`,
+      `Secrets: ${secrets.provider} (strict mode ${secrets.strictMode ? "on" : "off"})`,
+      "Agent auth: ANDRECOMP_AGENT_JWT_SECRET configured",
+    ].join("\n"),
+    "Configuration saved",
+  );
+
+  p.note(
+    [
+      `Run: ${pc.cyan("andrecomp run")}`,
+      `Reconfigure later: ${pc.cyan("andrecomp configure")}`,
+      `Diagnose setup: ${pc.cyan("andrecomp doctor")}`,
+    ].join("\n"),
+    "Next commands",
+  );
+
+  printManagedInstallHint();
+
+  if (canCreateBootstrapInviteImmediately({ database, server })) {
+    p.log.step("Generating bootstrap CEO invite");
+    await bootstrapCeoInvite({ config: configPath });
+  }
+
+  const serviceInstalled = await handleOnboardService(opts);
+  if (serviceInstalled) {
+    await handoffToOnboardedService(config);
+  }
+
+  let shouldRunNow = !serviceInstalled && (opts.run === true || opts.yes === true);
+  if (shouldOfferForegroundStart({ serviceInstalled, startAlreadyDecided: shouldRunNow, invokedByRun: opts.invokedByRun === true, interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY) })) {
+    const answer = await p.confirm({
+      message: "Start Andrecomp now?",
+      initialValue: true,
+    });
+    if (!p.isCancel(answer)) {
+      shouldRunNow = answer;
+    }
+  }
+
+  if (shouldRunNow && !opts.invokedByRun) {
+    await runOnboardedForeground(configPath);
+    return;
+  }
+
+  if (server.deploymentMode === "authenticated" && database.mode === "embedded-postgres") {
+    p.log.info(
+      [
+        "Bootstrap CEO invite will be created after the server starts.",
+        `Next: ${pc.cyan("andrecomp run")}`,
+        `Then: ${pc.cyan("andrecomp auth bootstrap-ceo")}`,
+      ].join("\n"),
+    );
+  }
+
+  p.outro("You're all set!");
+}

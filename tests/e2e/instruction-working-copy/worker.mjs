@@ -1,0 +1,14 @@
+import { readFile, writeFile } from "node:fs/promises";
+import assert from "node:assert/strict";
+const env = process.env;
+assert(env.INSTRUCTION_FIXTURE_PATH, "The adapter must receive the registered copy");
+const before = await readFile(env.INSTRUCTION_FIXTURE_PATH, "utf8");
+assert(["# Original\n", "# Saved by the real worker\n☃\n"].includes(before));
+await writeFile(env.INSTRUCTION_FIXTURE_PATH, "# Saved by the real worker\n☃\n");
+console.log(JSON.stringify({ before, instructionPath: env.INSTRUCTION_FIXTURE_PATH }));
+const headers = { Authorization: `Bearer ${env.ANDRECOMP_API_KEY}`, "X-Andrecomp-Run-Id": env.ANDRECOMP_RUN_ID, "Content-Type": "application/json" };
+const runResponse = await fetch(`${env.ANDRECOMP_API_URL}/api/heartbeat-runs/${env.ANDRECOMP_RUN_ID}`, { headers });
+assert(runResponse.ok);
+const run = await runResponse.json();
+const response = await fetch(`${env.ANDRECOMP_API_URL}/api/issues/${run.contextSnapshot.issueId}`, { method: "PATCH", headers, body: JSON.stringify({ status: "done", comment: "Read and updated the registered instruction working copy." }) });
+assert(response.ok, await response.text());

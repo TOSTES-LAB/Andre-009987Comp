@@ -1,0 +1,69 @@
+{
+  "name": "andrecomp",
+  "version": "0.3.1",
+  "description": "Andrecomp CLI — orchestrate AI agent teams to run a business",
+  "type": "module",
+  "bin": {
+    "andrecomp": "./dist/index.js"
+  },
+  "keywords": [
+    "andrecomp",
+    "ai",
+    "agents",
+    "orchestration",
+    "cli"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TOSTES-LAB/Andre-009987Comp",
+    "directory": "cli"
+  },
+  "homepage": "https://github.com/TOSTES-LAB/Andre-009987Comp",
+  "bugs": {
+    "url": "https://github.com/TOSTES-LAB/Andre-009987Comp/issues"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "node --input-type=module -e \"import esbuild from 'esbuild'; import config from './esbuild.config.mjs'; await esbuild.build(config);\" && chmod +x dist/index.js",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.7.0",
+    "@andrecomp/adapter-claude-local": "workspace:*",
+    "@andrecomp/adapter-codex-local": "workspace:*",
+    "@andrecomp/adapter-cursor-cloud": "workspace:*",
+    "@andrecomp/adapter-cursor-local": "workspace:*",
+    "@andrecomp/adapter-gemini-local": "workspace:*",
+    "@andrecomp/adapter-grok-local": "workspace:*",
+    "@andrecomp/adapter-kimi-local": "workspace:*",
+    "@andrecomp/adapter-opencode-local": "workspace:*",
+    "@andrecomp/adapter-pi-local": "workspace:*",
+    "@andrecomp/adapter-openclaw-gateway": "workspace:*",
+    "@andrecomp/adapter-utils": "workspace:*",
+    "@andrecomp/db": "workspace:*",
+    "@andrecomp/server": "workspace:*",
+    "@andrecomp/shared": "workspace:*",
+    "@andrecomp/hermes-andrecomp-adapter": "workspace:*",
+    "drizzle-orm": "0.45.2",
+    "dotenv": "^17.4.2",
+    "commander": "^15.0.0",
+    "embedded-postgres": "^18.1.0-beta.16",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=24.11.0"
+  }
+}

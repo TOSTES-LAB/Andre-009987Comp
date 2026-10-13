@@ -1,0 +1,23 @@
+[Unit]
+Description=Andrecomp AI Agent Orchestrator
+Requires=andrecomp-db.service
+After=andrecomp-db.service
+
+[Container]
+Image=andrecomp-local
+ContainerName=andrecomp
+Pod=andrecomp.pod
+Volume=%h/.local/share/andrecomp:/andrecomp:Z
+Environment=HOST=0.0.0.0
+Environment=ANDRECOMP_HOME=/andrecomp
+Environment=ANDRECOMP_DEPLOYMENT_MODE=authenticated
+Environment=ANDRECOMP_DEPLOYMENT_EXPOSURE=private
+Environment=ANDRECOMP_PUBLIC_URL=http://localhost:3100
+EnvironmentFile=%h/.config/containers/systemd/andrecomp.env
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target

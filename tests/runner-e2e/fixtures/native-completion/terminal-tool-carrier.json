@@ -1,0 +1,55 @@
+{
+  "schema": "andrecomp.native-completion-terminal-carrier.fixture.v1",
+  "cases": [
+    {
+      "name": "andrecomp_finish",
+      "providerInput": {
+        "item": {
+          "id": "terminal-call",
+          "type": "tool_call",
+          "name": "andrecomp_finish",
+          "status": "inProgress",
+          "arguments": {
+            "secret": "not-for-the-log"
+          }
+        }
+      },
+      "normalizedPayload": {
+        "provider": "codex",
+        "itemId": "terminal-call",
+        "kind": "tool_call",
+        "status": "running",
+        "channel": "detail",
+        "text": null,
+        "item": {
+          "name": "andrecomp_finish"
+        }
+      }
+    },
+    {
+      "name": "andrecomp_block",
+      "providerInput": {
+        "item": {
+          "id": "terminal-call",
+          "type": "tool_call",
+          "name": "andrecomp_block",
+          "status": "inProgress",
+          "arguments": {
+            "secret": "not-for-the-log"
+          }
+        }
+      },
+      "normalizedPayload": {
+        "provider": "codex",
+        "itemId": "terminal-call",
+        "kind": "tool_call",
+        "status": "running",
+        "channel": "detail",
+        "text": null,
+        "item": {
+          "name": "andrecomp_block"
+        }
+      }
+    }
+  ]
+}

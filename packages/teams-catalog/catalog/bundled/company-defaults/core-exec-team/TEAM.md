@@ -1,0 +1,44 @@
+---
+name: Core Exec Team
+description: Default leadership and engineering team for bootstrapping a Andrecomp company with a CEO, CTO, QA Engineer, starter project, and a recurring CEO heartbeat review task.
+schema: agentcompanies/v1
+slug: core-exec-team
+category: company-defaults
+key: andrecomp/bundled/company-defaults/core-exec-team
+manager: agents/ceo/AGENTS.md
+includes:
+  - agents/cto/AGENTS.md
+  - agents/qa/AGENTS.md
+  - projects/first-project/PROJECT.md
+defaultInstall: true
+recommendedForCompanyTypes:
+  - startup
+  - software
+  - generalist
+tags:
+  - default
+  - executive
+  - engineering
+  - qa
+requiredSkills:
+  - andrecomp/bundled/andrecomp-operations/task-planning
+  - andrecomp/bundled/andrecomp-operations/issue-triage
+  - andrecomp/bundled/software-development/github-pr-workflow
+  - andrecomp/bundled/quality/qa-acceptance
+---
+
+# Core Exec Team
+
+The Core Exec Team is the bundled default install for a new Andrecomp company. It boots the smallest org that can take a board prompt, plan it, implement it, and verify it.
+
+## Contents
+
+- `CEO` — strategy, prioritization, delegation. Uses `task-planning` and `issue-triage` to keep the inbox moving.
+- `CTO` — technical execution and engineering oversight. Reports to CEO. Uses `github-pr-workflow` for code review and merge hygiene.
+- `QA` — verifies fixes and captures evidence. Reports to CTO. Uses `qa-acceptance` for structured acceptance reports.
+- `first-project` — starter project under the CTO for converting the company goal into the first implementation task.
+- `first-heartbeat` — recurring CEO heartbeat to review priorities and confirm the next useful task.
+
+## Migration notes
+
+This entry mirrors the historical `server/src/onboarding-assets/ceo/` template family while staying inside the catalog package boundary. Each agent has a short role description in `AGENTS.md`. Runtime procedures come from the harness, repository instructions, and installed skills. Legacy persona files are not part of catalog imports.

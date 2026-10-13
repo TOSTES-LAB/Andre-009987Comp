@@ -1,0 +1,26 @@
+[Unit]
+Description=Andrecomp Tailscale HTTPS broker
+After=tailscaled.service
+Requires=tailscaled.service
+
+[Service]
+Type=simple
+User=andrecomp-tsbroker
+Group=andrecomp-tsbroker-sock
+EnvironmentFile=/etc/andrecomp/tailscale-https-broker.env
+ExecStart=/usr/bin/node /opt/andrecomp/packages/tailscale-https-broker/dist/main.js
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+RuntimeDirectory=andrecomp-tailscale-broker
+RuntimeDirectoryMode=0750
+StateDirectory=andrecomp-tailscale-broker
+StateDirectoryMode=0700
+LogsDirectory=andrecomp-tailscale-broker
+LogsDirectoryMode=0700
+ReadWritePaths=/run/andrecomp-tailscale-broker /var/lib/andrecomp-tailscale-broker /var/log/andrecomp-tailscale-broker
+
+[Install]
+WantedBy=multi-user.target

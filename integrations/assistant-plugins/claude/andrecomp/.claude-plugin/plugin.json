@@ -1,0 +1,14 @@
+{
+  "name": "andrecomp",
+  "version": "0.1.0",
+  "description": "Review your team, delegate work and retrieve durable results in Andrecomp.",
+  "author": {
+    "name": "Andrecomp",
+    "url": "https://andrecomp.ing"
+  },
+  "homepage": "https://andrecomp.ing",
+  "repository": "https://github.com/TOSTES-LAB/Andre-009987Comp",
+  "license": "MIT",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}

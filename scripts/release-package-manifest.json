@@ -1,0 +1,172 @@
+[
+  {
+    "dir": "packages/adapter-utils",
+    "name": "@andrecomp/adapter-utils",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/adapters/claude-local",
+    "name": "@andrecomp/adapter-claude-local",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/adapters/codex-local",
+    "name": "@andrecomp/adapter-codex-local",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/adapters/cursor-cloud",
+    "name": "@andrecomp/adapter-cursor-cloud",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/adapters/cursor-local",
+    "name": "@andrecomp/adapter-cursor-local",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/adapters/gemini-local",
+    "name": "@andrecomp/adapter-gemini-local",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/adapters/grok-local",
+    "name": "@andrecomp/adapter-grok-local",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/adapters/hermes",
+    "name": "@andrecomp/hermes-andrecomp-adapter",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/adapters/hermes-gateway",
+    "name": "@andrecomp/adapter-hermes-gateway",
+    "publishFromCi": false
+  },
+  {
+    "dir": "packages/adapters/kimi-local",
+    "name": "@andrecomp/adapter-kimi-local",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/adapters/opencode-local",
+    "name": "@andrecomp/adapter-opencode-local",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/adapters/pi-local",
+    "name": "@andrecomp/adapter-pi-local",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/adapters/openclaw-gateway",
+    "name": "@andrecomp/adapter-openclaw-gateway",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/shared",
+    "name": "@andrecomp/shared",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/skills-catalog",
+    "name": "@andrecomp/skills-catalog",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/teams-catalog",
+    "name": "@andrecomp/teams-catalog",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/db",
+    "name": "@andrecomp/db",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/plugins/sdk",
+    "name": "@andrecomp/plugin-sdk",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/plugins/plugin-workspace-diff",
+    "name": "@andrecomp/plugin-workspace-diff",
+    "publishFromCi": true
+  },
+  {
+    "dir": "server",
+    "name": "@andrecomp/server",
+    "publishFromCi": true
+  },
+  {
+    "dir": "cli",
+    "name": "andrecomp",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/mcp-server",
+    "name": "@andrecomp/mcp-server",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/google-sheets-mcp-server",
+    "name": "@andrecomp/google-sheets-mcp-server",
+    "publishFromCi": false
+  },
+  {
+    "dir": "packages/kv-demo-mcp-server",
+    "name": "@andrecomp/kv-demo-mcp-server",
+    "publishFromCi": false
+  },
+  {
+    "dir": "packages/plugins/create-andrecomp-plugin",
+    "name": "@andrecomp/create-andrecomp-plugin",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/plugins/sandbox-providers/cloudflare",
+    "name": "@andrecomp/plugin-cloudflare-sandbox",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/plugins/sandbox-providers/createos",
+    "name": "@andrecomp/plugin-createos",
+    "publishFromCi": false
+  },
+  {
+    "dir": "packages/plugins/sandbox-providers/daytona",
+    "name": "@andrecomp/plugin-daytona",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/plugins/sandbox-providers/exe-dev",
+    "name": "@andrecomp/plugin-exe-dev",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/plugins/sandbox-providers/e2b",
+    "name": "@andrecomp/plugin-e2b",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/plugins/sandbox-providers/modal",
+    "name": "@andrecomp/plugin-modal",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/plugins/sandbox-providers/kubernetes",
+    "name": "@andrecomp/plugin-kubernetes",
+    "publishFromCi": true
+  },
+  {
+    "dir": "packages/plugins/sandbox-providers/novita",
+    "name": "@andrecomp/plugin-novita-sandbox",
+    "publishFromCi": true
+  },
+  {
+    "dir": "ui",
+    "name": "@andrecomp/ui",
+    "publishFromCi": true
+  }
+]

@@ -1,0 +1,432 @@
+# GENERATED FILE — DO NOT EDIT. Run pnpm generate:capability-inventory.
+{
+  "schemaVersion": 2,
+  "inventoryRole": "legacy_alias_index",
+  "generatedFrom": "packages/mcp-server/src/tools.ts",
+  "normativeSources": [
+    "capabilities",
+    "evaluations"
+  ],
+  "rows": [
+    {
+      "id": "mcp:andrecompMe",
+      "name": "andrecompMe",
+      "description": "Get the current authenticated Andrecomp actor details",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:290",
+      "expectedSemantics": "Get the current authenticated Andrecomp actor details",
+      "foldedInto": "eval:hb-inbox-lite-01",
+      "evidenceId": "mcp:andrecompMe"
+    },
+    {
+      "id": "mcp:andrecompInboxLite",
+      "name": "andrecompInboxLite",
+      "description": "Get the current authenticated agent inbox-lite assignment list",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:296",
+      "expectedSemantics": "Get the current authenticated agent inbox-lite assignment list",
+      "foldedInto": "eval:hb-inbox-lite-01",
+      "evidenceId": "mcp:andrecompInboxLite"
+    },
+    {
+      "id": "mcp:andrecompListAgents",
+      "name": "andrecompListAgents",
+      "description": "List agents in a company",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:302",
+      "expectedSemantics": "List agents in a company",
+      "foldedInto": "eval:rf-api-mgr-heartbeat-01",
+      "evidenceId": "mcp:andrecompListAgents"
+    },
+    {
+      "id": "mcp:andrecompListSkills",
+      "name": "andrecompListSkills",
+      "description": "List the company skill library (all installed skills, independent of which agents have them enabled)",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:308",
+      "expectedSemantics": "List the company skill library (all installed skills, independent of which agents have them enabled)",
+      "foldedInto": "eval:rf-cskill-audit-01",
+      "evidenceId": "mcp:andrecompListSkills"
+    },
+    {
+      "id": "mcp:andrecompGetAgent",
+      "name": "andrecompGetAgent",
+      "description": "Get a single agent by id",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:314",
+      "expectedSemantics": "Get a single agent by id",
+      "foldedInto": "eval:rf-api-mgr-heartbeat-01",
+      "evidenceId": "mcp:andrecompGetAgent"
+    },
+    {
+      "id": "mcp:andrecompListIssues",
+      "name": "andrecompListIssues",
+      "description": "List issues for a company with optional filters",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:323",
+      "expectedSemantics": "List issues for a company with optional filters",
+      "foldedInto": "eval:se-q-filters-01",
+      "evidenceId": "mcp:andrecompListIssues"
+    },
+    {
+      "id": "mcp:andrecompGetIssue",
+      "name": "andrecompGetIssue",
+      "description": "Get a single issue by UUID or identifier",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:338",
+      "expectedSemantics": "Get a single issue by UUID or identifier",
+      "foldedInto": "eval:se-get-issue-01",
+      "evidenceId": "mcp:andrecompGetIssue"
+    },
+    {
+      "id": "mcp:andrecompGetHeartbeatContext",
+      "name": "andrecompGetHeartbeatContext",
+      "description": "Get compact heartbeat context for an issue",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:344",
+      "expectedSemantics": "Get compact heartbeat context for an issue",
+      "foldedInto": "eval:hb-context-01",
+      "evidenceId": "mcp:andrecompGetHeartbeatContext"
+    },
+    {
+      "id": "mcp:andrecompListComments",
+      "name": "andrecompListComments",
+      "description": "List issue comments with incremental options",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:353",
+      "expectedSemantics": "List issue comments with incremental options",
+      "foldedInto": "eval:se-get-issue-01",
+      "evidenceId": "mcp:andrecompListComments"
+    },
+    {
+      "id": "mcp:andrecompGetComment",
+      "name": "andrecompGetComment",
+      "description": "Get a specific issue comment by id",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:366",
+      "expectedSemantics": "Get a specific issue comment by id",
+      "foldedInto": "eval:hb-wake-comment-01",
+      "evidenceId": "mcp:andrecompGetComment"
+    },
+    {
+      "id": "mcp:andrecompListIssueApprovals",
+      "name": "andrecompListIssueApprovals",
+      "description": "List approvals linked to an issue",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:373",
+      "expectedSemantics": "List approvals linked to an issue",
+      "foldedInto": "eval:ap-board-approval-01",
+      "evidenceId": "mcp:andrecompListIssueApprovals"
+    },
+    {
+      "id": "mcp:andrecompListDocuments",
+      "name": "andrecompListDocuments",
+      "description": "List issue documents",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:379",
+      "expectedSemantics": "List issue documents",
+      "foldedInto": "eval:dp-base-revision-01",
+      "evidenceId": "mcp:andrecompListDocuments"
+    },
+    {
+      "id": "mcp:andrecompGetDocument",
+      "name": "andrecompGetDocument",
+      "description": "Get one issue document by key",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:385",
+      "expectedSemantics": "Get one issue document by key",
+      "foldedInto": "eval:dp-base-revision-01",
+      "evidenceId": "mcp:andrecompGetDocument"
+    },
+    {
+      "id": "mcp:andrecompListDocumentRevisions",
+      "name": "andrecompListDocumentRevisions",
+      "description": "List revisions for an issue document",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:392",
+      "expectedSemantics": "List revisions for an issue document",
+      "foldedInto": "eval:dp-base-revision-01",
+      "evidenceId": "mcp:andrecompListDocumentRevisions"
+    },
+    {
+      "id": "mcp:andrecompListProjects",
+      "name": "andrecompListProjects",
+      "description": "List projects in a company",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:402",
+      "expectedSemantics": "List projects in a company",
+      "foldedInto": "eval:rf-wf-project-setup-01",
+      "evidenceId": "mcp:andrecompListProjects"
+    },
+    {
+      "id": "mcp:andrecompGetProject",
+      "name": "andrecompGetProject",
+      "description": "Get a project by id or company-scoped short reference",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:408",
+      "expectedSemantics": "Get a project by id or company-scoped short reference",
+      "foldedInto": "eval:rf-wf-project-setup-01",
+      "evidenceId": "mcp:andrecompGetProject"
+    },
+    {
+      "id": "mcp:andrecompGetIssueWorkspaceRuntime",
+      "name": "andrecompGetIssueWorkspaceRuntime",
+      "description": "Get the current execution workspace and runtime services for an issue, including service URLs",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:417",
+      "expectedSemantics": "Get the current execution workspace and runtime services for an issue, including service URLs",
+      "foldedInto": "eval:rf-iws-start-url-01",
+      "evidenceId": "mcp:andrecompGetIssueWorkspaceRuntime"
+    },
+    {
+      "id": "mcp:andrecompControlIssueWorkspaceServices",
+      "name": "andrecompControlIssueWorkspaceServices",
+      "description": "Start, stop, or restart the current issue execution workspace runtime services",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:423",
+      "expectedSemantics": "Start, stop, or restart the current issue execution workspace runtime services",
+      "foldedInto": "eval:rf-iws-start-url-01",
+      "evidenceId": "mcp:andrecompControlIssueWorkspaceServices"
+    },
+    {
+      "id": "mcp:andrecompWaitForIssueWorkspaceService",
+      "name": "andrecompWaitForIssueWorkspaceService",
+      "description": "Wait until an issue execution workspace runtime service is running and has a URL when one is exposed",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:440",
+      "expectedSemantics": "Wait until an issue execution workspace runtime service is running and has a URL when one is exposed",
+      "foldedInto": "eval:rf-iws-target-restart-01",
+      "evidenceId": "mcp:andrecompWaitForIssueWorkspaceService"
+    },
+    {
+      "id": "mcp:andrecompListGoals",
+      "name": "andrecompListGoals",
+      "description": "List goals in a company",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:466",
+      "expectedSemantics": "List goals in a company",
+      "foldedInto": "eval:su-parent-goal-01",
+      "evidenceId": "mcp:andrecompListGoals"
+    },
+    {
+      "id": "mcp:andrecompGetGoal",
+      "name": "andrecompGetGoal",
+      "description": "Get a goal by id",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:472",
+      "expectedSemantics": "Get a goal by id",
+      "foldedInto": "eval:su-parent-goal-01",
+      "evidenceId": "mcp:andrecompGetGoal"
+    },
+    {
+      "id": "mcp:andrecompListApprovals",
+      "name": "andrecompListApprovals",
+      "description": "List approvals in a company",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:478",
+      "expectedSemantics": "List approvals in a company",
+      "foldedInto": "eval:ap-approval-wake-01",
+      "evidenceId": "mcp:andrecompListApprovals"
+    },
+    {
+      "id": "mcp:andrecompCreateApproval",
+      "name": "andrecompCreateApproval",
+      "description": "Create a board approval request, optionally linked to one or more issues",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:487",
+      "expectedSemantics": "Create a board approval request, optionally linked to one or more issues",
+      "foldedInto": "eval:ap-board-approval-01",
+      "evidenceId": "mcp:andrecompCreateApproval"
+    },
+    {
+      "id": "mcp:andrecompGetApproval",
+      "name": "andrecompGetApproval",
+      "description": "Get an approval by id",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:496",
+      "expectedSemantics": "Get an approval by id",
+      "foldedInto": "eval:ap-approval-wake-01",
+      "evidenceId": "mcp:andrecompGetApproval"
+    },
+    {
+      "id": "mcp:andrecompGetApprovalIssues",
+      "name": "andrecompGetApprovalIssues",
+      "description": "List issues linked to an approval",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:502",
+      "expectedSemantics": "List issues linked to an approval",
+      "foldedInto": "eval:ap-approval-wake-01",
+      "evidenceId": "mcp:andrecompGetApprovalIssues"
+    },
+    {
+      "id": "mcp:andrecompListApprovalComments",
+      "name": "andrecompListApprovalComments",
+      "description": "List comments for an approval",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:508",
+      "expectedSemantics": "List comments for an approval",
+      "foldedInto": "eval:ap-approval-deny-01",
+      "evidenceId": "mcp:andrecompListApprovalComments"
+    },
+    {
+      "id": "mcp:andrecompCreateIssue",
+      "name": "andrecompCreateIssue",
+      "description": "Create a new issue",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:514",
+      "expectedSemantics": "Create a new issue",
+      "foldedInto": "eval:su-parent-goal-01",
+      "evidenceId": "mcp:andrecompCreateIssue"
+    },
+    {
+      "id": "mcp:andrecompUpdateIssue",
+      "name": "andrecompUpdateIssue",
+      "description": "Patch an issue, optionally including a comment; include resume=true when intentionally requesting follow-up on resumable closed work",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:521",
+      "expectedSemantics": "Patch an issue, optionally including a comment; include resume=true when intentionally requesting follow-up on resumable closed work",
+      "foldedInto": "eval:st-done-comment-01",
+      "evidenceId": "mcp:andrecompUpdateIssue"
+    },
+    {
+      "id": "mcp:andrecompCheckoutIssue",
+      "name": "andrecompCheckoutIssue",
+      "description": "Checkout an issue for an agent",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:528",
+      "expectedSemantics": "Checkout an issue for an agent",
+      "foldedInto": "eval:co-body-contract-01",
+      "evidenceId": "mcp:andrecompCheckoutIssue"
+    },
+    {
+      "id": "mcp:andrecompReleaseIssue",
+      "name": "andrecompReleaseIssue",
+      "description": "Release an issue checkout",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:540",
+      "expectedSemantics": "Release an issue checkout",
+      "foldedInto": "eval:er-release-01",
+      "evidenceId": "mcp:andrecompReleaseIssue"
+    },
+    {
+      "id": "mcp:andrecompAddComment",
+      "name": "andrecompAddComment",
+      "description": "Add a comment to an issue; include resume=true when intentionally requesting follow-up on resumable closed work",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:546",
+      "expectedSemantics": "Add a comment to an issue; include resume=true when intentionally requesting follow-up on resumable closed work",
+      "foldedInto": "eval:cm-multiline-01",
+      "evidenceId": "mcp:andrecompAddComment"
+    },
+    {
+      "id": "mcp:andrecompSuggestTasks",
+      "name": "andrecompSuggestTasks",
+      "description": "Create a suggest_tasks interaction on an issue",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:553",
+      "expectedSemantics": "Create a suggest_tasks interaction on an issue",
+      "foldedInto": "eval:ix-suggest-tasks-01",
+      "evidenceId": "mcp:andrecompSuggestTasks"
+    },
+    {
+      "id": "mcp:andrecompAskUserQuestions",
+      "name": "andrecompAskUserQuestions",
+      "description": "Create an ask_user_questions interaction on an issue",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:565",
+      "expectedSemantics": "Create an ask_user_questions interaction on an issue",
+      "foldedInto": "eval:ix-questions-01",
+      "evidenceId": "mcp:andrecompAskUserQuestions"
+    },
+    {
+      "id": "mcp:andrecompRequestConfirmation",
+      "name": "andrecompRequestConfirmation",
+      "description": "Create a request_confirmation interaction on an issue",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:577",
+      "expectedSemantics": "Create a request_confirmation interaction on an issue",
+      "foldedInto": "eval:ix-confirmation-plan-01",
+      "evidenceId": "mcp:andrecompRequestConfirmation"
+    },
+    {
+      "id": "mcp:andrecompRequestCheckboxConfirmation",
+      "name": "andrecompRequestCheckboxConfirmation",
+      "description": "Create a request_checkbox_confirmation interaction on an issue",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:589",
+      "expectedSemantics": "Create a request_checkbox_confirmation interaction on an issue",
+      "foldedInto": "eval:ix-checkbox-01",
+      "evidenceId": "mcp:andrecompRequestCheckboxConfirmation"
+    },
+    {
+      "id": "mcp:andrecompUpsertIssueDocument",
+      "name": "andrecompUpsertIssueDocument",
+      "description": "Create or update an issue document",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:601",
+      "expectedSemantics": "Create or update an issue document",
+      "foldedInto": "eval:dp-plan-doc-01",
+      "evidenceId": "mcp:andrecompUpsertIssueDocument"
+    },
+    {
+      "id": "mcp:andrecompRestoreIssueDocumentRevision",
+      "name": "andrecompRestoreIssueDocumentRevision",
+      "description": "Restore a prior revision of an issue document",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:612",
+      "expectedSemantics": "Restore a prior revision of an issue document",
+      "foldedInto": "eval:dp-base-revision-01",
+      "evidenceId": "mcp:andrecompRestoreIssueDocumentRevision"
+    },
+    {
+      "id": "mcp:andrecompLinkIssueApproval",
+      "name": "andrecompLinkIssueApproval",
+      "description": "Link an approval to an issue",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:627",
+      "expectedSemantics": "Link an approval to an issue",
+      "foldedInto": "eval:ap-board-approval-01",
+      "evidenceId": "mcp:andrecompLinkIssueApproval"
+    },
+    {
+      "id": "mcp:andrecompUnlinkIssueApproval",
+      "name": "andrecompUnlinkIssueApproval",
+      "description": "Unlink an approval from an issue",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:636",
+      "expectedSemantics": "Unlink an approval from an issue",
+      "foldedInto": "eval:ap-board-approval-01",
+      "evidenceId": "mcp:andrecompUnlinkIssueApproval"
+    },
+    {
+      "id": "mcp:andrecompApprovalDecision",
+      "name": "andrecompApprovalDecision",
+      "description": "Approve, reject, request revision, or resubmit an approval",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:646",
+      "expectedSemantics": "Approve, reject, request revision, or resubmit an approval",
+      "foldedInto": "eval:ap-approval-wake-01",
+      "evidenceId": "mcp:andrecompApprovalDecision"
+    },
+    {
+      "id": "mcp:andrecompAddApprovalComment",
+      "name": "andrecompAddApprovalComment",
+      "description": "Add a comment to an approval",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:668",
+      "expectedSemantics": "Add a comment to an approval",
+      "foldedInto": "eval:ap-approval-deny-01",
+      "evidenceId": "mcp:andrecompAddApprovalComment"
+    },
+    {
+      "id": "mcp:andrecompApiRequest",
+      "name": "andrecompApiRequest",
+      "description": "Make a JSON request to an existing Andrecomp /api endpoint for unsupported operations",
+      "sourceKind": "legacy_mcp_alias",
+      "sourceAnchor": "packages/mcp-server/src/tools.ts:677",
+      "expectedSemantics": "Make a JSON request to an existing Andrecomp /api endpoint for unsupported operations",
+      "foldedInto": "eval:rf-api-404-report-01",
+      "evidenceId": "mcp:andrecompApiRequest"
+    }
+  ]
+}
