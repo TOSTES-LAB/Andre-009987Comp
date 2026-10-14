@@ -2062,7 +2062,12 @@ async function startServerWithDatabaseTeardown(
       closeHttpListener: () =>
         closeHttpListenerForShutdown({ server, signal, log: logger }),
       drainPendingRunFailureReports: waitForPendingRunFailureReports,
-      closeDatabase: closeDatabaseClients,
+      // Mark the pool as ending before `sql.end()` rejects the first query,
+      // so the error handler recognizes a request that outlived the drain.
+      closeDatabase: () => {
+        (app.locals as { andrecompDatabaseClosing?: boolean }).andrecompDatabaseClosing = true;
+        return closeDatabaseClients();
+      },
       stopEmbeddedPostgres,
       shutdownInstrumentation,
       shutdownSentry,

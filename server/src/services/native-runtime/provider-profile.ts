@@ -38,6 +38,7 @@ export type QualifiedAndrecompRunnerAcpxAgent =
 type AdmittedAndrecompRunnerAcpxAgent = QualifiedAndrecompRunnerAcpxAgent | AcpxQualificationCandidate;
 
 export type AndrecompRunnerProviderProfile =
+  | { provider: "grok_bot"; backend: "grok_bot_mcp"; model: null; externalBindingId: string }
   | { provider: "openai_dot"; backend: "openai_dot_mcp"; model: null; dotBindingId: string }
   | {
       provider: "codex";
@@ -71,6 +72,7 @@ export type AndrecompRunnerProviderProfile =
     };
 
 export type AndrecompRunnerNativeProviderInput =
+  | { provider: "grok_bot"; model: null; dotBinding: import("../../vendor/andrecomp-runner/index.js").DotBindingSnapshot }
   | { provider: "openai_dot"; model: null; dotBinding: import("../../vendor/andrecomp-runner/index.js").DotBindingSnapshot }
   | {
       provider: "codex";
@@ -161,6 +163,17 @@ export function validateAndrecompRunnerDotConfig(config: Record<string, unknown>
       || config.allowUnmeteredProvider !== true || (config.lifecycleMode && config.lifecycleMode !== "per_turn")
       || optionalString(config.model)) {
     throw new AndrecompRunnerProviderProfileError("andrecomp_runner_dot_config_invalid", "Dot requires per-turn lifecycle and explicit externally billed, unmetered-provider acknowledgement. Pair a binding before assigning work.");
+  }
+  return bindingId;
+}
+
+export function validateAndrecompRunnerGrokConfig(config: Record<string, unknown>, requireBinding = true): string | null {
+  const bindingId = optionalString(config.externalBindingId);
+  if ((requireBinding && !bindingId) || (bindingId && !/^[0-9a-f-]{36}$/i.test(bindingId))
+      || config.allowUnmeteredProvider !== true || (config.lifecycleMode && config.lifecycleMode !== "per_turn")
+      || optionalString(config.model) || config.dotWorkspaceAccess === true || config.dotAttachmentAccess === true
+      || optionalString(config.cwd) || optionalString(config.command)) {
+    throw new AndrecompRunnerProviderProfileError("andrecomp_runner_grok_config_invalid", "Grok Bot requires a bound per-turn work session and an explicit acknowledgement of unreported provider spending. Andrecomp workspace, shell and third-party app tools are unavailable.");
   }
   return bindingId;
 }
@@ -370,6 +383,9 @@ export function resolveAndrecompRunnerProviderProfile(
     );
   }
 
+  if (candidate === "grok_bot") {
+    return { provider: "grok_bot", backend: "grok_bot_mcp", model: null, externalBindingId: validateAndrecompRunnerGrokConfig(config)! };
+  }
   if (candidate === "openai_dot") {
     const bindingId = validateAndrecompRunnerDotConfig(config)!;
     return { provider: "openai_dot", backend: "openai_dot_mcp", model: null, dotBindingId: bindingId };
@@ -553,6 +569,10 @@ export function resolveAndrecompRunnerNativeProviderInput(input: {
       "andrecomp_runner_provider_changed",
       "Andrecomp Runner provider changed after this run selected its native backend.",
     );
+  }
+  if (profile.provider === "grok_bot") {
+    if (!input.dotBinding || input.dotBinding.bindingId !== profile.externalBindingId) throw new AndrecompRunnerProviderProfileError("andrecomp_runner_grok_binding_unavailable", "The Grok binding must be resolved by the server after normal admission.");
+    return { provider: "grok_bot", model: null, dotBinding: input.dotBinding };
   }
   if (profile.provider === "openai_dot") {
     if (!input.dotBinding || input.dotBinding.bindingId !== profile.dotBindingId) throw new AndrecompRunnerProviderProfileError("andrecomp_runner_dot_binding_unavailable", "Dot binding must be resolved by the server after normal admission.");
