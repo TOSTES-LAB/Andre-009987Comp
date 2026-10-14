@@ -144,11 +144,12 @@ describe("withQueuedCommentIdsInRunContext", () => {
       andrecompTaskMarkdownAssignment: "assignment",
       andrecompTaskMarkdownAssignmentCompact: "assignment compact",
       andrecompTurnContext: { version: 1, events: { owner: "wake_prompt" } },
-    }, ["comment-2"]);
+    }, ["comment-2"], ["source-wake"]);
 
     expect(result).toMatchObject({
       issueId: "issue-1",
       preserved: "keep",
+      queuedCommentSourceWakeIds: ["source-wake"],
       wakeCommentIds: ["comment-2"],
       wakeCommentId: "comment-2",
       commentId: "comment-2",
@@ -160,5 +161,6 @@ describe("withQueuedCommentIdsInRunContext", () => {
     expect(result).not.toHaveProperty("andrecompTaskMarkdownAssignment");
     expect(result).not.toHaveProperty("andrecompTaskMarkdownAssignmentCompact");
     expect(result).not.toHaveProperty("andrecompTurnContext");
+    expect(withQueuedCommentIdsInRunContext(result, ["comment-3"]).queuedCommentSourceWakeIds).toEqual(["source-wake"]);
   });
 });

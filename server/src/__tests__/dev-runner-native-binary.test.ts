@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { localAndrecompRunnerSupported } from "../lib/agent-runner-platform.js";
+import { andrecompRunnerSupportsPlatform } from "@andrecomp/shared";
 
 import {
   andrecompRunnerBinaryNeedsBuild,
@@ -65,8 +65,7 @@ describe("andrecomp runner native dev prerequisite", () => {
   it.each(["x64", "arm64"].flatMap(architecture => [[undefined, false], ["2.38", false], ["2.39", true], ["3.0", true]].map(([glibcVersionRuntime, native]) => ({ architecture, glibcVersionRuntime, native }))))("uses the measured libc prerequisite on Linux $architecture/$glibcVersionRuntime when no native run or flag requires it", ({ architecture, glibcVersionRuntime, native }) => {
     Object.defineProperty(process, "platform", { ...initialPlatform, value: "linux" });
     Object.defineProperty(process, "arch", { ...initialArchitecture, value: architecture });
-    vi.spyOn(process.report, "getReport").mockReturnValue({ header: { glibcVersionRuntime } } as never);
-    const nativeRunnerRequired = localAndrecompRunnerSupported();
+    const nativeRunnerRequired = andrecompRunnerSupportsPlatform("codex_local", "linux", architecture, glibcVersionRuntime ? "glibc" : "unknown", glibcVersionRuntime as string | undefined);
     expect(nativeRunnerRequired).toBe(native);
     expect(andrecompRunnerBinaryNeedsBuild({ repoRoot: "/checkout/without/a/staged/binary", nativeRunnerRequired })).toBe(native);
   });
