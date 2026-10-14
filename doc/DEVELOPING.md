@@ -2007,9 +2007,16 @@ Environment overrides:
 - `ANDRECOMP_WORKSPACE_REAPER_COOLDOWN_DAYS=<days>` sets how long the
   terminal-workspace reaper waits after an issue tree becomes terminal before it
   archives the execution workspace and deletes the worktree. A person can reopen
-  the work inside this window. The default is `7`. A value of `0` disables the
+  the work inside this window. The default is `1`. A value of `0` disables the
   cooldown and restores immediate reaping. A negative or non-numeric value falls
   back to the default.
+- `ANDRECOMP_WORKSPACE_COMPACTION_DELAY_HOURS=<hours>` sets how long the reaper
+  waits after an issue tree becomes terminal before it removes regenerable files
+  from the workspace (see "Terminal workspace compaction" below). The default is
+  `1`. A value of `0` compacts on the next sweep. A negative, empty, or
+  non-numeric value falls back to the default.
+- `ANDRECOMP_WORKSPACE_COMPACTION_ENABLED=false` turns compaction off. Any other
+  value keeps it on.
 
 Without `ANDRECOMP_DB_BACKUP_ALERT_FILE`, health checks look for
 `db-backup-to-s3.failure` in the backup directory, beside the backup directory,
@@ -2271,10 +2278,42 @@ that flushes after the tab hides marks data stale without starting a refetch.
 The developer-server health poll also stops in hidden tabs.
 
 Workspace detail responses share concurrent Git inspections and reuse their
-results for up to five seconds after completion. The cache holds at most 256
-entries. Close-readiness checks, the terminal-workspace reaper, and the final
-cleanup validation still inspect Git afresh. A display result never authorizes
-worktree removal.
+results for up to thirty seconds after completion. Workspace identity and metadata
+changes invalidate the cached result. The cache holds at most 256
+entries. Close-readiness checks and final cleanup validation request separate
+Git scans that cannot join an older in-flight scan. A display result never
+authorizes worktree removal.
+
+The terminal-workspace reaper uses the database work coordinator. Startup scans
+recover existing workspace rows in bounded pages. Issue status and tree changes,
+workspace lifecycle writes, and pull-request work-product writes signal work on
+their transaction before writing. The coordinator wakes after the outer
+transaction settles and holds idle admission while writes or cleanup are active.
+Empty and nonterminal-only lanes have no recurring timer or query. Terminal trees
+schedule their actual cooldown deadline; unresolved delivery or cleanup eligibility
+is checked again after five minutes. Nonterminal trees, cooldowns, and active runs
+are checked before Git. The worker shares Git readiness across compatible rows
+that point at one directory within a bounded page. Company, branch, base ref,
+and runtime ownership must match. Each row keeps its own task and delivery
+assessment, which reuses the task tree read by the early gate. Unchanged terminal
+candidates also back off for five minutes during unrelated commit wakes. Scoped
+task/workspace hints invalidate
+affected candidates; changed tree or workspace revisions invalidate them too.
+Deadline selection reuses task trees read by those pages and performs no separate
+full-inventory query. Commits during a paged rotation request another bounded
+rotation so changes behind its cursor are recovered.
+The backoff retains at most 256 candidates and only applies to the background
+worker. Final cleanup still checks the current task tree,
+delivery evidence, ownership, lifecycle generation, and Git state under the
+existing cleanup locks.
+
+These wakes cover the owning `createDb` scope in this server process. Direct SQL
+and other server processes require startup recovery. Local deadlines do not
+establish external wake-alarm coverage or whole-instance sleep safety. The local
+sleep inventory blocks host suspension until bounded recovery succeeds. Cooldown
+eligibility is an earliest allowed cleanup time; passive retained directories can
+wait for the next wake, when startup restores their rows. Existing idle-sleep
+blockers and cleanup admission holds remain authoritative.
 
 The connection-health sweep selects only due IDs in SQL before applying its
 limit. Legacy `andrecomp_plugin` placeholder connections are excluded: their
@@ -2286,6 +2325,55 @@ from stored configuration problems. Verify connection transport and endpoint
 fields before disabling a connection. Verify workspace ownership, active runs,
 Git state, and runtime-service readiness before closing a workspace. A missing
 URL or old workspace timestamp alone does not prove that a row is disposable.
+
+### Terminal workspace compaction
+
+A finished task often keeps its worktree for a long time: the reaper archives a
+worktree only when its delivery is merged and its files are clean, and then only
+after the cooldown. Most of a worktree's size is installed dependencies and build
+output, not work. Compaction removes those files and keeps everything else, so a
+finished task does not hold gigabytes while it waits for the reaper (or forever,
+when it has no merged pull request or has leftover files).
+
+The reaper compacts a workspace once per terminal cycle, after
+`ANDRECOMP_WORKSPACE_COMPACTION_DELAY_HOURS`, when all of these hold:
+
+- the workspace is an isolated linked Git worktree (never a shared workspace or a
+  project's main checkout);
+- every issue in its tree is done or cancelled;
+- no queued or running heartbeat run works on the tree or the workspace;
+- no runtime service runs from the workspace.
+
+Compaction removes only directories that have a regenerable name
+(`node_modules`, `dist`, `build`, `coverage`, `storybook-static`, `target`,
+`.cache`, `.next`, `.nuxt`, `.parcel-cache`, `.svelte-kit`, `.turbo`, `.vite`),
+that the repository's own `.gitignore` files ignore (a negated pattern, a global
+excludes file, or `.git/info/exclude` does not count), and that hold no tracked
+file. A directory with such a name
+that does not qualify (for example a tracked `build/`) is searched in turn, so
+ignored dependencies inside it still go. It never enters `.git` or
+`.andrecomp`, and it never follows a symlink. It checks each directory's ignore
+status on its own, so dependencies below an ignored parent (for example
+`vendor/tool/node_modules`) are found. Its Git reads have a deadline and stop
+when the sweep stops. Tracked files, uncommitted changes,
+untracked files, other ignored files (such as `.env` or local data), the branch,
+and its commits all stay. The workspace row stays active.
+
+The removal is a rename into `.andrecomp-compaction-trash` beside the worktree,
+made while the reaper holds the workspace lifecycle lock. The reaper checks the
+conditions above before the rename and again after it, in the same transaction.
+If the task reopened or a run started in between, the directories move back.
+Otherwise the trash is deleted. Trash that an interrupted compaction or a failed
+delete leaves behind is deleted by a later sweep once it is more than an hour
+old. The sweep checks each worktree parent directory at most every 30 minutes,
+whether or not anything is left to compact.
+
+A compacted worktree is in the same state as a freshly created one, so when the
+task resumes, whatever produced those files the first time produces them again:
+reuse runs the workspace provision command (or `scripts/provision-worktree.sh`),
+which reinstalls dependencies when `node_modules` is missing. Repositories without
+a provision command rely on the agent's own install step, as they do for a new
+worktree.
 
 ### Browser realtime connection recovery
 

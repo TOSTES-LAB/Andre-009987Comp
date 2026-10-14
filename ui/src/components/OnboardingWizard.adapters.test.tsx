@@ -200,7 +200,7 @@ describe("OnboardingWizard adapter selection", () => {
     });
   });
 
-  it("keeps onboarding on legacy adapters even when Andrecomp Runner is enabled", async () => {
+  it("recovers a saved Codex runner draft without changing its model or runner", async () => {
     mockAdapterRegistry.list = [
       { type: "andrecomp_runner" },
       { type: "codex_local" },
@@ -223,7 +223,8 @@ describe("OnboardingWizard adapter selection", () => {
       window.localStorage.getItem(ONBOARDING_STORAGE_KEY) ?? "{}",
     );
     expect(saved.adapterType).toBe("codex_local");
-    expect(saved.model).toBe("");
+    expect(saved.runner).toBe("andrecomp");
+    expect(saved.model).toBe("gpt-runner-only");
     expect(saved.command).toBe("");
     expect(saved.args).toBe("");
     expect(saved.url).toBe("");
@@ -253,8 +254,9 @@ describe("OnboardingWizard adapter selection", () => {
     const saved = JSON.parse(
       window.localStorage.getItem(ONBOARDING_STORAGE_KEY) ?? "{}",
     );
-    expect(saved.adapterType).toBe("claude_local");
-    expect(saved.model).toBe("");
+    expect(saved.adapterType).toBe("codex_local");
+    expect(saved.runner).toBe("andrecomp");
+    expect(saved.model).toBe("gpt-runner-only");
     expect(saved.command).toBe("");
     expect(saved.args).toBe("");
     expect(saved.url).toBe("");

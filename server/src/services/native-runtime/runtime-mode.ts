@@ -127,12 +127,11 @@ export function resolveNativeRuntimeMode(input: {
     }
     throw error;
   }
-  // Dot has its own rollout; enabling it does not opt in other Runner providers.
   if (runnerProfile.provider === "openai_dot") {
     if (input.dotEnabled !== true) throw ineligible("andrecomp_runner_dot_disabled", "Enable OpenAI Dot and Assistant connections (MCP) in experimental settings before assigning new work.");
   } else if (runnerProfile.provider === "grok_bot" && (input.grokEnabled !== true || !input.enabled)) {
     throw ineligible("andrecomp_runner_grok_disabled", "Enable Grok Bot, Andrecomp Runner, and Assistant connections (MCP) before assigning new work.");
-  } else if (!input.enabled) {
+  } else if (runnerProfile.provider !== "codex" && !input.enabled) {
     throw ineligible(
       "andrecomp_runner_rollout_disabled",
       "Andrecomp Runner is experimental and disabled on this instance.",

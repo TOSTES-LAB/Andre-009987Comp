@@ -1,4 +1,7 @@
-import { randomUUID } from "node:crypto";
+import { enableRunFailureReporting } from "./helpers/run-failure-reporting.js";
+import { createHash, randomUUID } from "node:crypto";
+import { trace } from "@opentelemetry/api";
+import { InMemorySpanExporter, SimpleSpanProcessor, TracerProvider } from "@opentelemetry/sdk-trace";
 import { access, readFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -120,14 +123,36 @@ describePostgres("heartbeat execution configuration through adapter dispatch", (
       expect(JSON.parse(await readFile(path.join(providerHome, "auth.json"), "utf8"))).toEqual({ OPENAI_API_KEY: f.credential });
       await input.onMeta?.({ adapterType, command: "fixture", env, prompt: "fixture" });
     });
-    const { finished, input } = await execute(f);
-    expect(finished.status, finished.error ?? undefined).toBe("succeeded");
-    expect(input?.context.aiConnection).toMatchObject({ accountName: "Fixture account", provider: "openai" });
-    expect(providerHome).toEqual(expect.any(String));
-    await expect(access(providerHome!)).rejects.toMatchObject({ code: "ENOENT" });
-    const events = await db.select().from(heartbeatRunEvents).where(eq(heartbeatRunEvents.runId, finished.id));
-    expect(events.some(event => event.eventType === "adapter.invoke")).toBe(true);
-    expect(JSON.stringify(events)).not.toContain(f.credential);
+    const exporter = new InMemorySpanExporter();
+    const provider = new TracerProvider({ spanProcessors: [new SimpleSpanProcessor({ exporter })] });
+    expect(trace.setGlobalTracerProvider(provider)).toBe(true);
+    try {
+      const { finished, input } = await execute(f);
+      expect(finished.status, finished.error ?? undefined).toBe("succeeded");
+      expect(input?.context.aiConnection).toMatchObject({ accountName: "Fixture account", provider: "openai" });
+      expect(providerHome).toEqual(expect.any(String));
+      await expect(access(providerHome!)).rejects.toMatchObject({ code: "ENOENT" });
+      const events = await db.select().from(heartbeatRunEvents).where(eq(heartbeatRunEvents.runId, finished.id));
+      expect(events.some(event => event.eventType === "adapter.invoke")).toBe(true);
+      expect(JSON.stringify(events)).not.toContain(f.credential);
+      await provider.forceFlush();
+      const runIdHash = createHash("sha256").update(finished.id).digest("hex").slice(0, 12);
+      const steps = exporter.getFinishedSpans().filter(span => span.name.startsWith("heartbeat.prepare.configuration_")
+        && span.attributes["andrecomp.task.run.run_id"] === runIdHash);
+      expect(steps.map(span => span.name)).toEqual([
+        "configuration_mentions", "configuration_github_identity", "configuration_secrets", "configuration_ai_runtime",
+        "configuration_skills", "configuration_connector_assignments", "configuration_connector_skills",
+        "configuration_connector_delivery", "configuration_connection_instructions", "configuration_agent_identity",
+      ].map(step => `heartbeat.prepare.${step}`));
+      for (const span of steps) {
+        expect(span.status).toEqual({ code: 0 });
+        expect(span.attributes).toEqual({ "andrecomp.task.run.run_id": runIdHash });
+        expect(span.events).toEqual([]);
+      }
+    } finally {
+      trace.disable();
+      await provider.shutdown();
+    }
   });
 
   it("cleans acquired credentials and redacts diagnostics when later skill preparation fails", async () => {
@@ -142,18 +167,36 @@ describePostgres("heartbeat execution configuration through adapter dispatch", (
       await access(acquiredHome!);
       return runtime;
     });
-    const { finished, input } = await execute(f);
-    expect(finished.status).toBe("failed");
-    expect(input).toBeUndefined();
-    expect(acquiredHome).toEqual(expect.any(String));
-    await expect(access(acquiredHome!)).rejects.toMatchObject({ code: "ENOENT" });
-    expect(finished.error).toContain("Invalid fixture skill configuration");
-    // The diagnostic reporter redacts runtime values before the external sink.
-    // The legacy local run.error field does not apply this value-based redaction.
-    await waitForPendingRunFailureReports();
-    expect(capturedFailure).toHaveBeenCalled();
-    expect(JSON.stringify(capturedFailure.mock.calls)).toContain("Invalid fixture skill configuration");
-    expect(JSON.stringify(capturedFailure.mock.calls)).not.toContain(f.credential);
+    const exporter = new InMemorySpanExporter();
+    const provider = new TracerProvider({ spanProcessors: [new SimpleSpanProcessor({ exporter })] });
+    expect(trace.setGlobalTracerProvider(provider)).toBe(true);
+    try {
+      const { finished, input } = await execute(f);
+      expect(finished.status).toBe("failed");
+      expect(input).toBeUndefined();
+      expect(acquiredHome).toEqual(expect.any(String));
+      await expect(access(acquiredHome!)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(finished.error).toContain("Invalid fixture skill configuration");
+      await waitForPendingRunFailureReports();
+      expect(capturedFailure).toHaveBeenCalled();
+      expect(JSON.stringify(capturedFailure.mock.calls)).toContain("Invalid fixture skill configuration");
+      expect(JSON.stringify(capturedFailure.mock.calls)).not.toContain(f.credential);
+      await provider.forceFlush();
+      const runIdHash = createHash("sha256").update(finished.id).digest("hex").slice(0, 12);
+      const steps = exporter.getFinishedSpans().filter(span => span.name.startsWith("heartbeat.prepare.configuration_")
+        && span.attributes["andrecomp.task.run.run_id"] === runIdHash);
+      expect(steps.find(span => span.name === "heartbeat.prepare.configuration_ai_runtime")?.status.code).toBe(0);
+      expect(steps.find(span => span.name === "heartbeat.prepare.configuration_skills")?.status).toEqual({ code: 2 });
+      expect(steps.some(span => span.name === "heartbeat.prepare.configuration_connector_assignments")).toBe(false);
+      for (const span of steps) {
+        expect(span.attributes).toEqual({ "andrecomp.task.run.run_id": runIdHash });
+        expect(span.events).toEqual([]);
+      }
+      expect(JSON.stringify(steps.map(span => ({ name: span.name, status: span.status, attributes: span.attributes, events: span.events })))).not.toContain(f.credential);
+    } finally {
+      trace.disable();
+      await provider.shutdown();
+    }
   });
 
   it("defers a busy account without dispatch and preserves its scheduled retry", async () => {
@@ -199,3 +242,6 @@ describePostgres("heartbeat execution configuration through adapter dispatch", (
     expect(input).toBeUndefined();
   });
 });
+
+
+enableRunFailureReporting();

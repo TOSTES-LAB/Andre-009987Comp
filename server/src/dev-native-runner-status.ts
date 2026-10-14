@@ -6,6 +6,7 @@ import {
   nativeRunFinalizations,
 } from "@andrecomp/db";
 import { resolveMigrationConnection } from "@andrecomp/db/migration-runtime";
+import { localAndrecompRunnerSupported } from "./lib/agent-runner-platform.js";
 
 import { instanceSettingsService } from "./services/instance-settings.js";
 
@@ -48,8 +49,10 @@ async function main(): Promise<void> {
 
     console.log(
       JSON.stringify({
-        nativeRunnerRequired:
-          experimental.enableNativeRunner === true || experimental.enableOpenAiDot === true || persistedNativeRun,
+        nativeRunnerRequired: localAndrecompRunnerSupported()
+          || experimental.enableNativeRunner === true
+          || experimental.enableOpenAiDot === true
+          || persistedNativeRun,
         rolloutEnabled: experimental.enableNativeRunner === true,
         dotRolloutEnabled: experimental.enableOpenAiDot === true,
         persistedNativeRun,

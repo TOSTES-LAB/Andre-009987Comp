@@ -253,6 +253,7 @@ export const agentsApi = {
     type: string,
     data: {
       adapterConfig: Record<string, unknown>;
+      runner?: import("@andrecomp/shared").AgentRunnerChoice;
       aiConnection?: import("@andrecomp/shared").AiRuntimeConnectionBinding;
       agentId?: string;
       testCredentials?: Record<string, string>;

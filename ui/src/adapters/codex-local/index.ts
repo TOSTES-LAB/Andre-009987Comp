@@ -1,12 +1,11 @@
 import type { UIAdapterModule } from "../types";
 import { parseCodexStdoutLine } from "@andrecomp/adapter-codex-local/ui";
-import { CodexLocalConfigFields } from "./config-fields";
-import { buildCodexLocalConfig } from "@andrecomp/adapter-codex-local/ui";
+import { CodexLocalConfigFields, buildCodexRunnerConfig } from "./config-fields";
 
 export const codexLocalUIAdapter: UIAdapterModule = {
   type: "codex_local",
   label: "Codex",
   parseStdoutLine: parseCodexStdoutLine,
   ConfigFields: CodexLocalConfigFields,
-  buildAdapterConfig: buildCodexLocalConfig,
+  buildAdapterConfig: buildCodexRunnerConfig,
 };
