@@ -1,7 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import type { Db } from "@andrecomp/db";
 import { companySkillService } from "../services/company-skills.js";
+
+// Nonempty selection now first acquires a dedicated connection. Route that
+// connection to the same fail-on-access fixture; empty selection must skip it.
+vi.mock("@andrecomp/db", async importOriginal => ({
+  ...await importOriginal<typeof import("@andrecomp/db")>(),
+  withDedicatedDbConnection: <T>(database: Db, action: (connection: Db) => Promise<T>) => action(database),
+}));
 
 const databaseAccess = new Error("Runtime selection touched the inventory database");
 const db = new Proxy({} as Db, { get() { throw databaseAccess; } });

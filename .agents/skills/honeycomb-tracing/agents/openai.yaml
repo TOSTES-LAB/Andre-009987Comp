@@ -1,0 +1,3 @@
+interface:
+  display_name: "Honeycomb Tracing"
+  short_description: "Trace Andrecomp runs, requests, and full CI waterfalls"
