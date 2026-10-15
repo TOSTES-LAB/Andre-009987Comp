@@ -10,6 +10,8 @@ describe("Grok Bot onboarding instructions", () => {
     expect(routine).toContain("andrecomp_grok_ack_wake");
     expect(routine).toContain("bindingGeneration");
     expect(routine).toContain("andrecomp_grok_request_turn");
+    expect(routine).toContain("andrecomp_grok_operation_status");
+    expect(routine).toContain("before finishing, drain andrecomp_grok_inbox");
     expect(routine).not.toContain("andrecomp_dot_");
     expect(routine).not.toContain("Bearer ");
   });
