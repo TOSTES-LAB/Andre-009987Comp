@@ -43,7 +43,7 @@ packages/andrecomp-runner/test/**
 !packages/andrecomp-runner/test/fixtures
 packages/andrecomp-runner/test/fixtures/**
 !packages/andrecomp-runner/test/fixtures/copilot-profile-v16-identity.json
-!packages/andrecomp-runner/test/fixtures/copilot-profile-v18-identity.json
+!packages/andrecomp-runner/test/fixtures/copilot-profile-v19-identity.json
 !packages/andrecomp-runner/test-fixtures
 packages/andrecomp-runner/test-fixtures/**
 !packages/andrecomp-runner/test-fixtures/pi-acp

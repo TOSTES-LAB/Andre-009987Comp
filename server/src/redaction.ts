@@ -50,6 +50,7 @@ const ANDRECOMP_SCHEMA_FIELDS = new Set(["schema", "runtimeSchema"]);
 export const ANDRECOMP_PUBLIC_SCHEMA_IDS = new Set([
   "andrecomp.artifact.generated.v1",
   "andrecomp.artifact.viewed.v1",
+  "andrecomp.auth.credentials.updated.v1",
   "andrecomp.capability-discovery.v1",
   "andrecomp.capability.authorization-record.v1",
   "andrecomp.capability.control-plane.v1",
@@ -213,6 +214,7 @@ export const PRP_V1_EVENT_TYPES = new Set([
   "workspace.change.updated",
   "workspace.diff.recorded",
   "workspace.file.referenced",
+  "auth.credentials.updated",
   "harness.starting",
   "harness.ready",
   "harness.exited",

@@ -542,7 +542,9 @@ private manifest before handing it to the controller; ordinary snapshot disposal
 removes that worker's temporary directory. A failed capture removes its temporary
 state before releasing its worker slot. This scheduling boundary does not replace
 source authorization, warm-stamp validation, Git identity checks or restore
-conflict detection. Legacy adapter snapshots remain inline.
+conflict detection. Legacy adapter snapshots remain inline. Snapshot-only workers
+do not load the adapter process-launch helpers. The directory merge loads those
+helpers when it resolves its instance-scoped lock root.
 
 ### Remote Codex model compatibility
 
@@ -1518,6 +1520,10 @@ Local durable control-plane state is bounded at 256 MiB in the server,
 runnerd recovery, and durable control-plane readers. These paths synchronously
 read and parse the full JSON file, so memory use and parse time grow with file
 size. Remote checkpoint archive and expanded-size limits remain 64 MiB.
+
+Sparse remote workspace checkpoints capture at most eight regular files at once.
+Each file retains the content hash and mutation checks. A failed capture settles
+its active readers before closing the manifest and publishes no success receipt.
 
 ### Warm sandbox continuity
 
