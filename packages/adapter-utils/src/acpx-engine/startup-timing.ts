@@ -47,6 +47,12 @@ export function normalizeProviderFamily(key: string | undefined): string {
  */
 export const SANDBOX_STARTUP_SPAN_ATTR_PREFIX = "andrecomp.sandbox.startup.";
 
+export const EXECUTION_PREPARATION_SPAN_ATTRS = {
+  runId: "andrecomp.task.run.run_id",
+  fileCount: "andrecomp.execution.fileCount",
+  bytes: "andrecomp.execution.bytes",
+} as const;
+
 /**
  * The closed attribute-name contract for every sandbox-startup span. This is
  * the single source of truth for the harness span attributes. Each name uses

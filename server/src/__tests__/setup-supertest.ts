@@ -29,6 +29,8 @@ process.env.ANDRECOMP_TEST_HOST_HOME ??= process.env.ANDRECOMP_HOME?.trim() || p
 // Receipt-spool recovery must never scan a developer's instance during tests.
 const { home: andrecompTestHome, cleanup: cleanupAndrecompTestHome } = createIsolatedTestHome();
 process.env.ANDRECOMP_HOME = andrecompTestHome;
+process.env.ANDRECOMP_CONFIG = path.join(andrecompTestHome, "config.json");
+process.env.ANDRECOMP_INSTANCE_ID = `vt-${process.pid}`;
 // Setup-file afterAll hooks run before suites drain asynchronous heartbeats.
 // Cleanup at worker exit, after all suite teardown, avoids deleting live state.
 process.once("exit", cleanupAndrecompTestHome);

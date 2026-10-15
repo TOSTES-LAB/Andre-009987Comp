@@ -89,3 +89,6 @@ test-results/
 
 # Local native Runner test/session state
 .andrecomp-runner-prp/
+
+# Opt-in CI timing artifacts
+.ci-profile/
