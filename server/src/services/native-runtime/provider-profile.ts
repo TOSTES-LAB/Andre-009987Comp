@@ -77,6 +77,7 @@ export type AndrecompRunnerNativeProviderInput =
   | {
       provider: "codex";
       model: string | null;
+      homeMode?: "isolated" | "preconfigured";
       codexApprovalPolicy: "never" | "on-request" | "untrusted";
       codexReasoningEffort?: string;
     }
@@ -129,6 +130,7 @@ export type AndrecompRunnerNativeProviderInput =
       provider: "acpx";
       model: string;
       acpxAgent: AdmittedAndrecompRunnerAcpxAgent;
+      homeMode?: "isolated" | "preconfigured";
       acpxPermissionMode: "approve-all" | "approve-andrecomp" | "approve-reads" | "deny-all";
       acpxSessionMode?: "agent" | "plan" | "ask";
       piThinkingLevel?: "off" | "low" | "high" | "max";
@@ -564,6 +566,19 @@ export function resolveAndrecompRunnerNativeProviderInput(input: {
 }): AndrecompRunnerNativeProviderInput {
   const config = asRecord(input.adapterConfig);
   const profile = resolveAndrecompRunnerProviderProfile(config);
+  if (config.homeMode !== undefined && config.homeMode !== "isolated" && config.homeMode !== "preconfigured") {
+    throw new AndrecompRunnerProviderProfileError("andrecomp_runner_home_mode_invalid", "homeMode must be isolated or preconfigured");
+  }
+  const preconfigured = config.homeMode === "preconfigured";
+  if (preconfigured && profile.provider !== "codex" && !(profile.provider === "acpx" && ["claude", "codex"].includes(profile.acpxAgent))) {
+    throw new AndrecompRunnerProviderProfileError("andrecomp_runner_home_mode_unsupported", "Preconfigured home supports native Codex and ACPX Claude only");
+  }
+  if (preconfigured && profile.provider === "acpx" && config.acpxPermissionMode !== undefined && config.acpxPermissionMode !== "approve-all") {
+    throw new AndrecompRunnerProviderProfileError("andrecomp_runner_home_permission_mode_unsupported", "Preconfigured home currently requires ACPX approve-all; local permission rules still apply");
+  }
+  if (preconfigured && profile.provider === "acpx" && profile.acpxAgent === "codex") {
+    throw new AndrecompRunnerProviderProfileError("andrecomp_runner_home_state_boundary_unsupported", "preconfigured ACPX Codex cannot protect Runner state; use native Codex or isolated mode");
+  }
   if (profile.backend !== input.backend) {
     throw new AndrecompRunnerProviderProfileError(
       "andrecomp_runner_provider_changed",
@@ -597,6 +612,7 @@ export function resolveAndrecompRunnerNativeProviderInput(input: {
       ...(profile.acpxAgent === "cursor" ? {
         acpxSessionMode: resolveAndrecompRunnerCursorMode("acpx", "cursor", config.acpxSessionMode),
       } : {}),
+      ...(preconfigured ? { homeMode: "preconfigured" as const } : {}),
       acpxPermissionMode: resolveAndrecompRunnerPermissionMode(
         "acpx",
         config.acpxPermissionMode,
@@ -769,6 +785,7 @@ export function resolveAndrecompRunnerNativeProviderInput(input: {
   return {
     provider: "codex",
     model: compatibleCodexModel(profile.model, input.codexCliVersion ?? null),
+    ...(preconfigured ? { homeMode: "preconfigured" as const } : {}),
     codexApprovalPolicy: resolveAndrecompRunnerPermissionMode(
       "codex",
       config.codexPermissionMode,

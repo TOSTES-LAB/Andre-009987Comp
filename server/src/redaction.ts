@@ -90,6 +90,7 @@ export const ANDRECOMP_PUBLIC_SCHEMA_IDS = new Set([
   "andrecomp.native-execution-input.v3",
   "andrecomp.native-execution-input.v4",
   "andrecomp.native-execution-input.v5",
+  "andrecomp.native-execution-input.v7",
   "andrecomp.native-finalization.v1",
   "andrecomp.native-finalization.v2",
   "andrecomp.native-harness-backup-stamp.v1",

@@ -30,6 +30,32 @@ describe("Andrecomp Runner native provider configuration", () => {
     expect(resolveAndrecompRunnerNativeProviderInput({ backend: "codex_app_server",
       adapterConfig: { provider: "codex", model }, codexCliVersion })).toMatchObject({ model });
   });
+  it.each(["claude"])("admits preconfigured ACPX %s without changing the permission setting", acpxAgent => {
+    expect(resolveAndrecompRunnerNativeProviderInput({ backend: "acpx_runtime",
+      adapterConfig: { provider: "acpx", acpxAgent, model: acpxAgent === "codex" ? "gpt-5.6-sol" : "claude-sonnet-5", homeMode: "preconfigured" },
+    })).toMatchObject({ homeMode: "preconfigured", acpxPermissionMode: "approve-all" });
+  });
+  it("rejects preconfigured ACPX Codex until Runner-state protection is qualified", () => {
+    expect(() => resolveAndrecompRunnerNativeProviderInput({ backend: "acpx_runtime",
+      adapterConfig: { provider: "acpx", acpxAgent: "codex", model: "gpt-6.1-sol", homeMode: "preconfigured" },
+    })).toThrow("cannot protect Runner state");
+  });
+  it.each(["approve-reads", "approve-andrecomp", "deny-all"])("rejects unqualified preconfigured Runner policy %s before launch", acpxPermissionMode => {
+    expect(() => resolveAndrecompRunnerNativeProviderInput({ backend: "acpx_runtime",
+      adapterConfig: { provider: "acpx", acpxAgent: "codex", model: "gpt-6.1-sol", homeMode: "preconfigured", acpxPermissionMode },
+    })).toThrow("currently requires ACPX approve-all");
+  });
+  it("limits the initial mode to qualified native Codex and ACPX Claude providers", () => {
+    expect(resolveAndrecompRunnerNativeProviderInput({ backend: "codex_app_server",
+      adapterConfig: { provider: "codex", homeMode: "preconfigured" },
+    })).toMatchObject({ homeMode: "preconfigured", codexApprovalPolicy: "never" });
+    for (const config of [{ provider: "acpx", acpxAgent: "grok" }, { provider: "opencode", model: "provider/model" }]) {
+      expect(() => resolveAndrecompRunnerNativeProviderInput({ backend: "codex_app_server",
+        adapterConfig: { ...config, homeMode: "preconfigured" },
+      })).toThrow("Preconfigured home supports");
+    }
+  });
+
   it.each([undefined, "approve-all", "approve-andrecomp", "approve-reads", "deny-all"])(
     "passes Grok's full-auto default or explicit %s policy to the native runner",
     (acpxPermissionMode) => {

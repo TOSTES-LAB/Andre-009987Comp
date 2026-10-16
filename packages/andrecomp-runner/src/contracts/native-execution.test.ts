@@ -102,6 +102,25 @@ describe("NativeExecutionInputV1", () => {
       }],
       mcp: { assignmentSetId: "sha256:test", digest, bindingId: "native-mcp:run-1" },
     } as const;
+    const preconfigured = {
+      ...input, schema: "andrecomp.native-execution-input.v7", homeMode: "preconfigured",
+      provider: { kind: "codex", model: null, approvalPolicy: "never" },
+      executionMode: "default", planningContext: null,
+      runtimeContext: { ...context, aggregateDigest: canonicalNativeRuntimeContextDigest(context) },
+    };
+    expect(parseNativeExecutionInput(preconfigured)).toMatchObject({ homeMode: "preconfigured" });
+    for (const agent of ["claude", "codex"]) {
+      expect(() => parseNativeExecutionInput({ ...preconfigured, executionMode: "plan",
+        provider: { kind: "acpx", agent, permissionMode: "approve-all" } })).toThrow("preconfigured ACPX read-only execution is not supported");
+    }
+    for (const permissionMode of ["approve-reads", "approve-andrecomp", "deny-all"]) {
+      expect(() => parseNativeExecutionInput({ ...preconfigured, provider: { kind: "acpx", agent: "codex", permissionMode } })).toThrow("requires ACPX approve-all");
+    }
+    expect(() => parseNativeExecutionInput({ ...preconfigured, provider: { kind: "acpx", agent: "codex", permissionMode: "approve-all" } })).toThrow("cannot protect Runner state");
+    expect(buildNativeModelEnvelope(parseNativeExecutionInput(preconfigured)).schema).toBe("andrecomp.native-model-envelope.v3");
+    expect(() => parseNativeExecutionInput({ ...preconfigured, homeMode: "other" })).toThrow("homeMode");
+    expect(() => parseNativeExecutionInput({ ...preconfigured, provider: { kind: "opencode", model: "provider/model", permissionMode: "allow" } })).toThrow("supports native Codex");
+    expect(() => parseNativeExecutionInput({ ...preconfigured, schema: "andrecomp.native-execution-input.v5" })).toThrow("homeMode");
     const parsed = parseNativeExecutionInput({
       ...input,
       schema: "andrecomp.native-execution-input.v3",

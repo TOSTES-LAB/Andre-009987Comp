@@ -566,7 +566,7 @@ npx andrecomp agent instructions-bundle <agent-id>
 npx andrecomp agent instructions-bundle:update <agent-id> --payload-json '{"mode":"managed"}'
 npx andrecomp agent instructions-file:get <agent-id> --path AGENTS.md
 npx andrecomp agent instructions-file:put <agent-id> --path AGENTS.md --content-file ./AGENTS.md
-npx andrecomp agent instructions-file:delete <agent-id> --path AGENTS.md
+npx andrecomp agent instructions-file:delete <agent-id> --path AGENTS.md --yes
 ```
 
 Agent config, instructions, skills, project env, environment, secret, and workspace edits affect the next run. Active runs finish with the config they started with. When a saved session, reused workspace, or sandbox lease no longer matches the effective next-run config, Andrecomp may start fresh execution and records non-sensitive freshness categories in run result JSON and workspace operation logs.

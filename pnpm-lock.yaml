@@ -19,7 +19,7 @@ patchedDependencies:
     hash: huf7r65vwve4ofrrdvc3x76loa
     path: patches/@agentclientprotocol__claude-agent-acp@0.73.0.patch
   '@agentclientprotocol/codex-acp@1.6.2':
-    hash: xmilmcxnpef73beij4sne4qsti
+    hash: vx7smpvfhgz6p3tddkrzq2cspm
     path: patches/@agentclientprotocol__codex-acp@1.6.2.patch
   '@chat-adapter/discord@4.39.0':
     hash: kts6sonx5med2aoo6tuvvkvbs4
