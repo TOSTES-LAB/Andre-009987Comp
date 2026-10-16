@@ -244,6 +244,8 @@ impl AcpxSidecarTransport {
             // The qualified sidecar configures the runner-owned gateway. Keep
             // its credential with the name/URL; unrelated secrets stay excluded.
             "ANDRECOMP_NATIVE_MCP_TOKEN",
+            "ANDRECOMP_NATIVE_MCP_STDIO",
+            "ANDRECOMP_NATIVE_MCP_PROXY",
             "ANDRECOMP_ACPX_BUILTIN_ROOT",
             "ANDRECOMP_ACPX_PROVIDER_PACKAGE_ROOT",
             "ANDRECOMP_ACPX_PROVIDER_PACKAGE_MANIFEST",

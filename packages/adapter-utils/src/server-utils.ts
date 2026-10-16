@@ -4269,7 +4269,7 @@ export function normalizeAndrecompRunnerAdapterConfig(
 ): Record<string, unknown> {
   if (adapterType !== "andrecomp_runner") return config;
   config = normalizeLegacyRunnerProvider(config);
-  if (config.provider === "openai_dot") {
+  if (config.provider === "openai_dot" || config.provider === "muse") {
     return normalizeAndrecompOperationalSkillPreference(adapterType, { lifecycleMode: "per_turn", ...config });
   }
   const next: Record<string, unknown> = {

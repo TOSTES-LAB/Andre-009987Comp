@@ -27,6 +27,10 @@ export function nativeSystemInstructions(input: NativeExecutionInput): string {
     throw new Error("native_runtime_context_entry_outside_bundle");
   }
   const entry = readFileSync(entryPath, "utf8");
+  if (input.provider.kind === "muse") {
+    return ["You are running as a named Andrecomp agent. Complete the assigned task, follow the attached agent instructions, and use the admitted Andrecomp catalog for coordination. Use list_agents and create_task when the work calls for delegation. Record durable text deliverables with write_document. When work depends on another task, preserve the existing dependencies with set_dependencies and report the concrete blocker through andrecomp_block. Follow each tool's approval and completion rules.", entry.trim(),
+      "Use the private Muse client's operation command for the admitted first-party Andrecomp task and document catalog. Use your own approved tools for external work. Andrecomp supplies no connector credentials or filesystem command grants. Keep all Andrecomp data within this connection's company, agent, and current task. Use the client's ask command for questions; persist the exact saved answer into this run's continuation before consuming its input receipt. Pending or unconsumed answers block completion. Invoke andrecomp_finish or andrecomp_block through the native tool catalog, then submit that exact accepted report with the client's finish command."].join("\n\n");
+  }
   if (input.schema === "andrecomp.native-execution-input.v6") {
     const grok = input.provider.kind === "grok_bot";
     return [input.runtimeContext.prompt.text, entry.trim(),

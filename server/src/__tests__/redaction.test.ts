@@ -311,6 +311,10 @@ describe("redaction", () => {
         providerValue: input.nested.providerValue,
       },
     });
+    expect(sanitizeRecord({ schema: "andrecomp.native-execution-input.v7", runtimeSchema: "andrecomp.native-execution-input.v8" })).toEqual({
+      schema: "andrecomp.native-execution-input.v7",
+      runtimeSchema: "andrecomp.native-execution-input.v8",
+    });
     expect(sanitizeRecord({ schema: "andrecomp.native-execution-input.v4", runtimeSchema: "andrecomp.native-model-envelope.v2" })).toEqual({
       schema: "andrecomp.native-execution-input.v4",
       runtimeSchema: "andrecomp.native-model-envelope.v2",

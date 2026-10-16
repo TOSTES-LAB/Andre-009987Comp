@@ -1,5 +1,5 @@
 export type AndrecompRunnerProvider =
-  "codex" | "opencode" | "claude_managed" | "aws_agentcore" | "acpx" | "openai_dot" | "grok_bot";
+  "codex" | "opencode" | "claude_managed" | "aws_agentcore" | "acpx" | "openai_dot" | "grok_bot" | "muse";
 
 export type CodexPermissionMode = "never" | "on-request" | "untrusted";
 export type OpenCodePermissionMode = "allow" | "ask" | "deny";
@@ -104,6 +104,7 @@ export const ANDRECOMP_RUNNER_PERMISSION_CAPABILITIES = {
       "AWS AgentCore runs non-interactively under its qualified harness profile and Andrecomp policy.",
   },
   grok_bot: { configurable: false, defaultMode: "provider-managed", options: [], description: "Grok Bot uses first-party Andrecomp tools and retains its native apps. Grok manages its model; spending, live steering, provider transcript streaming and remote interruption are unavailable." },
+  muse: { configurable: false, defaultMode: "provider-managed", options: [], description: "Muse uses the admitted Andrecomp tool catalog and its own approved tools. Provider usage is unavailable and remote stop is best effort." },
   openai_dot: { configurable: false, defaultMode: "provider-managed", options: [], description: "Dot uses the admitted Andrecomp tool catalog. OpenAI manages its model and other tools; provider usage and global interruption are unavailable." },
   acpx: {
     configurable: true,
@@ -149,7 +150,7 @@ export function isAndrecompRunnerProvider(
     value === "opencode" ||
     value === "claude_managed" ||
     value === "aws_agentcore" ||
-    value === "acpx" || value === "openai_dot" || value === "grok_bot"
+    value === "acpx" || value === "openai_dot" || value === "grok_bot" || value === "muse"
   );
 }
 

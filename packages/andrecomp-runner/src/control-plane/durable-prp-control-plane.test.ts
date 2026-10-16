@@ -526,6 +526,8 @@ it("preserves an explicit OpenCode permission mode at the runner spawn boundary"
       ANTHROPIC_BASE_URL: "https://gateway.example",
       ANDRECOMP_OPENCODE_PERMISSION_MODE: "deny",
       ANDRECOMP_OPENCODE_RUNTIME_DIR: "/runner/opencode",
+      ANDRECOMP_NATIVE_MCP_STDIO: "[]",
+      ANDRECOMP_NATIVE_MCP_PROXY: "/runner/andrecomp-runnerd",
       DATABASE_URL: "must-not-reach-runnerd",
       ANDRECOMP_API_KEY: "must-not-reach-runnerd",
       NODE_OPTIONS: "--require=/untrusted/bootstrap.cjs",
@@ -561,6 +563,8 @@ it("preserves an explicit OpenCode permission mode at the runner spawn boundary"
     ANTHROPIC_BASE_URL: "https://gateway.example",
     ANDRECOMP_OPENCODE_PERMISSION_MODE: "deny",
     ANDRECOMP_OPENCODE_RUNTIME_DIR: "/runner/opencode",
+    ANDRECOMP_NATIVE_MCP_STDIO: "[]",
+    ANDRECOMP_NATIVE_MCP_PROXY: "/runner/andrecomp-runnerd",
   });
   expect(launches[0]!.environment.DATABASE_URL).toBeUndefined();
   expect(launches[0]!.environment.ANDRECOMP_API_KEY).toBeUndefined();

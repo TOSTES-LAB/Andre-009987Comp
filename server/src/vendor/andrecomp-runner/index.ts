@@ -36,6 +36,8 @@ export type {
   NativeExecutionInputV4,
   NativeExecutionInputV5,
   NativeExecutionInputV6,
+  NativeExecutionInputV8,
+  MuseBindingSnapshot,
   DotBindingSnapshot,
   ExternalProviderPort,
   ExternalProviderOperation,
@@ -158,6 +160,7 @@ export const bundledRemoteProviderPackManifestPath = runner.bundledRemoteProvide
 export const bundledRemoteRunnerBinary = runner.bundledRemoteRunnerBinary;
 
 export const externalOperationDigest = runner.externalOperationDigest;
+export const digestAndrecompSemanticContent = runner.digestAndrecompSemanticContent;
 export const CONFIGURED_ENVIRONMENT_KEYS = runner.CONFIGURED_ENVIRONMENT_KEYS;
 export const GENERATED_RUNTIME_ENVIRONMENT_KEYS = runner.GENERATED_RUNTIME_ENVIRONMENT_KEYS;
 export const configuredEnvironmentProjection = runner.configuredEnvironmentProjection;
