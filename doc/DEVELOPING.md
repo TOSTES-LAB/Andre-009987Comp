@@ -924,6 +924,15 @@ clickable link to each task the agent creates. Agents use the public task URL
 from Andrecomp tools or task context and report when a link is unavailable.
 Existing conversations keep their original communication guidance snapshot.
 
+Slack catalog discovery uses `resolveSlackTaskAuthorization` to recheck the live
+run, task, agent, linked user, endpoint, and current bot credential. Discovery
+does not consume a compatibility revision, so it avoids hashing company policy
+and profile rows. Callers that need a revision continue to use
+`resolveSlackTaskAuthority`; connector skill snapshots and governed operations
+retain their existing fingerprint. Both paths share the same authorization
+implementation and perform fresh checks on every call. The real PostgreSQL
+controls are in `server/src/__tests__/slack-tool-preparation.test.ts`.
+
 ### Chat activity pagination and callback diagnostics
 
 The connection Activity tab loads 25 records per page. `GET /api/chat-endpoints/:id/activity?limit=25`
@@ -1780,6 +1789,14 @@ cancellation remain enforced; the snapshot is removed when the provider exits.
 Native Codex is qualified only with `codexPermissionMode: "never"`. The create
 and edit surfaces do not offer `on-request` or `untrusted`, and a persisted
 unsupported value fails with remediation instead of being silently coerced.
+
+Remote native Codex prepares managed GitHub access and assigned MCP tools
+concurrently after the backend claims its session scope and validates its launch
+binding. Provider startup waits for both preparations. A failed preparation waits
+for the other operation to settle before the existing run cleanup releases its
+GitHub access. Discovery remains fresh for each run, and tool calls still use the
+current gateway permissions. Local, custom-backend and other provider paths keep
+their existing preparation order.
 OpenCode defaults to `allow`, with explicit `ask` and `deny` options; ACPX
 defaults to `approve-all`, with explicit `approve-andrecomp`, `approve-reads`,
 and `deny-all` options. Codex conversion keeps a non-empty model and
@@ -2602,7 +2619,9 @@ run contexts. Unshared paths still require every existing task, run, recovery,
 lease, service and filesystem check in the same lifecycle lock.
 
 Before deletion the worker fetches the exact commit into a fresh object store
-using the company's normal Git identity and commits a versioned restoration
+using the company's normal Git identity (anonymously when no identity resolves
+outside an agent run, which still proves public repositories; a private
+repository that cannot be verified keeps its workspace) and commits a versioned restoration
 recipe to workspace metadata. Current runs, previews, pending reopening,
 unresolved recovery, dirty/untracked files, unknown ignored files, unproven
 ownership, and unsupported or unique Git state prevent deletion. Ignored files
