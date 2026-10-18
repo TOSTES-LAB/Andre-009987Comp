@@ -38,6 +38,7 @@ export type QualifiedAndrecompRunnerAcpxAgent =
 type AdmittedAndrecompRunnerAcpxAgent = QualifiedAndrecompRunnerAcpxAgent | AcpxQualificationCandidate;
 
 export type AndrecompRunnerProviderProfile =
+  | { provider: "muse"; backend: "muse_external"; model: null; museBindingId: string }
   | { provider: "grok_bot"; backend: "grok_bot_mcp"; model: null; externalBindingId: string }
   | { provider: "openai_dot"; backend: "openai_dot_mcp"; model: null; dotBindingId: string }
   | {
@@ -72,6 +73,7 @@ export type AndrecompRunnerProviderProfile =
     };
 
 export type AndrecompRunnerNativeProviderInput =
+  | { provider: "muse"; model: null; museBinding: import("../../vendor/andrecomp-runner/index.js").MuseBindingSnapshot }
   | { provider: "grok_bot"; model: null; dotBinding: import("../../vendor/andrecomp-runner/index.js").DotBindingSnapshot }
   | { provider: "openai_dot"; model: null; dotBinding: import("../../vendor/andrecomp-runner/index.js").DotBindingSnapshot }
   | {
@@ -165,6 +167,17 @@ export function validateAndrecompRunnerDotConfig(config: Record<string, unknown>
       || config.allowUnmeteredProvider !== true || (config.lifecycleMode && config.lifecycleMode !== "per_turn")
       || optionalString(config.model)) {
     throw new AndrecompRunnerProviderProfileError("andrecomp_runner_dot_config_invalid", "Dot requires per-turn lifecycle and explicit externally billed, unmetered-provider acknowledgement. Pair a binding before assigning work.");
+  }
+  return bindingId;
+}
+
+/** Closed personal runtime configuration; model and workspace grants are excluded. */
+export function validateAndrecompRunnerMuseConfig(config: Record<string, unknown>, requireBinding = true): string | null {
+  const bindingId = optionalString(config.museBindingId);
+  if ((requireBinding && !bindingId) || (bindingId && !/^[0-9a-f-]{36}$/i.test(bindingId))
+      || config.allowUnmeteredProvider !== true || (config.lifecycleMode && config.lifecycleMode !== "per_turn")
+      || optionalString(config.model) || config.dotWorkspaceAccess === true || config.dotAttachmentAccess === true) {
+    throw new AndrecompRunnerProviderProfileError("andrecomp_runner_muse_config_invalid", "Muse requires a paired personal-agent binding, per-turn lifecycle and unavailable-usage acknowledgement.");
   }
   return bindingId;
 }
@@ -385,6 +398,10 @@ export function resolveAndrecompRunnerProviderProfile(
     );
   }
 
+  if (candidate === "muse") {
+    const bindingId = validateAndrecompRunnerMuseConfig(config)!;
+    return { provider: "muse", backend: "muse_external", model: null, museBindingId: bindingId };
+  }
   if (candidate === "grok_bot") {
     return { provider: "grok_bot", backend: "grok_bot_mcp", model: null, externalBindingId: validateAndrecompRunnerGrokConfig(config)! };
   }
@@ -547,6 +564,7 @@ export function resolveAndrecompRunnerNativeProviderInput(input: {
   adapterConfig: unknown;
   /** Verified image CLI version for a fresh remote Codex run only. */
   codexCliVersion?: string | null;
+  museBinding?: import("../../vendor/andrecomp-runner/index.js").MuseBindingSnapshot;
   dotBinding?: import("../../vendor/andrecomp-runner/index.js").DotBindingSnapshot;
   managedProfile?: {
     id: string;
@@ -584,6 +602,10 @@ export function resolveAndrecompRunnerNativeProviderInput(input: {
       "andrecomp_runner_provider_changed",
       "Andrecomp Runner provider changed after this run selected its native backend.",
     );
+  }
+  if (profile.provider === "muse") {
+    if (!input.museBinding || input.museBinding.bindingId !== profile.museBindingId) throw new AndrecompRunnerProviderProfileError("andrecomp_runner_muse_binding_unavailable", "Muse binding must be resolved by the server after normal admission.");
+    return { provider: "muse", model: null, museBinding: input.museBinding };
   }
   if (profile.provider === "grok_bot") {
     if (!input.dotBinding || input.dotBinding.bindingId !== profile.externalBindingId) throw new AndrecompRunnerProviderProfileError("andrecomp_runner_grok_binding_unavailable", "The Grok binding must be resolved by the server after normal admission.");
