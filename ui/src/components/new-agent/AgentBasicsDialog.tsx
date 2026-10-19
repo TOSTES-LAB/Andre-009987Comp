@@ -225,8 +225,6 @@ export function AgentBasicsDialog({
                       placeholder="Choose a native harness…"
                       onValueChange={provider => { setRunnerProvider(provider); setAdapterType("andrecomp_runner"); }}
                       options={[
-                        { value: "codex", label: "Codex (Andrecomp Runner)" },
-                        { value: "claude", label: "Claude Code (Andrecomp Runner)" },
                         { value: "grok", label: "Grok Build (Andrecomp Runner)" },
                         { value: "opencode", label: "OpenCode (Andrecomp Runner)" },
                       ]} />

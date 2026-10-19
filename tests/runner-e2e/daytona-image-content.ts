@@ -45,6 +45,7 @@ export const DAYTONA_IMAGE_INPUT_PATHS = [
   "packages/andrecomp-runner/scripts/materialize-cursor-distribution.mjs",
   "packages/andrecomp-runner/scripts/cursor-runtime-patch.mjs",
   "packages/andrecomp-runner/scripts/build-verified-provider-entrypoints.mjs",
+  "packages/andrecomp-runner/scripts/provider-pack-runtime-tree.mjs",
   "packages/andrecomp-runner/scripts/generate-acpx-sidecar-contract.mjs",
   "packages/andrecomp-runner/scripts/generate-protocol-schema-module.mjs",
   "packages/andrecomp-runner/scripts/materialize-pi-distribution.mjs",

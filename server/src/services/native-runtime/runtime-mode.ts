@@ -138,7 +138,7 @@ export function resolveNativeRuntimeMode(input: {
     if (input.dotEnabled !== true) throw ineligible("andrecomp_runner_dot_disabled", "Enable OpenAI Dot and Assistant connections (MCP) in experimental settings before assigning new work.");
   } else if (runnerProfile.provider === "grok_bot" && (input.grokEnabled !== true || !input.enabled)) {
     throw ineligible("andrecomp_runner_grok_disabled", "Enable Grok Bot, Andrecomp Runner, and Assistant connections (MCP) before assigning new work.");
-  } else if (runnerProfile.provider !== "codex" && !input.enabled) {
+  } else if (runnerProfile.provider !== "codex" && !(runnerProfile.provider === "acpx" && runnerProfile.acpxAgent === "claude") && !input.enabled) {
     throw ineligible(
       "andrecomp_runner_rollout_disabled",
       "Andrecomp Runner is experimental and disabled on this instance.",

@@ -6,7 +6,7 @@
   <a href="#quickstart"><strong>Quickstart</strong></a> &middot;
   <a href="https://docs.andrecomp.ing"><strong>Docs</strong></a> &middot;
   <a href="https://github.com/TOSTES-LAB/Andre-009987Comp"><strong>GitHub</strong></a> &middot;
-  <a href="https://discord.gg/m4HZY7xNG3"><strong>Discord</strong></a> &middot;
+  <a href="https://discord.gg/andrecomp"><strong>Discord</strong></a> &middot;
   <a href="https://x.com/andrecomping"><strong>Twitter</strong></a> &middot;
   <a href="https://andrecomp.ing"><strong>Website</strong></a>
 </p>
@@ -14,7 +14,7 @@
 <p align="center">
   <a href="https://github.com/TOSTES-LAB/Andre-009987Comp/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
   <a href="https://github.com/TOSTES-LAB/Andre-009987Comp/stargazers"><img src="https://img.shields.io/github/stars/TOSTES-LAB/Andre-009987Comp?style=flat" alt="Stars" /></a>
-  <a href="https://discord.gg/m4HZY7xNG3"><img src="https://img.shields.io/discord/000000000?label=discord" alt="Discord" /></a>
+  <a href="https://discord.gg/andrecomp"><img src="https://img.shields.io/discord/000000000?label=discord" alt="Discord" /></a>
 </p>
 
 <br/>
@@ -418,7 +418,7 @@ We welcome contributions. See the [contributing guide](https://github.com/TOSTES
 
 ## Community
 
-- [Discord](https://discord.gg/m4HZY7xNG3) — Join the community
+- [Discord](https://discord.gg/andrecomp) — Join the community
 - [Twitter / X](https://x.com/andrecomping) — Follow updates and announcements
 - [GitHub Issues](https://github.com/TOSTES-LAB/Andre-009987Comp/issues) — bugs and feature requests
 - [GitHub Discussions](https://github.com/TOSTES-LAB/Andre-009987Comp/discussions) — ideas and RFC

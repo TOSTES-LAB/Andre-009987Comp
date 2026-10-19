@@ -1761,11 +1761,12 @@ export function builtInAgentService(db: Db) {
         const adapterType = resolvedInput.adapterType ?? existing.adapterType;
         const adapterConfig = resolvedInput.adapterConfig ?? existing.adapterConfig;
         assertAdapterAllowed(definition, adapterType, adapterConfig);
-        const sameCodexHarness = agentHarnessType(adapterType, adapterConfig) === "codex_local"
-          && agentHarnessType(existing.adapterType, existing.adapterConfig) === "codex_local";
-        const runner = resolvedInput.runner ?? (sameCodexHarness && existing.metadata?.andrecompBuiltInSetupRequired !== true
+        const selectedHarness = agentHarnessType(adapterType, adapterConfig);
+        const sameQualifiedHarness = ["codex_local", "claude_local"].includes(selectedHarness)
+          && agentHarnessType(existing.adapterType, existing.adapterConfig) === selectedHarness;
+        const runner = resolvedInput.runner ?? (sameQualifiedHarness && existing.metadata?.andrecompBuiltInSetupRequired !== true
           ? agentRunner(existing.adapterType) : undefined);
-        const retainedNative = sameCodexHarness && runner === "andrecomp" && existing.adapterType === "andrecomp_runner";
+        const retainedNative = sameQualifiedHarness && runner === "andrecomp" && existing.adapterType === "andrecomp_runner";
         const resolvedAdapterConfig = { ...adapterConfig };
         if (retainedNative) {
           for (const field of ["provider", "acpxAgent", "acpxMode"]) {

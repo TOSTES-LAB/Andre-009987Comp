@@ -285,9 +285,16 @@ release_info "==> Step 2/7: Building workspace artifacts..."
 cd "$REPO_ROOT"
 pnpm build
 if [ -n "${ANDRECOMP_RELEASE_RUNNER_ARTIFACTS_DIR:-}" ]; then
+  pack_args=()
+  if [ -n "${ANDRECOMP_RELEASE_PROVIDER_PACK_ARTIFACTS_DIR:-}" ]; then
+    pack_args=("$ANDRECOMP_RELEASE_PROVIDER_PACK_ARTIFACTS_DIR")
+  fi
   node "$REPO_ROOT/packages/andrecomp-runner/scripts/stage-release-runner-binaries.mjs" \
-    assemble-daemons "$ANDRECOMP_RELEASE_RUNNER_ARTIFACTS_DIR" "$(git rev-parse HEAD)"
+    assemble-daemons "$ANDRECOMP_RELEASE_RUNNER_ARTIFACTS_DIR" "$(git rev-parse HEAD)" "${pack_args[@]}"
   cp -R "$REPO_ROOT/packages/andrecomp-runner/dist/bin/." "$REPO_ROOT/server/dist/vendor/andrecomp-runner/bin/"
+  if [ -d "$REPO_ROOT/packages/andrecomp-runner/dist/remote-provider-packs" ]; then
+    cp -R "$REPO_ROOT/packages/andrecomp-runner/dist/remote-provider-packs" "$REPO_ROOT/server/dist/vendor/andrecomp-runner/"
+  fi
 elif [ "$dry_run" = false ]; then
   release_fail "Public releases require the four hosted runner daemon artifacts; use the supported Release workflow."
 fi

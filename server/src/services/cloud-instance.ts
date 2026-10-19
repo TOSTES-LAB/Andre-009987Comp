@@ -1,4 +1,46 @@
 import { createHash } from "node:crypto";
+import type { ManagedExperimentalFeatureKey } from "@andrecomp/shared";
+
+const CLOUD_STAGING_EXPERIMENTAL_KEYS: ReadonlySet<string> = new Set([
+  "autoRestartDevServerWhenIdle",
+  "enableAgentChat",
+  "enableBetaSkills",
+  "enableBuiltInAgents",
+  "enableCases",
+  "enableChatConnectors",
+  "enableClassicTaskInterface",
+  "enableCombinedInboxTasks",
+  "enableConferenceRoomChat",
+  "enableDecisions",
+  "enableEnvironments",
+  "enableExperimentalFileViewer",
+  "enableExternalObjects",
+  "enableFastResponses",
+  "enableFirstTaskPlanProposal",
+  "enableGitHubReviewBots",
+  "enableGoalsSidebarLink",
+  "enableGrokBot",
+  "enableIsolatedWorkspaces",
+  "enableIsolatedWorkspacesByDefault",
+  "enableIssuePlanDecompositions",
+  "enableMemoryConnectors",
+  "enableMuse",
+  "enableNativeRunner",
+  "enableOpenAiDot",
+  "enableAndrecompDeveloperMode",
+  "enablePublicMcp",
+  "enableServerInfoDebugView",
+  "enableSimplifiedEnglishInteractions",
+  "enableSmokeLab",
+  "enableStatusCards",
+  "enableStreamlinedUi",
+  "enableSummaries",
+  "enableWorktreeRunExecution",
+] satisfies ManagedExperimentalFeatureKey[]);
+
+export function isCloudStagingExperimentalSetting(key: string): boolean {
+  return CLOUD_STAGING_EXPERIMENTAL_KEYS.has(key);
+}
 
 export type CloudInstanceEnv = Record<string, string | undefined>;
 
@@ -30,6 +72,11 @@ export function isCloudManagedInstance(
     normalizeOptionalEnvValue(env.ANDRECOMP_CLOUD_TENANT_SERVER_TOKEN) !== null ||
     env.ANDRECOMP_MANAGED_CONFIG !== undefined
   );
+}
+
+export function isCloudStagingInstance(env: CloudInstanceEnv = process.env): boolean {
+  const host = normalizeOptionalEnvValue(env.ANDRECOMP_PRIMARY_HOST);
+  return isCloudManagedInstance(env) && host !== null && /^[a-z0-9-]+\.staging\.andrecomp\.app$/i.test(host);
 }
 
 /**
