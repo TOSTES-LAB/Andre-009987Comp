@@ -49,6 +49,7 @@ packages/andrecomp-runner/test/fixtures/**
 !packages/andrecomp-runner/test/fixtures/copilot-profile-v19-identity.json
 !packages/andrecomp-runner/test/fixtures/copilot-profile-v19-muse-historical-identity.json
 !packages/andrecomp-runner/test/fixtures/copilot-profile-v20-identity.json
+!packages/andrecomp-runner/test/fixtures/copilot-profile-v21-identity.json
 !packages/andrecomp-runner/test-fixtures
 packages/andrecomp-runner/test-fixtures/**
 !packages/andrecomp-runner/test-fixtures/pi-acp
