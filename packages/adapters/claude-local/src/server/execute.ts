@@ -1,3 +1,4 @@
+import { isOpenRouterUrl, openRouterClaudeHeaders } from "@andrecomp/shared/openrouter-attribution";
 import { createProviderStoppedBoundary } from "@andrecomp/adapter-utils/provider-stopped-boundary";
 import { createUsageCheckpointLog } from "@andrecomp/adapter-utils/usage-checkpoint";
 import fs from "node:fs/promises";
@@ -307,6 +308,9 @@ async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<Cl
     env[key] = value;
   }
 
+  if (isOpenRouterUrl(env.ANTHROPIC_BASE_URL ?? process.env.ANTHROPIC_BASE_URL)) {
+    env.ANTHROPIC_CUSTOM_HEADERS = openRouterClaudeHeaders(env.ANTHROPIC_CUSTOM_HEADERS ?? process.env.ANTHROPIC_CUSTOM_HEADERS);
+  }
   if (authToken) {
     env.ANDRECOMP_API_KEY = authToken;
   }

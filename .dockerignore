@@ -60,6 +60,7 @@ packages/andrecomp-runner/test-fixtures/pi-acp/**
 !packages/andrecomp-runner/test-fixtures/pi-acp/profile-v21-identity.json
 !packages/andrecomp-runner/test-fixtures/pi-acp/profile-v22-identity.json
 !packages/andrecomp-runner/test-fixtures/pi-acp/profile-v23-identity.json
+!packages/andrecomp-runner/test-fixtures/pi-acp/profile-v24-identity.json
 !packages/andrecomp-runner/docs/capability-contract.md
 # check:runner-workflow-traceability access()es every regression test the
 # stress-traceability spec names — those are src/**/*.test.ts files, so

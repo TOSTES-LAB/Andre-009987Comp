@@ -1993,6 +1993,9 @@ describe("OpenCodeServerDriver", () => {
         external_directory: { "*": "deny", [`${workspace}/**`]: "allow" },
       });
       expect(config.autoupdate).toBe(false);
+      expect(config.provider.openrouter.options.headers).toMatchObject({
+        "HTTP-Referer": "https://andrecomp.ing", "X-Title": "Andrecomp", "X-OpenRouter-Title": "Andrecomp",
+      });
       expect(config.provider.openrouter.models).toHaveProperty(
         "deepseek/deepseek-v4-flash-0731",
       );
