@@ -135,6 +135,7 @@ export interface PluginEnvironmentTaskParams extends Omit<PluginEnvironmentDrive
   agentId: string | null;
   /** Company-validated projects to prepare on submit; empty during cleanup. */
   projectIds: string[];
+  workspace?: import("@andrecomp/shared").WorkspaceProviderBinding;
   operation: PluginEnvironmentTaskOperation;
 }
 
