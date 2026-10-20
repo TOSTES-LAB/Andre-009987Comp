@@ -2277,6 +2277,21 @@ The internal service provides local-only availability and bounded, reauthorized 
 
 ### Task workspace ownership (2026-10-09)
 
+### Filesystem access boundary (2026-10-20)
+
+Filesystem isolation belongs to the OS, execution environment, and storage layout.
+Andrecomp authorizes the current task/run, company, explicitly selected configuration,
+execution policy, and repository credentials. It does not infer file permissions from
+other tasks or agents that previously used the same directory, overlapping roots,
+symlink aliases, or shared Git storage. Existing files under an authorized task root
+may be read subject to OS access and API path containment.
+
+Private task records, comments, attachments, run logs, full workspace metadata, and
+operation logs retain their app authorization. Workspace `_issuePrivacySources` and
+operation privacy metadata protect app-record disclosure; they do not grant or deny
+filesystem execution or task-bound file browsing. Current trust and sandbox policy,
+publication receipts, binding checks, and lifecycle locks remain authoritative.
+
 A task's organizational project and filesystem workspace are independent. New tasks that need a filesystem and have no selected/configured workspace get a company/task directory, not the agent home. Plain tasks need neither Git nor a project. Existing bindings and admitted roots remain authoritative; changing project does not move files. Explicit workspace selections apply at a subsequent normal admission after prior execution and persistence obligations settle.
 
 Chat connection and destination settings may supply project/workspace defaults. Destination fields override connection fields; omitted values inherit and null clears the inherited choice. Resolve and authorize these defaults once for a new conversation, then retain the resulting task intent. Existing conversations do not change when settings change. Trust confinement still takes precedence.
@@ -2355,3 +2370,8 @@ Pipelines, its review queue and learnings, stage automation, REST API, CLI comma
 and experimental setting are removed. Existing database tables and records remain
 for data preservation; there is no migration that drops or rewrites them. The
 independent Cases and Routines features remain available.
+
+Company-managed [Prompt Injection Prevention](prompt-injection-prevention.md)
+optionally classifies existing tool-result boundaries through a shared OpenRouter
+connection. Settings → Connections is permanent; valid model verdicts take
+precedence and dependency failures use the original built-in detector.

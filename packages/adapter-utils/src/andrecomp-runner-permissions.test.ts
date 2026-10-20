@@ -12,12 +12,11 @@ import {
 } from "./andrecomp-runner-permissions.js";
 
 describe("Andrecomp Runner permission defaults", () => {
-  it("admits Pi with provider credentials while keeping Copilot pending", () => {
+  it("marks Pi and Copilot qualified with their provider credential bindings", () => {
     expect(ANDRECOMP_RUNNER_ACPX_PROFILES.find(profile => profile.value === "pi"))
       .toMatchObject({ qualified: true, credentialEnvironment: expect.arrayContaining(["OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY"]) });
-    for (const agent of ["copilot"]) {
-      expect(ANDRECOMP_RUNNER_ACPX_PROFILES.find(profile => profile.value === agent)?.qualified).toBe(false);
-    }
+    expect(ANDRECOMP_RUNNER_ACPX_PROFILES.find(profile => profile.value === "copilot"))
+      .toMatchObject({ qualified: true, credentialEnvironment: ["COPILOT_GITHUB_TOKEN"] });
   });
   it("defaults Codex to the only qualified non-interactive mode", () => {
     expect(resolveAndrecompRunnerPermissionMode("codex", undefined)).toBe(

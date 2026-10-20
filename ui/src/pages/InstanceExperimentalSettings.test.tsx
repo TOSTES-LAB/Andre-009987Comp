@@ -393,7 +393,7 @@ describe("InstanceExperimentalSettings — Conference Room Chat card (PAP-11233)
     await renderPage();
 
     expect(container.textContent).toContain("Andrecomp Runner");
-    expect(container.textContent).toContain("Onboarding continues to use legacy adapters");
+    expect(container.textContent).toContain("First-run setup offers qualified GitHub Copilot");
     const toggle = container.querySelector<HTMLButtonElement>(
       ANDRECOMP_RUNNER_TOGGLE_SELECTOR,
     );

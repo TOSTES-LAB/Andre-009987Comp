@@ -20,7 +20,7 @@ export function isNewAgentAdapterAllowed(
     return openAiDotEnabled;
   }
   if (type === "muse" || (type === "andrecomp_runner" && runnerProvider === "muse")) return museEnabled && nativeRunnerEnabled;
-  if (type === "andrecomp_runner") return nativeRunnerEnabled;
+  if (type === "andrecomp_runner") return runnerProvider === "copilot" || nativeRunnerEnabled;
   if (cloud) return CLOUD_ADAPTERS.has(type);
   return true;
 }
