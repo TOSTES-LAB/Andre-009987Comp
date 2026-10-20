@@ -574,6 +574,7 @@ export async function executeHeartbeatRuntime(db: Db, input: HeartbeatRuntimeExe
         await dispatchWithTiming(
           (markDispatchStarted) => {
             return executeAndrecompNativeSession({
+              casesEnabled: context.andrecompCasesEnabled === true,
               db,
               execution: nativeExecution,
               observability,

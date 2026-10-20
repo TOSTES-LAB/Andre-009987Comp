@@ -12,6 +12,7 @@ import type { issueService } from "../issues.js";
 import { createRunSecretRedactionRegistry } from "../run-secret-redaction.js";
 import { redactQuarantinedBodyForHigherTrust, sanitizeQuarantinedCommentForHigherTrust } from "../source-trust.js";
 import { getTaskPlanContext } from "../task-plan-context.js";
+import { caseExecutionMarkdown, getCaseExecutionContext } from "../case-context.js";
 import type { TrustPresetResolution } from "../trust-preset-resolver.js";
 import { liveVoiceExecutionGuidance } from "../voice/voice-execution-guidance.js";
 import { buildAndrecompWakePayload, ANDRECOMP_WAKE_PAYLOAD_KEY, type createHeartbeatRunPreparation } from "./run-preparation.js";
@@ -36,7 +37,7 @@ export interface HeartbeatTaskContextInput {
   policy: {
     recovering?: boolean;
     trustPreset: Pick<TrustPresetResolution, "kind">;
-    experimentalInstanceSettings: { enableSimplifiedEnglishInteractions?: boolean };
+    experimentalInstanceSettings: { enableSimplifiedEnglishInteractions?: boolean; enableCases?: boolean };
   };
   services: {
     issuesSvc: Pick<ReturnType<typeof issueService>, "getAncestors">;
@@ -267,18 +268,25 @@ export async function prepareHeartbeatTaskContext(db: Db, input: HeartbeatTaskCo
   // Unlike the frozen initial communication preferences, live-call context
   // must also reach resumed turns. Rebuild it from server records each wake.
   const liveVoiceTaskPrefix = liveVoiceGuidance ? `${liveVoiceGuidance}\n\n` : "";
-  let taskMarkdown = liveVoiceTaskPrefix + buildAndrecompTaskMarkdown({ ...taskMarkdownInput, taskPlan }) + chatCompletionInstruction(context);
-  let taskMarkdownAssignment = liveVoiceTaskPrefix + buildAndrecompTaskMarkdown({
+  context.andrecompCasesEnabled = experimentalInstanceSettings.enableCases === true;
+  const workflowCase = issueRef && experimentalInstanceSettings.enableCases
+    ? await getCaseExecutionContext(db, { companyId: agent.companyId, issueId: issueRef.id, agentId: agent.id, runId: run.id, exposeLowTrustRaw })
+    : null;
+  if (workflowCase) context.andrecompCase = workflowCase;
+  else delete context.andrecompCase;
+  const assignmentPrefix = liveVoiceTaskPrefix + caseExecutionMarkdown(workflowCase);
+  let taskMarkdown = assignmentPrefix + buildAndrecompTaskMarkdown({ ...taskMarkdownInput, taskPlan }) + chatCompletionInstruction(context);
+  let taskMarkdownAssignment = assignmentPrefix + buildAndrecompTaskMarkdown({
     ...taskMarkdownInput,
     taskPlan,
     includeWakeComments: false,
   }) + chatCompletionInstruction(context);
-  const taskMarkdownCompact = liveVoiceTaskPrefix + buildAndrecompTaskMarkdown({
+  const taskMarkdownCompact = assignmentPrefix + buildAndrecompTaskMarkdown({
     ...taskMarkdownInput,
     taskPlan,
     includeDescription: false,
   }) + chatCompletionInstruction(context);
-  const taskMarkdownAssignmentCompact = liveVoiceTaskPrefix + buildAndrecompTaskMarkdown({
+  const taskMarkdownAssignmentCompact = assignmentPrefix + buildAndrecompTaskMarkdown({
     ...taskMarkdownInput,
     taskPlan,
     includeDescription: false,
@@ -326,6 +334,7 @@ export async function prepareHeartbeatTaskContext(db: Db, input: HeartbeatTaskCo
       db,
     ).redactForIssue(agent.companyId, issueRef.id, {
       andrecompIssue: context.andrecompIssue,
+      andrecompCase: context.andrecompCase,
       andrecompWakeComment: context.andrecompWakeComment,
       andrecompTaskCommunicationGuidance: context.andrecompTaskCommunicationGuidance,
       andrecompTaskMarkdown: context.andrecompTaskMarkdown,
@@ -334,6 +343,7 @@ export async function prepareHeartbeatTaskContext(db: Db, input: HeartbeatTaskCo
       andrecompTaskMarkdownAssignmentCompact: context.andrecompTaskMarkdownAssignmentCompact,
     });
     context.andrecompIssue = redactedWakeContext.andrecompIssue;
+    if (redactedWakeContext.andrecompCase) context.andrecompCase = redactedWakeContext.andrecompCase;
     context.andrecompTaskCommunicationGuidance = redactedWakeContext.andrecompTaskCommunicationGuidance;
     if (redactedWakeContext.andrecompWakeComment) {
       context.andrecompWakeComment =
