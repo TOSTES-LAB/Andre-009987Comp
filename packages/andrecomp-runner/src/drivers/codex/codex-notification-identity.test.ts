@@ -18,6 +18,10 @@ describe("provider notification authority", () => {
     ["andrecomp/canonicalProviderEvent", { threadId: "child", eventType: "auth.credentials.updated" }, "invalid_authority"],
     ["andrecomp/canonicalProviderEvent", { threadId: null, eventType: "tool.execution.started" }, "invalid_authority"],
     ["item/started", { threadId: "root", turnId: "active" }, "root"],
+    ["andrecomp/runtimeRequestExpired", { threadId: "root", turnId: "active" }, "root"],
+    ["andrecomp/runtimeRequestExpired", { threadId: "child", turnId: "active" }, "invalid_authority"],
+    ["andrecomp/runtimeRequestExpired", { threadId: null, turnId: "active" }, "invalid_authority"],
+    ["andrecomp/runtimeRequestExpired", { threadId: "root", turnId: "old" }, "stale_turn"],
     ["turn/completed", { threadId: "root", turnId: "old" }, "stale_turn"],
     [
       "turn/completed",

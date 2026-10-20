@@ -87,6 +87,7 @@ test("the package exposes only the reviewed runner CLI binaries", () => {
     "andrecomp-runner-eval-session": "./dist/cli/eval-session.js",
     "andrecomp-runner-codex-proxy": "./dist/cli/codex-app-server-unix-proxy.js",
     "andrecomp-runner-acpx-sidecar": "./dist/cli/acpx-runtime-sidecar.js",
+    "andrecomp-runner-copilot-metadata-probe": "./dist/cli/copilot-metadata-probe.js",
     "andrecomp-runner-opencode-proxy":
       "./dist/cli/opencode-app-server-proxy.js",
   });

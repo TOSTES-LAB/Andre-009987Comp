@@ -142,6 +142,7 @@ export function isSupportedCodexNotificationMethod(method: string): boolean {
     method === "model/safetyBuffering/updated" ||
     method.startsWith("item/") ||
     method === "andrecomp/canonicalProviderEvent" ||
+    method === "andrecomp/runtimeRequestExpired" ||
     method === "andrecomp/workspaceChange/updated" ||
     method === "andrecomp/runResult" ||
     method === "turn/diff/updated" ||
