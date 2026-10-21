@@ -7,6 +7,18 @@ import {
 } from "../services/instance-settings.js";
 
 describe("instance settings service", () => {
+  it("keeps Notebook off for legacy or invalid settings and round-trips explicit operator choices", () => {
+    for (const stored of [undefined, null, {}, { enableApps: true },
+      { enableAndrecompNotebook: "true" }, { enableAndrecompNotebook: 1 },
+      { enableAndrecompNotebook: true, enableCases: "invalid" }]) {
+      expect(normalizeExperimentalSettings(stored).enableAndrecompNotebook).toBe(false);
+    }
+    const enabled = applyExperimentalSettingsPatch({}, { enableAndrecompNotebook: true });
+    const restored = normalizeExperimentalSettings(JSON.parse(JSON.stringify(enabled)));
+    expect(restored).toMatchObject({ enableAndrecompNotebook: true, enableMemoryConnectors: false });
+    const disabled = applyExperimentalSettingsPatch(restored, { enableAndrecompNotebook: false });
+    expect(normalizeExperimentalSettings(JSON.parse(JSON.stringify(disabled))).enableAndrecompNotebook).toBe(false);
+  });
   it("keeps OpenAI Dot opt-in and persists its setting independently of its prerequisites", () => {
     expect(normalizeExperimentalSettings({}).enableOpenAiDot).toBe(false);
     const enabled = applyExperimentalSettingsPatch({}, { enableOpenAiDot: true });
@@ -67,6 +79,7 @@ describe("instance settings service", () => {
       enableChatConnectors: false,
       enableGitHubReviewBots: false,
       enableMemoryConnectors: false,
+      enableAndrecompNotebook: false,
       enableConferenceRoomChat: false,
       enableClassicTaskInterface: false,
       enableExternalObjects: false,

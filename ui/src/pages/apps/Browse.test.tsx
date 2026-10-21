@@ -935,6 +935,68 @@ describe("Connectors landing page", () => {
     },
   );
 
+  it("uses availability metadata for a non-Notebook connector in cached gallery results", async () => {
+    const privateResearch = { ...getAppStoreDefinition("notion")!, slug: "private-research", name: "Private Research", experimentalFeatureKey: "enableCases" as const };
+    listGalleryMock.mockResolvedValue({ apps: [privateResearch, getAppStoreDefinition("context7")] });
+    const client = await renderBrowse();
+    expect(container.querySelector('[data-app-slug="private-research"]')).toBeNull();
+    expect(container.querySelector('[data-app-slug="context7"]')).not.toBeNull();
+    await act(() => { client.setQueryData(queryKeys.instance.experimentalSettings, { enableCases: true }); });
+    await flushReact();
+    expect(container.querySelector('[data-app-slug="private-research"]')).not.toBeNull();
+  });
+
+  it("hides cached Notebook catalog entries until explicitly enabled", async () => {
+    listGalleryMock.mockResolvedValue({ apps: ["andrecomp-notebook", "notion"].map(getAppStoreDefinition) });
+    const client = await renderBrowse();
+    expect(container.querySelector('[data-app-slug="andrecomp-notebook"]')).toBeNull();
+    expect(container.querySelector('[data-app-slug="notion"]')).not.toBeNull();
+    await act(() => { client.setQueryData(queryKeys.instance.experimentalSettings, { enableAndrecompNotebook: true }); });
+    await flushReact();
+    expect(container.querySelector('[data-app-slug="andrecomp-notebook"]')).not.toBeNull();
+    await act(() => { client.setQueryData(queryKeys.instance.experimentalSettings, { enableAndrecompNotebook: false }); });
+    await flushReact();
+    expect(container.querySelector('[data-app-slug="andrecomp-notebook"]')).toBeNull();
+  });
+
+  it("hides Notebook while settings load", async () => {
+    experimentalMock.mockImplementation(() => new Promise(() => {}));
+    listGalleryMock.mockResolvedValue({ apps: [getAppStoreDefinition("andrecomp-notebook")] });
+    await renderBrowse();
+    expect(container.querySelector('[data-app-slug="andrecomp-notebook"]')).toBeNull();
+  });
+
+  it("hides Notebook when a settings refresh fails with a cached opt-in", async () => {
+    experimentalMock.mockResolvedValue({ enableAndrecompNotebook: true });
+    listGalleryMock.mockResolvedValue({ apps: [getAppStoreDefinition("andrecomp-notebook")] });
+    const client = await renderBrowse();
+    expect(container.querySelector('[data-app-slug="andrecomp-notebook"]')).not.toBeNull();
+    experimentalMock.mockRejectedValue(new Error("Settings unavailable"));
+    await act(async () => { await client.invalidateQueries({ queryKey: queryKeys.instance.experimentalSettings }); });
+    await flushReact();
+    expect(client.getQueryData(queryKeys.instance.experimentalSettings)).toEqual({ enableAndrecompNotebook: true });
+    expect(container.querySelector('[data-app-slug="andrecomp-notebook"]')).toBeNull();
+  });
+
+  it("keeps Notebook removal available while hiding reconnect and new-account controls", async () => {
+    listGalleryMock.mockResolvedValue({ apps: [getAppStoreDefinition("andrecomp-notebook")] });
+    listApplicationsMock.mockResolvedValue({ applications: [application({ id: "notebook-app", name: "Andrecomp Notebook",
+      applicationKey: "app-gallery:andrecomp-notebook:one", metadata: { sourceTemplateKey: "andrecomp-notebook" } })] });
+    listConnectionsMock.mockResolvedValue({ connections: [connection({ id: "saved-notebook", applicationId: "notebook-app",
+      name: "Notebook account", config: { sourceTemplateKey: "andrecomp-notebook" }, healthStatus: "error", requiresReauthorization: true })] });
+    await renderBrowse();
+    const row = container.querySelector('[data-app-slug="andrecomp-notebook"]')!;
+    expect(row).not.toBeNull();
+    expect([...row.querySelectorAll("button")].some(button => /^(Connect|Add connection|Reconnect|Finish setup)$/.test(button.textContent?.trim() ?? ""))).toBe(false);
+    await act(() => { row.querySelector<HTMLButtonElement>('button[aria-label^="Manage "]')!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); });
+    await flushReact();
+    await act(() => { [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent?.trim() === "Remove connection")!.click(); });
+    await flushReact();
+    await act(() => { [...document.querySelectorAll("button")].find(button => button.textContent?.trim() === "Remove connection")!.click(); });
+    await flushReact();
+    expect(archiveConnectionMock).toHaveBeenCalledWith("saved-notebook");
+  });
+
   it("hides cached memory connectors until enabled and preserves saved MCP connections", async () => {
     const providers = ["mem0", "zep", "supermemory", "cognee", "honcho"];
     listGalleryMock.mockResolvedValue({ apps: [...providers, "notion"].map(getAppStoreDefinition) });

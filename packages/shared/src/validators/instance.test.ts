@@ -2,9 +2,21 @@ import { describe, expect, it } from "vitest";
 import {
   instanceExperimentalSettingsSchema,
   patchInstanceExperimentalSettingsSchema,
+  instanceExperimentalSettingsWithManagedSchema,
 } from "./instance.js";
 
 describe("instance experimental settings validators", () => {
+  it("keeps Notebook disabled by default and accepts only explicit boolean rollout values", () => {
+    expect(instanceExperimentalSettingsSchema.parse({ enableApps: true, enableMemoryConnectors: true }).enableAndrecompNotebook).toBe(false);
+    expect(patchInstanceExperimentalSettingsSchema.parse({})).toEqual({});
+    for (const enabled of [true, false]) {
+      expect(patchInstanceExperimentalSettingsSchema.parse({ enableAndrecompNotebook: enabled })).toEqual({ enableAndrecompNotebook: enabled });
+      expect(instanceExperimentalSettingsWithManagedSchema.parse({ enableAndrecompNotebook: enabled,
+        managedKeys: { enableAndrecompNotebook: { managed: true, managedBy: "andrecomp-cloud" } },
+      }).enableAndrecompNotebook).toBe(enabled);
+    }
+    expect(patchInstanceExperimentalSettingsSchema.safeParse({ enableAndrecompNotebook: "true" }).success).toBe(false);
+  });
   it("defaults GitHub review bots off independently of chat and accepts explicit changes", () => {
     expect(instanceExperimentalSettingsSchema.parse({ enableChatConnectors: true }).enableGitHubReviewBots).toBe(false);
     expect(patchInstanceExperimentalSettingsSchema.parse({ enableGitHubReviewBots: true })).toEqual({ enableGitHubReviewBots: true });

@@ -92,6 +92,7 @@ function defaultExperimentalSettings(): InstanceExperimentalSettingsPayload {
     enableChatConnectors: false,
     enableGitHubReviewBots: false,
     enableMemoryConnectors: false,
+    enableAndrecompNotebook: false,
     enableCases: false,
     enableAgentChat: false,
     enableCombinedInboxTasks: false,
@@ -1145,6 +1146,20 @@ describe("InstanceExperimentalSettings — operator-hidden cards", () => {
     expect(container.textContent).toContain("Experimental features");
     expect(container.textContent).not.toContain("AI connection routers");
     expect(container.querySelector('button[aria-label="Toggle AI connection routers experimental setting"]')).toBeNull();
+    expect(mockInstanceSettingsApi.updateExperimental).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { enabled: false, developerMode: false }, { enabled: true, developerMode: false },
+    { enabled: false, developerMode: true }, { enabled: true, developerMode: true },
+  ])("never offers a Notebook control with enabled=$enabled and developerMode=$developerMode", async ({ enabled, developerMode }) => {
+    await renderPage(undefined, { ...defaultExperimentalSettings(), enableAndrecompNotebook: enabled,
+      enableAndrecompDeveloperMode: developerMode,
+      managedKeys: { enableAndrecompNotebook: { managed: true, managedBy: "andrecomp-cloud" } },
+    });
+    expect(container.textContent).toContain("Experimental features");
+    expect(container.textContent).not.toContain("Andrecomp Notebook");
+    expect(container.querySelector('button[aria-label="Toggle Andrecomp Notebook experimental setting"]')).toBeNull();
     expect(mockInstanceSettingsApi.updateExperimental).not.toHaveBeenCalled();
   });
 
