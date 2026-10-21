@@ -205,7 +205,7 @@ export function andrecompRunnerTransitionConfig(
   providerOverride?: unknown,
 ): Record<string, unknown> {
   const previousProvider =
-    previousAdapterType === "claude_local"
+    (previousAdapterType === "claude_local" || previousAdapterType === "pi_local")
       ? "acpx"
       : previousAdapterType === "opencode_local"
         ? "opencode"
@@ -218,11 +218,13 @@ export function andrecompRunnerTransitionConfig(
       : previousProvider;
   return {
     provider,
-    model: resolveAndrecompRunnerModel(
+    model: provider === "acpx" && previousAdapterType === "pi_local"
+      ? typeof previousModel === "string" ? previousModel.trim() : ""
+      : resolveAndrecompRunnerModel(
       provider,
       provider === previousProvider ? previousModel : undefined,
     ),
-    ...(provider === "acpx" ? { acpxAgent: "claude" } : {}),
+    ...(provider === "acpx" ? { acpxAgent: previousAdapterType === "pi_local" ? "pi" : "claude" } : {}),
     [ANDRECOMP_RUNNER_PERMISSION_CAPABILITIES[provider].configKey]:
       ANDRECOMP_RUNNER_PERMISSION_CAPABILITIES[provider].defaultMode,
     lifecycleMode: "per_turn",

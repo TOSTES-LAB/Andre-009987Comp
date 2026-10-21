@@ -20,6 +20,7 @@ import {
   isAndrecompExternalChatQuestionResponseTurn,
   isAndrecompExternalChatTurn,
   materializeAndrecompSkillCopy,
+  normalizeAndrecompRunnerAdapterConfig,
   ANDRECOMP_OPERATIONAL_SKILL_KEY,
   ANDRECOMP_FEEDBACK_SKILL_KEYS,
   refreshAndrecompWorkspaceEnvForExecution,
@@ -42,6 +43,12 @@ import {
   UNMANAGED_BACKGROUND_TASK_STOP_REASON,
   WATCHDOG_DEFAULT_MANDATE,
 } from "./server-utils.js";
+
+it("keeps Pi draft models empty and preserves saved native Pi settings", () => {
+  expect(normalizeAndrecompRunnerAdapterConfig("andrecomp_runner", { provider: "acpx", acpxAgent: "pi", model: "" })).toMatchObject({ provider: "acpx", acpxAgent: "pi", model: "" });
+  const saved = { provider: "acpx", acpxAgent: "pi", model: "openrouter/provider/model", piThinkingLevel: "max", acpxPermissionMode: "approve-reads", lifecycleMode: "warm" };
+  expect(normalizeAndrecompRunnerAdapterConfig("andrecomp_runner", saved)).toMatchObject(saved);
+});
 
 it("reserves identity credentials even for mixed-case inherited or configured keys", () => {
   const keys = ["ANDRECOMP_AGENT_KEY_ID", "Andrecomp_Agent_Public_Key", "andrecomp_agent_private_key"];

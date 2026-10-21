@@ -154,7 +154,7 @@ describe("agent-created hires use managed AI connections", () => {
   });
 
   it.each([
-    ["opencode_local", {}, "ANDRECOMP_OPENCODE_PROVIDERS"],
+    ["opencode_local", { model: "anthropic/claude-sonnet-5" }, "ANDRECOMP_OPENCODE_PROVIDERS"],
     ["opencode_local", { model: "anthropic/claude-sonnet-5" }, "OPENCODE_AUTH_JSON"],
     ["andrecomp_runner", { provider: "opencode", model: "anthropic/claude-sonnet-5" }, "OPENCODE_CONFIG_CONTENT"],
   ] as const)("%s hires with %j apply the host boundary to explicit %s auth", async (adapterType, config, key) => {

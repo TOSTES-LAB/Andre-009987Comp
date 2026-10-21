@@ -14,6 +14,13 @@ export function buildOpenCodeLocalConfig(v: CreateConfigValues): Record<string, 
   if (v.model) ac.model = v.model;
   if (v.thinkingEffort) ac.variant = v.thinkingEffort;
   ac.dangerouslySkipPermissions = v.dangerouslySkipPermissions;
+  const nativeSelected = v.runner === "andrecomp"
+    || ((v.runner === undefined || v.runner === "auto") && v.resolvedRunner === "andrecomp");
+  if (nativeSelected) {
+    if (v.adapterSchemaValues?.opencodePermissionMode !== undefined) ac.opencodePermissionMode = v.adapterSchemaValues.opencodePermissionMode;
+    if (v.andrecompRunnerLifecycleMode !== undefined) ac.lifecycleMode = v.andrecompRunnerLifecycleMode;
+    if (v.andrecompRunnerIdleTimeoutMs !== undefined) ac.idleTimeoutMs = v.andrecompRunnerIdleTimeoutMs;
+  }
   // OpenCode sessions can run until the CLI exits naturally; keep timeout disabled (0)
   // and rely on graceSec for termination handling when a timeout is configured elsewhere.
   ac.timeoutSec = 0;
