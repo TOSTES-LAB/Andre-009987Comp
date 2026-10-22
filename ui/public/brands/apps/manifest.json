@@ -702,6 +702,12 @@
       "catalogVisible": true,
       "localAsset": "/brands/apps/andrecomp-notebook.svg",
       "darkAsset": "/brands/apps/andrecomp-notebook-dark.svg"
+    },
+    {
+      "slug": "unikraft",
+      "provider": "Unikraft",
+      "catalogVisible": true,
+      "localAsset": "/brands/apps/unikraft.svg"
     }
   ]
 }

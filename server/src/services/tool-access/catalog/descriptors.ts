@@ -1,4 +1,4 @@
-import { isDaytonaConnection } from "../../daytona.js";
+import { nativeProviderCatalogFor } from "../../native-provider-catalogs.js";
 import { googleWorkspaceToolTarget } from "@andrecomp/shared";
 import { BROWSER_USE_TOOLS } from "@andrecomp/shared";
 import { isMemoryConnectorId } from "@andrecomp/shared";
@@ -291,5 +291,5 @@ export function isGoogleWorkspaceToolAllowed(
 export function shouldQuarantineNewEntries(
   connection: typeof toolConnections.$inferSelect,
 ): boolean {
-  return isDaytonaConnection(connection) || asRecord(connection.config).quarantineNewEntries === true;
+  return Boolean(nativeProviderCatalogFor(connection)) || asRecord(connection.config).quarantineNewEntries === true;
 }
