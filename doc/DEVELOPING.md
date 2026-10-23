@@ -2597,6 +2597,13 @@ Environment overrides:
   negative, empty, or non-numeric value falls back to the default.
   `ANDRECOMP_NATIVE_HARNESS_BACKUP_EXPIRATION_ENABLED=false` turns expiry off, and
   `ANDRECOMP_NATIVE_HARNESS_BACKUP_EXPIRATION_DRY_RUN=true` only reports candidates.
+- `ANDRECOMP_NATIVE_WORKSPACE_SYNC_RETENTION_DAYS=<days>` sets how long a settled
+  run's native workspace sync folder (descriptor, manifest and seed archives under
+  `<instance>/native-workspace-sync/<run>`) is kept (see
+  `doc/recoverable-disk-cleanup.md`). The default is `7` and the minimum is `1`. A
+  negative, empty, or non-numeric value falls back to the default.
+  `ANDRECOMP_NATIVE_WORKSPACE_SYNC_RETENTION_ENABLED=false` turns retention off, and
+  `ANDRECOMP_NATIVE_WORKSPACE_SYNC_RETENTION_DRY_RUN=true` only reports candidates.
 - `ANDRECOMP_GIT_RESTORE_POINTS_ENABLED=true` lets git cache expiration remove closed
   worktrees with unpushed or uncommitted work after saving an encrypted restore point
   (see `doc/recoverable-disk-cleanup.md`). It is off by default.
@@ -2857,6 +2864,16 @@ Andrecomp API URL when running dev Storybook. Published Storybook builds automat
 package avatar PNGs using the API renderer; static hosting needs no API proxy.
 
 ### Investigating polling load
+
+Runtime progress updates recheck the persisted run status before publication.
+This check selects only the run ID, company ID, agent ID, and status through
+`createHeartbeatRunState().getRunStatus`. It does not fetch prompts, runner
+configuration, or provider results. Keep this read fresh so terminal or deleted
+runs cannot publish late progress from an old executor snapshot.
+
+Native event and retry-exhaustion ingestion lock the run row to verify its
+company and agent bindings. That lock reads only those two fields. Sequence
+allocation, replay checks, and event insertion remain in the same transaction.
 
 Run the deterministic native event replay with the normal server test runner:
 
