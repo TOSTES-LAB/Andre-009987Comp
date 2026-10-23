@@ -1,0 +1,23 @@
+sequenceDiagram
+    participant User
+    participant Andrecomp
+    participant Vault
+    participant Supabase
+    User->>Andrecomp: Select Supabase method and agent access
+    alt Hosted MCP browser sign-in
+        Andrecomp->>Supabase: Read protected resource and issuer metadata
+        Andrecomp->>Supabase: Register instance OAuth client
+        Andrecomp->>User: Open authorization URL
+        User->>Supabase: Choose organization and consent
+        Supabase->>Andrecomp: Instance callback with authorization code
+        Andrecomp->>Supabase: Exchange code with PKCE
+    else Personal access token
+        User->>Andrecomp: Enter token and optional or required project reference
+    end
+    Andrecomp->>Vault: Store selected grant credential
+    Andrecomp->>Supabase: MCP discovery or native project probe
+    User->>Andrecomp: Set action permissions
+    Andrecomp->>Andrecomp: Authorize agent run and selected grant
+    Andrecomp->>Vault: Resolve selected invocation credential
+    Andrecomp->>Supabase: Invoke permitted action
+    Andrecomp->>Andrecomp: Record bounded result and audit

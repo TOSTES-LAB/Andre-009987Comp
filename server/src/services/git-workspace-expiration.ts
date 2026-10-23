@@ -13,7 +13,7 @@ import { abandonGitRestorePoint, abandonGitRestorePointsByKey, activateGitRestor
 import { withIsolatedRepositorySourceLock, verifiedRecordedIsolatedRemoteSource } from "./isolated-remote-workspace-source.js";
 import { managedProjectCheckoutName } from "./managed-project-checkout-name.js";
 import type { GitRemoteAuthProvider } from "./git-credentials.js";
-import { assertReproducibleGitFiles, assertReproducibleBaseGitStorage, assertReproducibleManagedCheckout, inspectGitCacheRecipe, inspectGitCacheRecipeForRestorePoint, readGitCacheRestoration, GIT_CACHE_RESTORATION_SCHEMA_V2,
+import { assertReproducibleGitFiles, assertReproducibleBaseGitStorage, assertReproducibleManagedCheckout, provenManagedCheckoutHistory, inspectGitCacheRecipe, inspectGitCacheRecipeForRestorePoint, readGitCacheRestoration, GIT_CACHE_RESTORATION_SCHEMA_V2,
   verifyRemoteGitCommit, gitCacheExpirationLockLocations, recoverGitCacheExpirationLocks, GitCacheRestorationFailure, type ManagedCheckoutProver, gitCacheCommand, readGitCacheExpiration, finishGitCacheTrash, type GitCacheExpiration, type GitCacheRestoration, GIT_CACHE_RESTORATION_KEY, GIT_CACHE_EXPIRATION_REASON } from "./git-workspace-restoration.js";
 
 async function allocatedBytes(target: string, shouldContinue: () => boolean): Promise<number> {
@@ -43,8 +43,33 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 type Workspace = typeof executionWorkspaces.$inferSelect;
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type Expiration = GitCacheExpiration;
+export type GitExpirationFailure = { name: string; code: string | null; at: string | null; stderr: string | null };
+
 export type GitExpirationResult = { candidate: boolean; expired: boolean; reclaimedBytes: number;
-  candidateBytes: number; baseExpired: boolean; skipReason: string | null; restorePoint: boolean };
+  candidateBytes: number; baseExpired: boolean; skipReason: string | null; restorePoint: boolean; failure?: GitExpirationFailure };
+
+function redactGitOutput(text: string) {
+  return text.replace(/:\/\/[^@\s/]+@/g, "://<redacted>@")
+    .replace(/(authorization|token|password|secret)(\s*[:=]\s*)[^\n]*/gi, "$1$2<redacted>");
+}
+
+function recordSkip(result: GitExpirationResult, error: unknown) {
+  result.skipReason = error instanceof RestorePointSkip ? error.reason : skipReason(error);
+  if (result.skipReason === "inspection_failed") result.failure = describeGitExpirationFailure(error);
+}
+
+export function describeGitExpirationFailure(error: unknown): GitExpirationFailure {
+  if (!(error instanceof Error)) return { name: typeof error, code: null, at: null, stderr: null };
+  const details = error as Error & { code?: unknown; stderr?: unknown };
+  const frame = error.stack?.split("\n").slice(1).map(line => line.trim()).find(line => line.startsWith("at ")) ?? null;
+  const stderr = typeof details.stderr === "string" ? details.stderr : Buffer.isBuffer(details.stderr) ? details.stderr.toString("utf8") : "";
+  return {
+    name: error.name,
+    code: details.code === undefined || details.code === null ? null : String(details.code),
+    at: frame ? frame.slice(0, 300) : null,
+    stderr: stderr.trim() ? redactGitOutput(stderr.trim()).slice(0, 500) : null,
+  };
+}
 
 export type GitRestorePointExpirationOptions = {
   storage: StorageService;
@@ -271,7 +296,7 @@ export async function expireReconstructableGitWorkspace(db: Db, snapshot: Worksp
           if (options.expireBase) {
             try { result.candidateBytes += await inspectBase(db, { ...workspace,
               metadata: { ...workspace.metadata, [GIT_CACHE_RESTORATION_KEY]: recipe } }, options.signal, present); }
-            catch (error) { result.skipReason = skipReason(error); }
+            catch (error) { recordSkip(result, error); }
           }
           return result;
         }
@@ -294,7 +319,9 @@ export async function expireReconstructableGitWorkspace(db: Db, snapshot: Worksp
             } else if (!headOnRemote) throw new Error("upstream_commit_unverified");
             for (const [name, need] of [...checkoutRestorePoints.entries()].sort(([a], [b]) => a.localeCompare(b))) {
               const storedCheckout = await storeGitRestorePoint({ db, storage: options.restorePoint!.storage, workspace: owner,
-                cwd: need.path, checkout: name, generation, headOnRemote: need.headOnRemote, limits: options.restorePoint!.limits,
+                cwd: need.path, checkout: name, generation, headOnRemote: need.headOnRemote,
+                resolvePreserveCommits: async () => (await provenManagedCheckoutHistory(need.path, need.repoUrl, auth, options.signal)).preserve,
+                limits: options.restorePoint!.limits,
                 signal: options.signal, upstreamCommits: await restorePointBoundary(need.path, need.repoUrl, need.headOnRemote, auth, options.signal) });
               if (!storedCheckout) {
                 if (!need.headOnRemote) throw new Error("unpushed_managed_checkout");
@@ -414,7 +441,7 @@ export async function expireReconstructableGitWorkspace(db: Db, snapshot: Worksp
               result.reclaimedBytes += bytes;
               result.baseExpired = true;
             }
-          } catch (error) { result.skipReason = skipReason(error); }
+          } catch (error) { recordSkip(result, error); }
         }
         state.completed = recipe.sourceKind !== "isolated_remote" || !options.expireBase || (result.baseExpired || !await exists(recipe.sourcePath)) && (!state.baseTrash || !await exists(state.baseTrash));
         await persist();
@@ -423,7 +450,7 @@ export async function expireReconstructableGitWorkspace(db: Db, snapshot: Worksp
   } catch (error) {
     for (const ledgerId of pendingRestorePoints) await abandonGitRestorePoint(db, ledgerId).catch(() => undefined);
     options.signal?.throwIfAborted();
-    result.skipReason = error instanceof RestorePointSkip ? error.reason : skipReason(error);
+    recordSkip(result, error);
     return result;
   }
 }
