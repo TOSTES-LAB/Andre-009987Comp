@@ -11,6 +11,9 @@ const AMBIENT_ANDRECOMP_CREDENTIAL_KEYS = [
   "ANDRECOMP_API_KEY",
   "ANDRECOMP_AGENT_API_KEY",
   "ANDRECOMP_TASK_BRIDGE_TOKEN",
+  "ANDRECOMP_E2E_GATEWAY_TOKEN",
+  "ANDRECOMP_E2E_GATEWAY_PHASE_PATH",
+  "ANDRECOMP_E2E_OTLP_RELAY_URL",
   "ANDRECOMP_SETUP_TOKEN",
   "ANDRECOMP_SECRETS_MASTER_KEY",
   "ANDRECOMP_SECRETS_MASTER_KEY_FILE",
@@ -28,7 +31,25 @@ const AMBIENT_EXTERNAL_STATE_KEYS = [
   "ANDRECOMP_STORAGE_S3_PREFIX",
   "ANDRECOMP_STORAGE_S3_FORCE_PATH_STYLE",
 ] as const;
-const PROVIDER_SECRET_KEY = /^(?:OPENAI|ANTHROPIC|OPENROUTER|DAYTONA|XAI|GROK|CURSOR|COPILOT|GITHUB|GH)(?:_|$)/;
+const PROVIDER_SECRET_KEY = /^(?:OPENAI|ANTHROPIC|OPENROUTER|BRAINTRUST|DAYTONA|XAI|GROK|CURSOR|COPILOT|GITHUB|GH)(?:_|$)/;
+
+export function applyEvalGatewayEnvironment(env: NodeJS.ProcessEnv, credential: string, gateway: {
+  token: string; baseUrl: string; phasePath: string; observability?: { token: string; baseUrl: string };
+}) {
+  for (const name of Object.keys(env)) {
+    if (CREDENTIAL_NAMES.includes(name as typeof CREDENTIAL_NAMES[number])
+      || PROVIDER_SECRET_KEY.test(name) && /KEY|TOKEN|SECRET|PASSWORD/.test(name)) delete env[name];
+  }
+  delete env.ANDRECOMP_E2E_OTLP_RELAY_URL;
+  env[credential] = gateway.token;
+  env.ANDRECOMP_E2E_GATEWAY_BASE_URL = gateway.baseUrl;
+  env.ANDRECOMP_E2E_GATEWAY_TOKEN = gateway.token;
+  env.ANDRECOMP_E2E_GATEWAY_PHASE_PATH = gateway.phasePath;
+  if (gateway.observability) {
+    env.BRAINTRUST_API_KEY = gateway.observability.token;
+    env.ANDRECOMP_E2E_OTLP_RELAY_URL = gateway.observability.baseUrl;
+  }
+}
 
 export function runnerE2EServerControlPaths(temporaryRoot: string) {
   const controlDirectory = path.join(temporaryRoot, "control");
@@ -110,6 +131,8 @@ export function buildRunnerE2EProcessEnvironment(
   const installed = usesInstalledCli(source);
   if (installed) assertInstalledCliSelection(source, executions);
   const result = { ...source };
+  delete result.ANDRECOMP_E2E_GATEWAY_PHASE_PATH;
+  delete result.ANDRECOMP_E2E_OTLP_RELAY_URL;
   // Announcements are unrelated to the scenarios and obscure screenshot evidence.
   result.ANDRECOMP_ANNOUNCEMENTS_ENABLED = "false";
   delete result.OPENCODE_ALLOW_ALL_MODELS;
