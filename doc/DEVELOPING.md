@@ -1776,6 +1776,11 @@ preparation. Both phases keep their original ordering in `heartbeat.ts`; they
 acquire no runtime resources. Public-path characterization tests live in
 `server/src/__tests__/heartbeat-session-preparation.test.ts`.
 
+Session compatibility uses effective workspace policy and settings. Generic issue
+and project row timestamps do not reset a session. This includes the first
+project-owned directory binding. Changes to effective execution configuration
+still require a fresh session.
+
 Run-log formatting is in `server/src/services/heartbeat/run-log.ts`. It bounds
 stored event payloads, redacts and shortens log chunks, and caps stdout/stderr
 excerpts. `run-output.ts` owns per-attempt log handles, current-user redaction,
@@ -2613,8 +2618,8 @@ Environment overrides:
 - `ANDRECOMP_GIT_RESTORE_POINTS_ENABLED=true` lets git cache expiration remove closed
   worktrees with unpushed or uncommitted work after saving an encrypted restore point
   (see `doc/recoverable-disk-cleanup.md`). It is off by default.
-  `ANDRECOMP_GIT_RESTORE_POINT_TERMINAL_DELAY_DAYS=<days>` sets how long the issue tree
-  must be closed first. The default is `3`. A negative, empty, or non-numeric value falls
+  `ANDRECOMP_GIT_RESTORE_POINT_TERMINAL_DELAY_DAYS=<days>` sets how long the issues that
+  use the workspace (the source issue and descendants bound to it) must be closed first. The default is `3`. A negative, empty, or non-numeric value falls
   back to the default.
   `ANDRECOMP_GIT_RESTORE_POINT_IDLE_DAYS=<days>` sets how long an open issue tree's
   worktree must go untouched before it is removed the same way; runs restore it
@@ -2870,6 +2875,13 @@ Andrecomp API URL when running dev Storybook. Published Storybook builds automat
 package avatar PNGs using the API renderer; static hosting needs no API proxy.
 
 ### Investigating polling load
+
+Deferred-message recovery reads run admission fields before calling the release
+policy. The release coordinator reads authentication evidence and then refreshes
+completion identity after post-commit effects. These checks do not load stored
+prompts, Runner profiles, or output excerpts. Full execution and detail reads
+retain those fields. Queue cadence, delivery admission, and cleanup ownership
+remain unchanged.
 
 Runtime progress updates recheck the persisted run status before publication.
 This check selects only the run ID, company ID, agent ID, and status through

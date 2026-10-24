@@ -1,5 +1,9 @@
 # Paid runner full-stack E2E
 
+The explicit-only [GitHub review bot journey](GITHUB-REVIEW-JOURNEY.md) tests
+attended bot setup and an automatic PR review against an attached deployment.
+Private account bindings and setup receipts live in the private eval repository.
+
 ## Dependable-work qualification checkpoint
 
 `dependable-qualification.ts` defines the six everyday journeys across Codie
