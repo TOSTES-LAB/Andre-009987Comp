@@ -102,6 +102,9 @@ export interface Config {
   gitRestorePointsEnabled: boolean;
   gitRestorePointTerminalDelayDays: number;
   gitRestorePointIdleDays: number;
+  taskDirectoryRetentionEnabled: boolean;
+  taskDirectoryRetentionDryRun: boolean;
+  taskDirectoryOrphanGraceDays: number;
   serveUi: boolean;
   uiDevMiddleware: boolean;
   secretsProvider: SecretProvider;
@@ -352,6 +355,7 @@ export function loadConfig(): Config {
   const gitRestorePointRetentionDays = Math.max(1, nonNegativeIntegerEnv("ANDRECOMP_GIT_RESTORE_POINT_RETENTION_DAYS", 90));
   const gitRestorePointTerminalDelayDays = nonNegativeIntegerEnv("ANDRECOMP_GIT_RESTORE_POINT_TERMINAL_DELAY_DAYS", 3);
   const gitRestorePointIdleDays = nonNegativeIntegerEnv("ANDRECOMP_GIT_RESTORE_POINT_IDLE_DAYS", 7);
+  const taskDirectoryOrphanGraceDays = Math.max(1, nonNegativeIntegerEnv("ANDRECOMP_TASK_DIRECTORY_ORPHAN_GRACE_DAYS", 7));
   const bindValidationErrors = validateConfiguredBindMode({
     deploymentMode,
     deploymentExposure,
@@ -420,6 +424,9 @@ export function loadConfig(): Config {
     gitRestorePointsEnabled: process.env.ANDRECOMP_GIT_RESTORE_POINTS_ENABLED === "true",
     gitRestorePointTerminalDelayDays,
     gitRestorePointIdleDays,
+    taskDirectoryRetentionEnabled: process.env.ANDRECOMP_TASK_DIRECTORY_RETENTION_ENABLED === "true",
+    taskDirectoryRetentionDryRun: process.env.ANDRECOMP_TASK_DIRECTORY_RETENTION_DRY_RUN !== "false",
+    taskDirectoryOrphanGraceDays,
     serveUi:
       process.env.SERVE_UI !== undefined
         ? process.env.SERVE_UI === "true"
