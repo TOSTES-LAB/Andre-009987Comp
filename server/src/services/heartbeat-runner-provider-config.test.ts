@@ -140,7 +140,9 @@ describe("Andrecomp Runner native provider configuration", () => {
     expect(resolveAndrecompRunnerNativeProviderInput({ backend: "acpx_runtime", adapterConfig: projected })).toMatchObject({ provider: "acpx", acpxAgent: "claude", claudeEffort: "xhigh", acpxPermissionMode: "deny-all" });
     const changedModel = projectAndrecompRunnerTaskConfig("acpx_runtime", base, { model: "claude-sonnet-5" });
     expect(changedModel).not.toHaveProperty("modelReasoningEffort");
-    expect(() => resolveAndrecompRunnerNativeProviderInput({ backend: "acpx_runtime", adapterConfig: { ...base, chrome: true } })).toThrow("Legacy runner");
+    expect(resolveAndrecompRunnerNativeProviderInput({ backend: "acpx_runtime", adapterConfig: { ...base, chrome: true, maxTurnsPerRun: 1000 } }))
+      .toEqual(resolveAndrecompRunnerNativeProviderInput({ backend: "acpx_runtime", adapterConfig: base }));
+    expect(() => resolveAndrecompRunnerNativeProviderInput({ backend: "acpx_runtime", adapterConfig: { ...base, networkScope: "unrestricted" } })).toThrow("Legacy runner");
   });
 
   it("uses an OpenCode task model without changing the Runner provider", () => {

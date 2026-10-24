@@ -1,5 +1,6 @@
 import * as environmentTaskRuntime from "../environment-task-runtime.js";
 import * as pluginTaskRuntime from "./plugin-runner-task.js";
+import * as completionFeedback from "./native-completion-feedback.js";
 import { environmentTaskOperationSchema } from "@andrecomp/plugin-sdk";
 import { trace } from "@opentelemetry/api";
 import { InMemorySpanExporter, SimpleSpanProcessor, TracerProvider } from "@opentelemetry/sdk-trace";
@@ -119,6 +120,7 @@ type BackendFactoryOptions = {
     };
   }) => unknown;
   dynamicToolHandler?: (call: unknown) => Promise<unknown>;
+  completionFeedback?: (result: Parameters<typeof completionFeedback.nativeCompletionFeedback>[2]) => Promise<string>;
   onSpawn?: (meta: {
     pid: number;
     processGroupId: number | null;
@@ -6324,6 +6326,98 @@ describe("native terminal-turn accounting", () => {
 });
 
 describe("native resumed preparation timing", () => {
+  it.each(["comment.to_run_created", "question_response.to_run_created", "heartbeat.queue", "native_dispatch"])(
+    "records first assistant text once from %s through Core preparation and event receipt",
+    async (ingress) => {
+      const startedAtMs = Date.now() - 5_000;
+      const events: AdapterRuntimeEvent[] = [];
+      const clock = vi.spyOn(Date, "now").mockReturnValue(startedAtMs + 4_000);
+      const event = (eventType: string, payload: Record<string, unknown>) => ({
+        eventType, payload, itemId: "message", emittedAt: new Date(startedAtMs + 2_000).toISOString(),
+      }) as PrpEvent;
+      state.execute.mockReset().mockImplementationOnce(async () => {
+        for (const candidate of [
+          event("turn.submitted", {}),
+          event("turn.started", {}),
+          event("item.started", { kind: "agentMessage" }),
+          event("item.completed", { kind: "agentMessage", text: " " }),
+          event("item.delta", { kind: "agentMessage", text: " " }),
+          event("item.delta", { kind: "agentMessage", text: 42 }),
+          event("item.delta", { kind: "reasoning", text: "" }),
+          event("item.delta", { kind: "toolCall", text: "arguments" }),
+          event("item.delta", { kind: "usage", text: "tokens" }),
+          event("tool.execution.started", { executionId: "tool-1" }),
+        ]) await accountingEvents.committed!(candidate);
+        await accountingEvents.duplicate!(event("item.delta", { kind: "agentMessage", text: "replayed text" }));
+        expect(events.some((candidate) => candidate.payload?.span === "task.time_to_first_token")).toBe(false);
+        clock.mockReturnValue(startedAtMs + 4_500);
+        await accountingEvents.committed!(event("item.delta", { kind: "agentMessage", text: "first text" }));
+        clock.mockReturnValue(startedAtMs + 4_750);
+        await accountingEvents.committed!(event("item.delta", { kind: "agentMessage", text: "later text" }));
+        return { result: { summary: "cancelled" }, terminal: { runTerminalState: "cancelled" },
+          turnId: "turn", normalizedSessionId: "session", providerSessionId: null,
+          driverKind: "test", driverVersion: "1", nativeEventCount: 1, highestContiguousSourceSeq: 1 };
+      });
+      try {
+        await executeAndrecompNativeSession({
+          db: leaseDb(), execution, runnerInstanceId: "runner",
+          preparationSpans: ingress === "native_dispatch" ? [] : [{ name: ingress, startedAtMs, endedAtMs: startedAtMs + 100 }],
+          onEvent: async (event) => { events.push(event); },
+        });
+      } finally { clock.mockRestore(); }
+      const ttft = events.filter((event) => event.payload?.span === "task.time_to_first_token");
+      expect(ttft).toHaveLength(1);
+      expect(ttft[0]?.payload).toMatchObject({ parentSpan: "task.provider_session", startOffsetMs: 0,
+        durationMs: ingress === "native_dispatch" ? 500 : 4_500, eventKind: "agentMessage", outcome: "ok" });
+      expect(events.find((event) => event.payload?.span === "provider.time_to_first_agent_event")?.payload)
+        .toMatchObject({ parentSpan: "agent.turn", eventKind: "agentMessage" });
+      expect(JSON.stringify(ttft)).not.toContain("first text");
+      expect(JSON.stringify(ttft)).not.toContain("later text");
+    },
+  );
+
+  it.each([
+    ["item.delta", { kind: "reasoning", text: "thinking" }, "reasoning"],
+    ["item.completed", { kind: "reasoning", text: "thought" }, "reasoning"],
+    ["item.completed", { kind: "agentMessage", text: "answer" }, "agentMessage"],
+    ["run.result.accepted", { result: { schema: "andrecomp.run_result.v1", summary: "done" } }, "agentMessage"],
+    ["turn.completed", { outputTails: [{ itemId: "message", payload: { kind: "agentMessage", text: "settled text" } }] }, "agentMessage"],
+  ] as const)("records first deliverable %s %j once", async (eventType, payload, eventKind) => {
+    const events: AdapterRuntimeEvent[] = [];
+    state.execute.mockReset().mockImplementationOnce(async () => {
+      const first = { eventType, payload, itemId: "message" } as unknown as PrpEvent;
+      await accountingEvents.duplicate!(first);
+      expect(events.some((event) => event.payload?.span === "task.time_to_first_token")).toBe(false);
+      await accountingEvents.committed!(first);
+      await accountingEvents.committed!({ eventType: "item.delta", itemId: "message",
+        payload: { kind: "agentMessage", text: "later text" } } as unknown as PrpEvent);
+      return { result: { summary: "cancelled" }, terminal: { runTerminalState: "cancelled" },
+        turnId: "turn", normalizedSessionId: "session", providerSessionId: null,
+        driverKind: "test", driverVersion: "1", nativeEventCount: 1, highestContiguousSourceSeq: 1 };
+    });
+    await executeAndrecompNativeSession({ db: leaseDb(), execution, runnerInstanceId: "runner",
+      onEvent: async (event) => { events.push(event); } });
+    const ttft = events.filter((event) => event.payload?.span === "task.time_to_first_token");
+    expect(ttft).toHaveLength(1);
+    expect(ttft[0]?.payload).toMatchObject({ parentSpan: "task.provider_session", eventKind, outcome: "ok" });
+    expect(JSON.stringify(ttft)).not.toContain("later text");
+  });
+
+  it("omits first-token timing when execution fails before assistant output", async () => {
+    const events: AdapterRuntimeEvent[] = [];
+    const failure = new Error("provider failed before output");
+    const issueProjection = vi.spyOn(issueServiceModule, "issueService").mockReturnValue({
+      update: vi.fn(async () => ({ status: "blocked", statusVersion: 1 })),
+    } as unknown as ReturnType<typeof issueServiceModule.issueService>);
+    state.execute.mockReset().mockRejectedValueOnce(failure);
+    try {
+      await expect(executeAndrecompNativeSession({ db: leaseDb(), execution, runnerInstanceId: "runner",
+        onEvent: async (event) => { events.push(event); },
+      })).rejects.toBe(failure);
+    } finally { issueProjection.mockRestore(); }
+    expect(events.some((event) => event.payload?.span === "task.time_to_first_token")).toBe(false);
+  });
+
   it("keeps answered-question ingress at the run root rather than charging it to preparation", async () => {
     const answeredAtMs = Date.now();
     const events: AdapterRuntimeEvent[] = [];
@@ -10378,14 +10472,16 @@ describe("runnerd provider runtime wiring", () => {
     await rm(isolatedStateDirectory, { recursive: true, force: true });
   });
 
-  it.each(["unchanged", "changed", "runtime-context", "retirement-failed", "stale-owner", "active-owner", "missing-owner", "foreign-environment", "plugin-replaced"] as const)("rotates an owned warm remote runner before checking changed configuration: %s", async scenario => {
+  it.each(["unchanged", "changed", "runtime-context", "retirement-failed", "stale-owner", "active-owner", "missing-owner", "foreign-environment", "plugin-replaced", "plugin-managed-github"] as const)("rotates an owned warm remote runner before checking changed configuration: %s", async scenario => {
+    const plugin = scenario === "plugin-replaced" || scenario === "plugin-managed-github";
+    const reusable = scenario === "unchanged" || scenario === "plugin-managed-github";
     const first = { ...scopedNativeExecution(`warm-admission-${scenario}`),
       schema: "andrecomp.native-execution-input.v5" as const,
       provider: { kind: "codex" as const, model: null, approvalPolicy: "never" as const },
       executionMode: "default" as const, planningContext: null, runtimeContext: nativeRuntimeContextFixture() };
     first.session.lifecyclePolicy = { mode: "warm", idleTimeoutMs: 60_000 };
     const next = { ...first, binding: { ...first.binding, runId: `${first.binding.runId}-next` },
-      session: { ...first.session, lifecyclePolicy: { mode: "warm" as const, idleTimeoutMs: ["unchanged", "runtime-context", "stale-owner", "missing-owner", "plugin-replaced"].includes(scenario) ? 60_000 : 90_000 } } };
+      session: { ...first.session, lifecyclePolicy: { mode: "warm" as const, idleTimeoutMs: ["unchanged", "runtime-context", "stale-owner", "missing-owner", "plugin-replaced", "plugin-managed-github"].includes(scenario) ? 60_000 : 90_000 } } };
     if (scenario === "runtime-context") {
       next.runtimeContext = { ...first.runtimeContext,
         mcp: { ...first.runtimeContext.mcp, digest: "1".repeat(64) } };
@@ -10403,16 +10499,19 @@ describe("runnerd provider runtime wiring", () => {
       return {kind:"description",taskId:acquisition.providerLeaseId,launchPreparationVersion:1,projectAuthCheckVersion:1,warmTaskVersion:1,
         runner:{version:"fixture",digest:`sha256:${"a".repeat(64)}`}};
     });
-    const pluginTarget=scenario === "plugin-replaced" ? {...target,remoteCwd:".",leaseId:identity.environmentLeaseId,
+    const pluginTarget=plugin ? {...target,remoteCwd:".",leaseId:identity.environmentLeaseId,
       runnerTask:task,sandboxLeaseAcquisition:acquisition} : target;
     const home=join(isolatedStateDirectory,"warm-plugin-home");
-    if(scenario === "plugin-replaced") {
+    if(plugin) {
       await mkdir(home,{recursive:true});await writeFile(join(home,"auth.json"),JSON.stringify({OPENAI_API_KEY:"synthetic-fixture"}),{mode:0o600});
     }
-    const pluginOptions=scenario === "plugin-replaced" ? {runnerIngressAuthorized:true,managedAiCredentialHome:home,
+    const pluginOptions=plugin ? {runnerIngressAuthorized:true,managedGitHub:scenario === "plugin-managed-github",managedAiCredentialHome:home,
       managedAiCredentialIdentity:"revision",managedAiAccountIdentity:"account"} : {};
     const resume=scenario === "plugin-replaced" ? vi.spyOn(environmentTaskRuntime,"resolvePluginTaskResume").mockResolvedValue("task-first") : undefined;
-    const owners=scenario === "plugin-replaced" ? vi.spyOn(pluginTaskRuntime,"createPluginRunnerTaskOwner") : undefined;
+    const createOwner = pluginTaskRuntime.createPluginRunnerTaskOwner;
+    const owners=plugin ? vi.spyOn(pluginTaskRuntime,"createPluginRunnerTaskOwner") : undefined;
+    const rebind = vi.fn();
+    if (scenario === "plugin-managed-github") owners!.mockImplementation(input => ({...createOwner(input),rebind}));
 
     const root = await initializeScopedRunnerRoot(first, identity.runnerInstanceId);
     await writeRunnerAuthority(root, identity, "ready");
@@ -10424,17 +10523,34 @@ describe("runnerd provider runtime wiring", () => {
       await writeRunnerAuthority(root, identity, "suspended");
     }) };
     const nextSession = { close: vi.fn(async () => undefined) };
-    const result = { result: { summary: "done" }, terminal: { runTerminalState: "succeeded" },
+    const validated = validatePrpStructuredRunResult({ schema: "andrecomp.run_result.v1", reportedWorkDisposition: "done",
+      summary: "done", completionClaim: { contractRevision: first.completionContract.contract.revision, objectiveSatisfied: true,
+        criteria: [], remainingWork: [] }, evidence: [], verification: [], artifacts: [], attentionRequests: [] });
+    if (!validated.ok) throw new Error("Invalid completion fixture");
+    const result = { result: validated.result, terminal: { runTerminalState: "succeeded" },
       turnId: "turn", normalizedSessionId: first.session.normalizedSessionId,
       providerSessionId: "provider", driverKind: "test", driverVersion: "1",
       nativeEventCount: 1, highestContiguousSourceSeq: 1, usage: null };
+    const feedback = vi.spyOn(completionFeedback, "nativeCompletionFeedback").mockResolvedValue("accepted");
+    const firstDb = leaseDb(first);
+    let retainedFeedback: BackendFactoryOptions["completionFeedback"];
     state.execute.mockReset().mockImplementationOnce(async options => {
+      retainedFeedback = state.createBackend.mock.calls.at(-1)![1].completionFeedback;
       await options.onSession?.(firstSession);
       return result;
     }).mockImplementationOnce(async options => {
       order.push("execute-next");
-      expect(options.existingSession).toBe(scenario === "unchanged" ? firstSession : undefined);
-      await options.onSession?.(scenario === "unchanged" ? firstSession : nextSession);
+      if (reusable) {
+        await expect(retainedFeedback!(result.result)).resolves.toBe("accepted");
+        expect(feedback).toHaveBeenLastCalledWith(firstDb, next.binding.runId, result.result);
+        expect(state.toolAuthorityDefinitions).toHaveBeenLastCalledWith(expect.objectContaining({ runId: next.binding.runId }));
+        feedback.mockClear();
+        state.toolAuthorityDefinitions.mockRejectedValueOnce(new Error("current authority denied"));
+        await expect(retainedFeedback!(result.result)).rejects.toThrow("current authority denied");
+        expect(feedback).not.toHaveBeenCalled();
+      }
+      expect(options.existingSession).toBe(reusable ? firstSession : undefined);
+      await options.onSession?.(reusable ? firstSession : nextSession);
       return result;
     });
     const older = { ...first, binding: { ...first.binding, runId: `${first.binding.runId}-older` } };
@@ -10445,7 +10561,7 @@ describe("runnerd provider runtime wiring", () => {
       ? priorNativeRunDb(scenario === "stale-owner" ? older : first, scenario === "active-owner" ? "running" : "succeeded").select(fields as never)
       : ordinarySelect(fields as never)) as Db["select"];
     try {
-      await executeAndrecompNativeSession({ db: leaseDb(first), execution: first,
+      await executeAndrecompNativeSession({ db: firstDb, execution: first,
         runnerInstanceId: identity.runnerInstanceId, useRunnerd: true, runnerExecutionTarget: pluginTarget as never,...pluginOptions });
       if (scenario === "stale-owner") await writeRunnerAuthority(root, { ...identity, runId: older.binding.runId }, "ready");
       if (scenario === "missing-owner") {
@@ -10458,7 +10574,7 @@ describe("runnerd provider runtime wiring", () => {
       const continuation = executeAndrecompNativeSession({ db: nextDb, execution: next,
         runnerInstanceId: `runner-next-${scenario}`, useRunnerd: true,
         runnerExecutionTarget: (scenario === "foreign-environment" ? { ...target, environmentId: `${environmentId}-other` }
-          : scenario === "plugin-replaced" ? {...pluginTarget,leaseId:"next-core-lease"} : target) as never,...pluginOptions });
+          : plugin ? {...pluginTarget,leaseId:"next-core-lease"} : target) as never,...pluginOptions });
       if (["stale-owner", "active-owner", "missing-owner", "foreign-environment"].includes(scenario)) {
         await expect(continuation).rejects.toThrow(scenario === "active-owner"
           ? "prior_owner_active" : "prior_owner_terminal_state_indeterminate");
@@ -10476,7 +10592,8 @@ describe("runnerd provider runtime wiring", () => {
           expect(owners!.mock.calls.at(-1)![0]).toMatchObject({resumeFrom:"task-first"});
           expect(owners!.mock.calls.at(-1)![0].adoptIdentity).toBeUndefined();
         }
-        expect(order).toEqual(scenario === "unchanged" ? ["execute-next"] : ["retire", "execute-next"]);
+        if (scenario === "plugin-managed-github") expect(rebind).toHaveBeenCalledOnce();
+        expect(order).toEqual(reusable ? ["execute-next"] : ["retire", "execute-next"]);
         if (scenario === "unchanged") {
           await writeRunnerAuthority(root, { ...identity, runId: next.binding.runId }, "ready");
           const third = { ...next, binding: { ...next.binding, runId: `${next.binding.runId}-third` } };
@@ -10493,14 +10610,14 @@ describe("runnerd provider runtime wiring", () => {
           });
           await expect(executeAndrecompNativeSession({ db: thirdDb, execution: third,
             runnerInstanceId: `runner-third-${scenario}`, useRunnerd: true,
-            runnerExecutionTarget: target as never })).resolves.toMatchObject({ exitCode: 0 });
+            runnerExecutionTarget: pluginTarget as never,...pluginOptions })).resolves.toMatchObject({ exitCode: 0 });
           expect(firstSession.close).not.toHaveBeenCalled();
           expect(state.execute).toHaveBeenCalledTimes(3);
         }
       }
     } finally {
       failRetirement = false;
-      resume?.mockRestore();owners?.mockRestore();
+      resume?.mockRestore();owners?.mockRestore();feedback.mockRestore();
       await closeWarmNativeSessionsForEnvironment({ environmentId, reason: "test cleanup" });
     }
   });

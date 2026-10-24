@@ -1,3 +1,4 @@
+import { writeEnvironmentCleanup } from "../environment-cleanup-notifications.js";
 import { DELIVERY_QUEUES } from "../delivery-work-notifications.js";
 import { writeExecutionControl } from "../execution-control-notifications.js";
 import { notifyExecutionRunWork } from "../execution-control-notifications.js";
@@ -36,6 +37,7 @@ import { createAgentIdentityRedactor } from "../agent-identity-redaction.js";
 import { parseCodexCliVersion } from "./codex-runtime-compatibility.js";
 import { createNativeToolTrace, type NativeToolTrace } from "./native-tool-trace.js";
 import { createNativeProviderFailureObservation } from "./native-provider-failure.js";
+import { createNativeDeliverableTextObservation } from "./native-deliverable-text.js";
 import { createNativeGitHubAccess, type NativeGitHubAccess } from "./native-github-access.js";
 import { resolveGitHubOperationCredentials } from "../github-operation-credentials.js";
 import { bindManagedNativeCredentialTurn, completeManagedNativeCredentialTurn } from "./managed-native-credentials.js";
@@ -6156,8 +6158,13 @@ function persistWarmNativeCheckpoint(
   chmodSync(path, 0o600);
 }
 
+function needsCoreGitHubAccess(input: Pick<Parameters<typeof executeAndrecompNativeSession>[0], "managedGitHub" | "runnerExecutionTarget">): boolean {
+  const target = input.runnerExecutionTarget;
+  return Boolean(input.managedGitHub && !(target?.kind === "remote" && target.transport === "sandbox" && target.runnerTask));
+}
+
 function warmNativeProcessConfigDigest(input: Parameters<typeof executeAndrecompNativeSession>[0]): string | undefined {
-  if (input.managedGitHub || input.runnerEnvironment?.ANDRECOMP_GITHUB_BROKER_TOKEN || input.instructionWorkingCopy) return undefined;
+  if (needsCoreGitHubAccess(input) || input.runnerEnvironment?.ANDRECOMP_GITHUB_BROKER_TOKEN || input.instructionWorkingCopy) return undefined;
   return nativeSha256({
     environment: configuredEnvironment(input.runnerEnvironment),
     managedAiCredentialIdentity: input.managedAiCredentialIdentity ?? null,
@@ -8242,6 +8249,8 @@ async function executeAndrecompNativeSessionWithinScope(
   let turnSubmittedAtMs: number | null = null;
   let turnStartedAtMs: number | null = null;
   let firstAgentEventRecorded = false;
+  let firstTokenRecorded = false;
+  const observeDeliverableText = createNativeDeliverableTextObservation();
   let providerUsageLimitObserved = false;
   const providerFailureObservation = createNativeProviderFailureObservation(input.execution.provider);
   let turnCompletedAtMs: number | null = null;
@@ -8368,6 +8377,17 @@ async function executeAndrecompNativeSessionWithinScope(
       privateKeyPem: input.runnerEnvironment?.ANDRECOMP_AGENT_PRIVATE_KEY,
       assertControllerActive,
       onCommittedEvent: async (event) => {
+        const textKind = !firstTokenRecorded ? observeDeliverableText(event) : null;
+        if (textKind) {
+          firstTokenRecorded = true;
+          await trace.record({
+            name: "task.time_to_first_token",
+            parentName: "task.provider_session",
+            startedAtMs: trace.traceStartedAtMs,
+            endedAtMs: Date.now(),
+            attributes: { eventKind: textKind },
+          });
+        }
         await observeAccountingEvent(event);
         await toolTrace.observe(event);
         if (event.eventType === "item.completed" &&
@@ -8580,6 +8600,7 @@ async function executeAndrecompNativeSessionWithinScope(
         );
       },
       onDuplicateEvent: async (event) => {
+        if (!firstTokenRecorded) observeDeliverableText(event);
         await observeAccountingEvent(event);
         // A crash can happen after the event commit but before its callback
         // finishes. Recover only idempotent durable projections here; activity,
@@ -8681,7 +8702,7 @@ async function executeAndrecompNativeSessionWithinScope(
         entry.instructionRoot !== input.instructionWorkingCopy?.root ||
         entry.managedAiCredentialIdentity !== input.managedAiCredentialIdentity ||
         credentialRunChanged ||
-        Boolean(entry.githubAccess) !== Boolean(input.managedGitHub) ||
+        Boolean(entry.githubAccess) !== needsCoreGitHubAccess(input) ||
         entry.githubAccess?.ready === false ||
         (entry.githubAccess !== undefined && entry.githubAccess.duplexRequested !== adapterExecutionTargetEnablesSandboxDuplexBridge(input.runnerExecutionTarget)) ||
         entry.githubAuthenticationMode !==
@@ -8849,7 +8870,7 @@ async function executeAndrecompNativeSessionWithinScope(
   try {
     const usesPluginTask = input.runnerExecutionTarget?.kind === "remote" && input.runnerExecutionTarget.transport === "sandbox" && !!input.runnerExecutionTarget.runnerTask;
     const prepareRunnerEnvironment = async () => {
-      if (!usesPluginTask && input.managedGitHub && input.execution.schema !== "andrecomp.native-execution-input.v6" && input.execution.schema !== "andrecomp.native-execution-input.v8") {
+      if (needsCoreGitHubAccess(input) && input.execution.schema !== "andrecomp.native-execution-input.v6" && input.execution.schema !== "andrecomp.native-execution-input.v8") {
         if (!input.execution.workspace.cwd) throw new Error("native_workspace_required");
         githubAccess ??= await timeController("github_access", () => createNativeGitHubAccess({
           scope: input.execution.binding,
@@ -8864,7 +8885,7 @@ async function executeAndrecompNativeSessionWithinScope(
       }
       return input.runnerEnvironment;
     };
-    const overlapGitHubPreparation = !usesPluginTask && input.managedGitHub && input.useRunnerd && input.backend === undefined
+    const overlapGitHubPreparation = needsCoreGitHubAccess(input) && input.useRunnerd && input.backend === undefined
       && input.runnerExecutionTarget?.kind === "remote" && input.execution.provider.kind === "codex"
       && input.execution.schema !== "andrecomp.native-execution-input.v6"
       && input.execution.schema !== "andrecomp.native-execution-input.v8";
@@ -11895,7 +11916,12 @@ async function createRunnerdBackendWithinSessionClaim(
       // its host environment out of the plugin and records the prepared directory.
       runnerInstanceId: prior?.runnerInstanceId ?? effectiveRunnerInstanceId, environment: {},
       workingDirectoryAuthority: "runner_prepared_launch", dynamicTools, dynamicToolHandler: executeTool,
-      completionFeedback: async result => { await authorityEpoch.definitions(); return nativeCompletionFeedback(input.db, input.execution.binding.runId, result); },
+      completionFeedback: async result => {
+        const current = sessionToolAuthorityEpochs.get(sessionScopeId);
+        if (!current) throw new Error("native_session_tool_authority_unavailable");
+        await current.definitions();
+        return nativeCompletionFeedback(input.db, current.runId, result);
+      },
       codexTransportFactory: recovery => createRunnerdCodexTransport({ provider: provider.kind, stateDirectory: root,
         ...owner.driver, runnerArtifact: description.runner,
         ...(provider.kind === "acpx" ? { acpxAgent: provider.agent,
@@ -12556,7 +12582,8 @@ async function createRunnerdBackendWithinSessionClaim(
       runnerInstanceId: backup.manifest.runnerInstanceId,
       completedAt: backup.manifest.completedAt,
     });
-    const updated = await input.db
+    const leaseId = remoteTarget.leaseId;
+    const updated = await writeEnvironmentCleanup(input.db, tx => tx
       .update(environmentLeases)
       .set({
         metadata: {
@@ -12565,9 +12592,9 @@ async function createRunnerdBackendWithinSessionClaim(
         },
         updatedAt: new Date(),
       })
-      .where(eq(environmentLeases.id, remoteTarget.leaseId))
+      .where(eq(environmentLeases.id, leaseId))
       .returning({ id: environmentLeases.id })
-      .then((rows) => rows[0] ?? null);
+      .then((rows) => rows[0] ?? null));
     if (!updated) throw new Error("runner_harness_backup_lease_missing");
   };
 
