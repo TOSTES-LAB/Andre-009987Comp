@@ -82,6 +82,10 @@ export interface Config {
   gitCacheExpirationEnabled: boolean;
   gitBaseExpirationEnabled: boolean;
   gitCacheExpirationDryRun: boolean;
+  isolatedSourceRehomeEnabled: boolean;
+  isolatedSourceRehomeDryRun: boolean;
+  nestedCloneMigrationEnabled: boolean;
+  nestedCloneMigrationDryRun: boolean;
   workspaceReaperCooldownDays: number;
   workspaceCompactionDelayHours: number | null;
   skillVersionRetentionEnabled: boolean;
@@ -396,6 +400,10 @@ export function loadConfig(): Config {
     gitCacheExpirationEnabled: process.env.ANDRECOMP_GIT_CACHE_EXPIRATION_ENABLED === "true",
     gitBaseExpirationEnabled: process.env.ANDRECOMP_GIT_BASE_EXPIRATION_ENABLED === "true",
     gitCacheExpirationDryRun: process.env.ANDRECOMP_GIT_CACHE_EXPIRATION_DRY_RUN !== "false",
+    isolatedSourceRehomeEnabled: process.env.ANDRECOMP_ISOLATED_SOURCE_REHOME_ENABLED === "true",
+    isolatedSourceRehomeDryRun: process.env.ANDRECOMP_ISOLATED_SOURCE_REHOME_DRY_RUN === "true",
+    nestedCloneMigrationEnabled: process.env.ANDRECOMP_NESTED_CLONE_MIGRATION_ENABLED === "true",
+    nestedCloneMigrationDryRun: process.env.ANDRECOMP_NESTED_CLONE_MIGRATION_DRY_RUN === "true",
     workspaceReaperCooldownDays,
     workspaceCompactionDelayHours,
     skillVersionRetentionEnabled: process.env.ANDRECOMP_SKILL_VERSION_RETENTION_ENABLED !== "false",

@@ -1485,6 +1485,10 @@ async function startServerWithDatabaseTeardown(
       gitCacheExpirationEnabled: config.gitCacheExpirationEnabled,
       gitBaseExpirationEnabled: config.gitBaseExpirationEnabled,
       gitCacheExpirationDryRun: config.gitCacheExpirationDryRun,
+      isolatedSourceRehomeEnabled: config.isolatedSourceRehomeEnabled,
+      isolatedSourceRehomeDryRun: config.isolatedSourceRehomeDryRun,
+      nestedCloneMigrationEnabled: config.nestedCloneMigrationEnabled,
+      nestedCloneMigrationDryRun: config.nestedCloneMigrationDryRun,
       gitRestorePoints: config.gitRestorePointsEnabled ? {
         storage: storageService,
         terminalDelayMs: config.gitRestorePointTerminalDelayDays * 24 * 60 * 60 * 1000,

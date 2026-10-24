@@ -2881,6 +2881,14 @@ Native event and retry-exhaustion ingestion lock the run row to verify its
 company and agent bindings. That lock reads only those two fields. Sequence
 allocation, replay checks, and event insertion remain in the same transaction.
 
+Sandbox-provider driver lookup filters plugin manifests by driver key and kind
+in Postgres before returning rows. Install order, status and worker checks still
+select the provider. Each lookup reads current registry state without a cache.
+
+Run-to-issue links authorize through `getRunReadAccess`, which reads only the run
+ID, company ID, scope kind, and issue ID. The existing visibility policy then
+filters linked issues without loading the run's prompt, output, or result.
+
 Run the deterministic native event replay with the normal server test runner:
 
 ```sh
@@ -3054,6 +3062,33 @@ the composer keeps an editable draft and permits retry after access is restored.
 Both enable switches default off. Rollback disables further expiration while
 leaving saved recipes and restoration support intact. Recovery archives, runner
 backups, non-Git workspaces, and immutable skill snapshots are unaffected.
+
+### Isolated repository source re-home
+
+Workspaces created with a private per-issue clone under
+`isolated-repository-sources/` can be moved onto the project's shared managed
+clone, after which the private clone is deleted. Enable it with
+`ANDRECOMP_ISOLATED_SOURCE_REHOME_ENABLED=true`; it runs only when
+`ANDRECOMP_GIT_CACHE_EXPIRATION_ENABLED=true` and defaults off. Set
+`ANDRECOMP_ISOLATED_SOURCE_REHOME_DRY_RUN=true` to log candidates without changing
+anything. Each attempt logs `execution_workspace.isolated_source_rehome` with its
+outcome, skip reason and reclaimed bytes. See
+[recoverable disk cleanup](recoverable-disk-cleanup.md#isolated-repository-sources)
+for the conditions and the verification it performs.
+
+### Nested clone migration
+
+Tasks prepared before nested project repositories became worktrees of a shared
+clone still hold a full standalone clone in each `.andrecomp-repositories/`
+checkout. Enable `ANDRECOMP_NESTED_CLONE_MIGRATION_ENABLED=true` (default off) to
+let the terminal workspace reaper convert those checkouts in open tasks into
+worktrees of the project's shared clone, keeping their exact state and local
+history, and delete the standalone clones. Set
+`ANDRECOMP_NESTED_CLONE_MIGRATION_DRY_RUN=true` to log candidates without changing
+anything. Each attempt logs `execution_workspace.nested_clone_migration` with its
+outcome, skip reason and reclaimed bytes. See
+[recoverable disk cleanup](recoverable-disk-cleanup.md#converting-existing-standalone-nested-clones)
+for the conditions, verification and crash recovery.
 
 ### Terminal workspace compaction
 

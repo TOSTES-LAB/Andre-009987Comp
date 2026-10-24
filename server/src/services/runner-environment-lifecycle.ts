@@ -1,3 +1,4 @@
+import { resolveAndrecompRunnerIdleTimeoutMs } from "@andrecomp/adapter-utils";
 import type { Environment } from "@andrecomp/shared";
 
 /** Resolve runner retention before acquiring a sandbox, not after it is ephemeral.
@@ -10,11 +11,15 @@ export function resolveRunnerEnvironmentForRun<T extends Pick<Environment, "driv
   adapterConfig: Record<string, unknown> = {},
   admittedLifecycleMode?: "warm" | "per_turn",
 ): T {
-  if (adapterType !== "andrecomp_runner" || environment.driver !== "sandbox") return environment;
+  if (adapterType !== "andrecomp_runner" || !["sandbox", "plugin"].includes(environment.driver)) return environment;
   const config = environment.config ?? {};
   const lifecycleMode = admittedLifecycleMode ?? (config.runnerLifecycleMode === "warm" || config.runnerLifecycleMode === "per_turn"
     ? config.runnerLifecycleMode
     : adapterConfig.lifecycleMode);
+  if (environment.driver === "plugin") return { ...environment, config: { ...config,
+    runnerLifecycleMode: lifecycleMode === "warm" && (adapterConfig.provider ?? "codex") === "codex" ? "warm" : "per_turn",
+    runnerIdleTimeoutMs: resolveAndrecompRunnerIdleTimeoutMs(config.runnerIdleTimeoutMs ?? adapterConfig.idleTimeoutMs),
+  } };
   if (lifecycleMode !== "warm") return environment;
   return {
     ...environment,
