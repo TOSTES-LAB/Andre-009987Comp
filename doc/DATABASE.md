@@ -129,14 +129,36 @@ stay in storage and are omitted from that read. Task and agent binding, current
 status, budget, and task privacy checks retain their existing predicates.
 Mutation transactions still lock and read complete run records. The unlocked
 authority read also omits named launch renderings and preparation data that its
-tools do not consume. Full wake payloads, other context, and result receipts
-remain available; the complete saved context stays in storage for execution.
+tools do not consume. Ordinary tool checks also omit the wake payload. Mail
+checks load the current full wake to enforce external-chat restrictions. Other
+context and result receipts remain available. The complete saved context stays
+in storage for execution.
 
 WebSocket delivery uses one fresh authorization batch for an event's task and
 run bindings. When both bindings name the same task, the batch reads its current
 authority once. Different task bindings must both pass. The batch is discarded
 after that delivery; later events still recheck grants, membership, task
 existence, and company boundaries.
+
+Browser progress events update cached live run status directly. A successful
+patch does not refetch task details, activity, or run history. Unknown runs
+retain the existing refresh fallback. Run transitions, activity events, and
+reconnect recovery still refresh their affected data.
+
+Task run queries stop interval polling only after a successful empty response
+and an open shared live connection for the current company and session. Initial
+reads, active work, errors, connection setup, and disconnections retain their
+existing polling cadence. Company or session changes require a new connection.
+Views without an assigned agent retain polling. Matching run lifecycle events
+refresh the displayed task's run queries independently of route and window
+focus. Events that omit task identity conservatively refresh these queries,
+including reviewer runs from another agent. One parent view owns both query
+observers and reuses refreshes already covered by the focused-route handler. A
+matching event that overlaps an older request queues a fresh read after that
+request settles. Connection readiness also reconciles the displayed run
+queries after any older request. Follow-up reads belong to the current mounted
+scope and stop when it changes or unmounts. The first open and reconnect still
+reconcile missed events.
 
 Connection-assignment checks select profile bindings for the current company or
 agent and read rules that can match the selected connection's catalog rows.
@@ -154,6 +176,11 @@ Saved-message execution-wait scans read current run state, process ownership,
 startup and cancellation receipts, task binding, and the recorded adapter kind.
 Saved profiles, output excerpts, and unrelated launch context stay in storage.
 Continuation admission and its locked mutation reads retain their existing gates.
+
+Task creation provenance reads current run identity, scope, and task binding.
+Legacy task references retain their typed values and existing precedence. Saved
+profiles, output, and unrelated context stay in storage. Viewer access to the
+source task and run is still checked before provenance is returned.
 
 The initial agent JWT run lookup reads only the cancellation state and
 conversation flag from saved run JSON. It does not transfer the full context or
@@ -218,6 +245,29 @@ pnpm --filter @andrecomp/server exec tsx ../scripts/benchmark-workspace-authoriz
 The benchmark loads the baseline authorization module with current dependencies,
 compares complete workspace rows, and prints five warm samples and query plans.
 It measures SQL execution, not the full repository admission or agent startup.
+
+Native finalization retries preserve a run's terminal completion time when its
+status is unchanged. A retry mints another status delivery only when the current
+run's status, finalization metadata, phase, error fields, or missing completion
+time changes. An unchanged projection retains its existing pending delivery ID,
+including after a publish failure. Status delivery stays at least once; retry
+deadlines, recovery, accepted results, and workspace cleanup still run normally.
+Legacy recovery also retains the pending delivery when status is unchanged and
+no patch was supplied. Explicit patches, new terminal statuses, and newly
+retained workspace evidence still create a delivery. File retention, ownership
+checks, failed write conditions, lock cleanup, and recovery holds still apply.
+
+Agent lists read the complete company roster once and use that same snapshot for
+termination filtering and organization-chain normalization. Detail and plugin runtime reads
+load only identity, company, name, status, and manager from other company agents
+for chain checks. The selected agent's full configuration, current monthly spend,
+and existing response redaction remain available. Every call reads current data;
+these lookups do not cache authorization or agent configuration.
+
+Queued-comment display filters wake requests by the current company, assigned
+agent, status, and exact JSON string task identity in SQL. Other tasks' comment
+identifiers stay in the database. The display projection, ordering, current run
+ownership checks, and persisted wake payloads retain their existing contract.
 
 ## 1. Embedded PostgreSQL — zero config
 

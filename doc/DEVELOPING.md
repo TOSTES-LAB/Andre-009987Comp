@@ -2627,6 +2627,11 @@ Environment overrides:
   negative, empty, or non-numeric value falls back to the default.
   `ANDRECOMP_NATIVE_HARNESS_BACKUP_EXPIRATION_ENABLED=false` turns expiry off, and
   `ANDRECOMP_NATIVE_HARNESS_BACKUP_EXPIRATION_DRY_RUN=true` only reports candidates.
+- `ANDRECOMP_NATIVE_RUNNER_EVIDENCE_RETENTION_DAYS=<days>` sets how long native
+  session continuity-break archives and quarantined session state are kept (see
+  `doc/recoverable-disk-cleanup.md`). The default is `7` and the minimum is `1`. A
+  negative, empty, or non-numeric value falls back to the default. The backup
+  expiration enabled and dry-run switches apply to it as well.
 - `ANDRECOMP_NATIVE_WORKSPACE_SYNC_RETENTION_DAYS=<days>` sets how long a settled
   run's native workspace sync folder (descriptor, manifest and seed archives under
   `<instance>/native-workspace-sync/<run>`) is kept (see

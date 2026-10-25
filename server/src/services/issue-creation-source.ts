@@ -1,14 +1,17 @@
-import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import type { Db } from "@andrecomp/db";
 import { activityLog, agents, heartbeatRuns, issues } from "@andrecomp/db";
 import { isUuidLike } from "@andrecomp/shared";
 
 type IssueRow = typeof issues.$inferSelect;
 type HeartbeatRunRow = typeof heartbeatRuns.$inferSelect;
+type CreationSourceRun = Pick<HeartbeatRunRow, "id" | "companyId" | "agentId" | "scopeKind" | "nativeIssueId" | "issueId"> & {
+  contextSnapshot: { issueId: unknown; taskId: unknown; taskKey: unknown; andrecompIssue: { id: unknown } } | null;
+};
 
 /** The task a run was executing when it created another task. */
 export interface IssueCreationSourceRecord {
-  run: HeartbeatRunRow;
+  run: CreationSourceRun;
   sourceIssue: IssueRow;
 }
 
@@ -86,7 +89,22 @@ export async function resolveIssueCreationSource(
   }
   if (!runId || !isUuidLike(runId)) return null;
   const [run] = await db
-    .select()
+    .select({
+      id: heartbeatRuns.id,
+      companyId: heartbeatRuns.companyId,
+      agentId: heartbeatRuns.agentId,
+      scopeKind: heartbeatRuns.scopeKind,
+      nativeIssueId: heartbeatRuns.nativeIssueId,
+      issueId: heartbeatRuns.issueId,
+      contextSnapshot: sql<CreationSourceRun["contextSnapshot"]>`case
+        when coalesce(${heartbeatRuns.nativeIssueId}, ${heartbeatRuns.issueId}) is not null then null
+        else jsonb_build_object(
+          'issueId', ${heartbeatRuns.contextSnapshot}->'issueId',
+          'taskId', ${heartbeatRuns.contextSnapshot}->'taskId',
+          'taskKey', ${heartbeatRuns.contextSnapshot}->'taskKey',
+          'andrecompIssue', jsonb_build_object('id', ${heartbeatRuns.contextSnapshot}->'andrecompIssue'->'id')
+        ) end`,
+    })
     .from(heartbeatRuns)
     .where(and(eq(heartbeatRuns.id, runId), eq(heartbeatRuns.companyId, issue.companyId)))
     .limit(1);

@@ -449,7 +449,7 @@ export class AndrecompRunnerToolAuthority {
     }
     if (isConnectorTool(call.tool)) {
       if (!(this.binding.connectorAssignments ?? []).some((assignment) => assignment.tools.some((tool) => tool.name === call.tool))) throw forbidden("Connector tool is not available to this run");
-      const { run } = await this.#boundContext();
+      const { run } = await this.#boundContext({ includeChatWake: call.tool.startsWith("agentmail_") });
       const snapshot = record(run.contextSnapshot);
       if (call.tool.startsWith("agentmail_") && (isAndrecompExternalChatContractTurn(snapshot.andrecompWake) || String(snapshot.source ?? "").startsWith("chat:") || snapshot.andrecompExternalChatQuestionResponse)) throw forbidden("Restricted chat runs cannot use email actions");
       return executeConnectorTool(this.db, this.binding, call.tool, call.arguments);
@@ -1225,7 +1225,7 @@ export class AndrecompRunnerToolAuthority {
       ...(this.binding.museRuntime ? { authorizingUserId: this.binding.externalAuthorizingUserId } : {}) };
   }
 
-  async #boundContext() {
+  async #boundContext(options: { includeChatWake?: boolean } = {}) {
     if (this.binding.museRuntime && !this.binding.externalAuthorizingUserId) throw forbidden("Muse authorizer is unavailable");
     const [row] = await this.db.select({ issue: issues, actor: agents, run: {
       id: heartbeatRuns.id,
@@ -1239,6 +1239,7 @@ export class AndrecompRunnerToolAuthority {
         then ${heartbeatRuns.contextSnapshot} - array['executionContinuation', 'andrecompTaskMarkdown',
           'andrecompTaskMarkdownCompact', 'andrecompTaskMarkdownAssignment', 'andrecompTaskMarkdownAssignmentCompact',
           'andrecompWorkspace', 'andrecompEnvironment', 'andrecompContinuationSummary', 'andrecompWakeComment']
+          ${options.includeChatWake ? sql`` : sql`- 'andrecompWake'`}
         else ${heartbeatRuns.contextSnapshot} end`,
       resultJson: heartbeatRuns.resultJson,
     } })
