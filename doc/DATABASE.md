@@ -341,7 +341,7 @@ The diagnostic measures awaited Postgres.js `unsafe` responses before Drizzle
 column decoding. It retains the Drizzle builder caller for normal, prepared,
 transaction, and dedicated-pool execution. It issues no queries.
 It logs the public server caller locations, static schema table, operation,
-query/row counts, and response value sizes. It emits at most 512 aggregate
+query/row counts, and response value sizes. It emits at most 2,048 aggregate
 groups and a summary at the deadline. It never logs SQL, parameters, result
 values, connection strings, or query errors. In-flight queries continue normally.
 
@@ -355,6 +355,25 @@ Look for `andrecomp.db_response_capture.entry.v1` and
 can store `event` as a structured field instead of message text. Filter by that
 field or read the bounded window from the exact deployment. Check the summary
 and group totals, including the unattributed overflow group.
+
+Fetch a complete capture as follows:
+
+1. Read the summary events from the exact deployment and window. Keep each
+   distinct `captureId` separately.
+2. Each entry has a unique `groupIndex` within that capture and a `groupPage`.
+   The summary gives `groupPageSize` (128) and `groupPages`. Fetch every page
+   from zero through `groupPages - 1`, filtering on the entry event, `captureId`,
+   and `groupPage`. Request at least `groupPageSize` matching records per page.
+   A structured query can use
+   `@event:andrecomp.db_response_capture.entry.v1 AND @captureId:<id> AND @groupPage:0`.
+3. If the provider's record limit is smaller than a page, fetch each
+   `groupIndex` separately with the same capture ID. Each index matches one
+   entry. Do not split by timestamp: entries can share a timestamp.
+4. Deduplicate by `(captureId, groupIndex)`. Require every index from zero
+   through `groups - 1`, with no gaps. Entry count must equal `groups`, summed
+   `calls` must equal `completedQueries`, and summed `responseValueBytes` must
+   equal the summary total. A missing page is an incomplete measurement.
+
 Tagged raw-driver calls, streams, unawaited raw-driver
 dispatch, and protocol overhead are not measured. Relational queries use a driver-level caller fallback.
 Queries still in flight at the deadline are reported separately. Sizes describe
@@ -451,6 +470,13 @@ IDs and names, not complete tool definitions. They still resolve current profile
 bindings, selectors, exclusions, and installed connections on every call. The
 public effective-profile response continues to include complete tool schemas
 and annotations.
+
+Connection readiness checks use a scoped assignment reader. It applies the same
+current profile precedence, selectors, and exclusions to the candidate connection
+IDs. The reader selects rule match fields and catalog identities. It does not
+load rule conditions, catalog schemas, profile summaries, or the company-agent
+list. Installed connections and later identity and gateway checks remain fresh.
+Full effective-profile and effective-tool responses keep their complete shape.
 
 ## Execution identity row locks
 
