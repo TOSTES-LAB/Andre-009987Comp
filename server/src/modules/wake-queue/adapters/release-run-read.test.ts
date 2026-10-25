@@ -71,4 +71,53 @@ describe.skipIf(!support.supported)("wake release run reads", () => {
       expect((await readReleaseRun(db, { companyId, runId: run.id })).run?.resultJson).toEqual(result);
     },
   );
+
+  it("keeps launch text in storage while releasing native runs with their control context", async () => {
+    const bulk = randomBytes(128 * 1024).toString("base64");
+    const context = {
+      issueId: randomUUID(), taskId: randomUUID(), taskKey: "saved-task",
+      retryReason: "execution_review_participant_recovery", wakeReason: "issue_commented",
+      explicitUserContinuation: true,
+      interactionId: randomUUID(), interactionKind: "review", interactionStatus: "resolved",
+      wakeCommentIds: [randomUUID()], queuedCommentSourceWakeIds: [randomUUID()],
+      chatConversationId: randomUUID(), executionPolicy: { requireApproval: true },
+      opaqueFutureContext: { retained: [null, false, "input"] },
+    };
+    const launch = {
+      executionContinuation: { instruction: bulk, state: "saved" },
+      andrecompWake: { savedTask: bulk }, andrecompWakeComment: bulk, andrecompTaskMarkdown: bulk,
+      andrecompTaskMarkdownCompact: bulk, andrecompTaskMarkdownAssignment: bulk,
+      andrecompTaskMarkdownAssignmentCompact: bulk, andrecompWorkspace: { files: bulk },
+      andrecompEnvironment: { input: bulk }, andrecompContinuationSummary: bulk,
+    };
+    const evidence = { nativeCancellation: { schema: "andrecomp.native-cancellation.v1", dispatched: true },
+      executionCancellation: { state: "acknowledged" }, workspaceRestoreRecovery: { leaseIds: [randomUUID()] },
+      configurationIncomplete: { reason: "secret_binding_missing" }, unknownFutureReceipt: { retained: true } };
+    const [before] = await db.insert(heartbeatRuns).values({ companyId, agentId, runtimeMode: "native",
+      contextSnapshot: { ...context, ...launch }, resultJson: evidence }).returning();
+    const events: Array<Record<string, unknown>> = [];
+    const now = Date.now();
+    const capture = createDatabaseResponseCapture({ start: now - 100, end: now + 59_000 }, event => events.push(event));
+    installDatabaseResponseCapture(db, { heartbeatRuns }, capture);
+    let selected: Awaited<ReturnType<typeof readReleaseRun>>;
+    try { selected = await db.transaction(tx => readReleaseRun(tx as unknown as typeof db, { companyId, runId: before.id })); }
+    finally { capture.flush(); }
+    const summary = events.find(event => event.event === "andrecomp.db_response_capture.summary.v1")!;
+    expect(summary.completedQueries).toBe(1);
+    expect(summary.responseValueBytes).toBeLessThan(8192);
+    expect(selected!.run?.contextSnapshot).toEqual(context);
+    expect(selected!.run?.resultJson).toEqual(evidence);
+    expect(JSON.stringify(events)).not.toContain(bulk.slice(0, 64));
+    expect((await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, before.id)))[0]).toEqual(before);
+    await db.update(heartbeatRuns).set({ runtimeMode: "legacy" }).where(eq(heartbeatRuns.id, before.id));
+    expect((await readReleaseRun(db, { companyId, runId: before.id })).run?.contextSnapshot).toEqual(before.contextSnapshot);
+  });
+
+  it.each([null, ["andrecompWake", { savedInput: "keep" }], "scalar", 42].map(context => ({ context })))(
+    "preserves non-object native context $context", async ({ context }) => {
+      const [run] = await db.insert(heartbeatRuns).values({ companyId, agentId, runtimeMode: "native",
+        contextSnapshot: context as Record<string, unknown> | null }).returning();
+      expect((await readReleaseRun(db, { companyId, runId: run.id })).run?.contextSnapshot).toEqual(context);
+    },
+  );
 });

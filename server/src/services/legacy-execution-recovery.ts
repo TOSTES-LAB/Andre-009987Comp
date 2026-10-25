@@ -8,7 +8,7 @@ import { normalizeMaxTurnStopReason } from "./heartbeat-stop-metadata.js";
 import { claimedAdapterType, hasConversationContinuationPolicy } from "./conversation-continuation.js";
 import { canonicalExecutionUuid } from "./execution-identity.js";
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { environmentLeases, heartbeatRuns, issueRecoveryActions, issues, nativeRunFinalizations, type Db } from "@andrecomp/db";
 import { issueRecoveryActionService } from "./issue-recovery-actions.js";
 import { parseIssueExecutionState } from "./issue-execution-policy.js";
@@ -19,6 +19,24 @@ import { issueService } from "./issues.js";
 
 type Run = typeof heartbeatRuns.$inferSelect;
 export const LEGACY_RECOVERY_CAUSE = "legacy_execution_requires_reconciliation";
+
+const unusedReconciliationContextKeys = [
+  "executionContinuation", "andrecompWake", "andrecompWakeComment",
+  "andrecompTaskMarkdown", "andrecompTaskMarkdownCompact", "andrecompTaskAssignment",
+  "andrecompTaskAssignmentCompact", "andrecompWorkspace", "andrecompEnvironment", "andrecompContinuationSummary",
+] as const;
+
+export const legacyReconciliationRunFields = {
+  ...getTableColumns(heartbeatRuns),
+  contextSnapshot: sql<Run["contextSnapshot"]>`case
+    when jsonb_typeof(${heartbeatRuns.contextSnapshot}) = 'object'
+      then ${heartbeatRuns.contextSnapshot} - ARRAY[${sql.join(unusedReconciliationContextKeys.map(key => sql`${key}`), sql`, `)}]::text[]
+    else ${heartbeatRuns.contextSnapshot} end`,
+  runnerProfileJson: sql<Run["runnerProfileJson"]>`case
+    when ${heartbeatRuns.runtimeMode} = 'native' and jsonb_typeof(${heartbeatRuns.runnerProfileJson}) = 'object'
+      then ${heartbeatRuns.runnerProfileJson} - 'nativeExecutionInput'
+    else ${heartbeatRuns.runnerProfileJson} end`,
+};
 
 /** Error families describe availability, not whether earlier actions happened. */
 export function legacyExecutionNeedsReconciliation(
@@ -100,7 +118,9 @@ export async function terminalizeLegacyExecution(input: {
           )
           .for("update")
       : [];
-    const [current] = await tx.select().from(heartbeatRuns).where(and(
+    const [current] = await tx.select({ runtimeMode: heartbeatRuns.runtimeMode, status: heartbeatRuns.status,
+      resultJson: heartbeatRuns.resultJson, executionStatusDeliveryId: heartbeatRuns.executionStatusDeliveryId,
+    }).from(heartbeatRuns).where(and(
       eq(heartbeatRuns.id, run.id), eq(heartbeatRuns.companyId, run.companyId),
     )).for("update");
     if (!current || (current.runtimeMode !== "legacy" && !(input.recordRestoreFailureOnly && current.runtimeMode === "native")) ||
