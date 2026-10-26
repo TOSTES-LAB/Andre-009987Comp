@@ -70,6 +70,7 @@ export async function prepareEvalGatewayRuntime(
       environment.ANDRECOMP_AI_PROVIDER_KEY = token;
       await writeFile(join(codexHome, "config.toml"), [
         'model_provider = "andrecomp_eval"',
+        'web_search = "disabled"',
         `model = ${JSON.stringify(request.model)}`,
         '[model_providers.andrecomp_eval]',
         'name = "Andrecomp eval controller"',
