@@ -65,6 +65,7 @@ export const DAYTONA_IMAGE_INPUT_PATHS = [
   "packages/andrecomp-runner/test/fixtures/copilot-profile-v55-identity.json",
   "packages/andrecomp-runner/test/fixtures/copilot-profile-v57-identity.json",
   "packages/andrecomp-runner/test/fixtures/copilot-profile-v58-identity.json",
+  "packages/andrecomp-runner/test/fixtures/copilot-profile-v61-identity.json",
   "packages/andrecomp-runner/scripts/materialize-cursor-distribution.mjs",
   "packages/andrecomp-runner/scripts/cursor-runtime-patch.mjs",
   "packages/andrecomp-runner/scripts/build-verified-provider-entrypoints.mjs",

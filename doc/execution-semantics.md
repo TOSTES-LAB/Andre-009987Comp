@@ -1302,6 +1302,14 @@ recording the proof and successor lineage. Retained provider files are not edite
 
 Bootstrap retries, exact-checkpoint resumes, and fresh replacement sessions share three total provider attempts, including the original attempt. Linked run IDs, controller restarts, and duplicate wakes do not reset this budget. Automatic attempts retain the 30-second delay. Replacement scheduling and predecessor lineage commit together, with one successor per predecessor and admission through the normal task locks, authorization, pause, approval, and budget gates.
 
+When a same-run retry acquires a replacement plugin task lease, the executor
+reloads the prior task's durable Runner checkpoint before checking local
+lifecycle evidence. This includes retries after a provider turn omitted its
+completion result. The existing lease-transfer policy must verify the company,
+agent, workspace, retained session, and termination of prior execution. The
+checkpoint must match the exact Runner, lease, run, session, turn, and item.
+A missing restart claim does not remove these checks or authorize a fresh session.
+
 A prepared remote workspace interrupted before the executor's first durable
 claim may resume its untouched bootstrap on the same run. This requires attempt
 and controller generation zero, no prior owner, and no process, provider session,
@@ -1342,6 +1350,14 @@ stop-and-retain recovery contains the provider and saves the files before
 ordinary Retry can continue. Finalized workspaces, mismatched sources and
 accepted results keep their existing settlement paths. Reassignment does not
 discard the stopped run's files or grant authority over the new assignee.
+
+For older failed native runs that lack this bookkeeping, a deliberate Retry
+registers preservation from the exact prepared workspace descriptor and assigns
+the existing bounded maintenance owner. A live finalization owner or mismatched
+source cannot be adopted. Registration does not prove termination or authorize
+replay: the provider stop receipt, saved-file receipt, current execution authority
+and effect fences still control successor admission. Repeated clicks retain the
+same recovery generation and request.
 
 Every continuation carries the triggering request, ordered user direction, interaction outcomes, completed work, and explicit history coverage. A delivered message remains part of the task's request after its connection or approval resolves. The original title is background; a completed Notion read does not satisfy a later Gmail request. Author and source-trust boundaries survive rendering into both native and legacy prompts. Missing required history must be fetched before dispatch rather than described as complete.
 
@@ -1823,6 +1839,24 @@ Only a matching ownership marker and confirmed process exit permit automatic
 replacement. Missing or conflicting identity evidence, failed reads, and an
 exhausted probe budget retain the existing ownership and recovery safeguards.
 They must not launch a competing listener or overwrite the original marker.
+
+Remote process verification uses one Node probe for liveness, command identity,
+and the saved Linux boot identity and start ticks. If metadata disappears during
+the probe, only a fresh `ESRCH` response confirms exit. A zombie also confirms
+exit when its generation matches the saved marker. Permission errors, unreadable
+metadata, and changed generations remain uncertain. Adopted-runner checks reject
+that uncertainty rather than returning the same `false` value as a confirmed
+exit. Launch checks that Node can run the probe before creating launch state or
+detaching the process. These receipts do not release historical recovery holds
+or prove that workspace files and provider state have been saved.
+The transport propagates rejected adopted-process checks through close and
+command waits. It must not turn a rejected check into a positive exit observation.
+When a process check rejects close, the transport retires its local controller,
+timers and notification queue without signalling the remote Runner or replacing
+its checkpoint. Repeated close retains the same failed ownership result.
+Copilot profile 62 binds this shared transport implementation. Profile 61 remains
+decodable for recovery, but exact launch admission uses the current profile and
+digest. Earlier live qualification results keep their original profile identity.
 
 Healthy native warm turns retain their runner and provider processes. After a
 controller crash, continuation can recover a completed remote session from its

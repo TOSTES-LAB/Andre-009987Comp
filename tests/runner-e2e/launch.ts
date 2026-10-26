@@ -715,6 +715,7 @@ async function runAttempt(input: {
             const leak = await findSecretLeakInDirectory(directory, credentials, {
               includeShapes: false,
               sources: credentialSources,
+              ...(label === "Andrecomp home" ? { privateCodexRuntimeIdentityRoot: andrecompHome } : {}),
               ignoreFile: (file) => expectedEphemeralCredentials.has(file),
               allowDisappearedFile: (file) =>
                 label === "Andrecomp home" &&
