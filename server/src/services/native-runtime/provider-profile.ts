@@ -84,6 +84,7 @@ export type AndrecompRunnerNativeProviderInput =
       homeMode?: "isolated" | "preconfigured";
       codexApprovalPolicy: "never" | "on-request" | "untrusted";
       codexReasoningEffort?: string;
+      codexWebSearch?: "disabled";
     }
   | {
       provider: "opencode";
@@ -843,5 +844,6 @@ export function resolveAndrecompRunnerNativeProviderInput(input: {
       config.codexPermissionMode,
     ) as "never" | "on-request" | "untrusted",
     ...(typeof effort === "string" && effort ? { codexReasoningEffort: effort } : {}),
+    ...(config.search === false ? { codexWebSearch: "disabled" as const } : {}),
   };
 }

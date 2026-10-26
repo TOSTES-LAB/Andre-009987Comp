@@ -3,6 +3,7 @@ import { signalDatabaseWork, subscribeDatabaseWork } from "@andrecomp/db";
 /** Topics for existing durable queues; register intent before their writes. */
 export const DELIVERY_QUEUES = {
   executionFinalization: "execution-finalization",
+  workspaceRecovery: "workspace-recovery",
   executionReplacement: "execution-replacement",
   executionContinuation: "execution-continuation",
   executionStatus: "execution-status",

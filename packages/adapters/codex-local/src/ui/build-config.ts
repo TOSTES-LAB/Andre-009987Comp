@@ -249,6 +249,7 @@ export function buildAndrecompRunnerConfig(v: CreateConfigValues): Record<string
     provider,
     ...(provider === "codex"
       ? { model: resolveAndrecompRunnerModel("codex", config.model),
+          ...(v.search === false ? { search: false } : {}),
           ...(configuredEffort ? { modelReasoningEffort: configuredEffort } : {}) }
       : {}),
     codexPermissionMode: "never",
