@@ -1356,7 +1356,7 @@ Invites tab does not hide this Cloud action.
 ## 10.3 Agents
 
 The Harness / Runtime configuration page offers **Upgrade runner** for existing
-legacy Claude and Codex agents when the target environment selects Andrecomp
+legacy Claude, Codex, and Grok Build agents when the target environment selects Andrecomp
 Runner by default. The action uses the normal authorized agent PATCH with
 `runner: "andrecomp"`, includes pending configuration edits, and retains the
 model and compatible settings. A rejected conversion leaves saved configuration

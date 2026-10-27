@@ -1,3 +1,4 @@
+import { resolveExternalTestDatabaseUrl } from "./helpers/external-test-database.js";
 import { createHash, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage } from "node:http";
 import express from "express";
@@ -65,8 +66,8 @@ import {
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
 
-const externalTestDatabaseUrl = process.env.ANDRECOMP_TOOL_GATEWAY_TEST_DATABASE_URL;
-const embeddedPostgresSupport = externalTestDatabaseUrl ? { supported: true } : await getEmbeddedPostgresTestSupport();
+const externalTestDatabase = resolveExternalTestDatabaseUrl("ANDRECOMP_TOOL_GATEWAY_TEST_DATABASE_URL");
+const embeddedPostgresSupport = externalTestDatabase ? { supported: true } : await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
 const testToolActionSigningSecret = "test-tool-action-signing-secret";
 
@@ -554,8 +555,9 @@ describeEmbeddedPostgres("tool gateway acceptance", () => {
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
 
   beforeAll(async () => {
-    if (!externalTestDatabaseUrl) tempDb = await startEmbeddedPostgresTestDatabase("andrecomp-tool-gateway-");
-    db = createDb(externalTestDatabaseUrl ?? tempDb!.connectionString);
+    if (externalTestDatabase) { db = createDb(externalTestDatabase); return; }
+    tempDb = await startEmbeddedPostgresTestDatabase("andrecomp-tool-gateway-");
+    db = createDb(tempDb.connectionString);
   }, 90_000);
 
   afterEach(async () => {

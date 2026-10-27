@@ -1,3 +1,4 @@
+import { notifyToolReviewChange } from "./tool-review-work-notifications.js";
 import { normalizeEscapedLineBreaks } from "@andrecomp/shared/validators/text";
 import { notifyDeliveryWork, DELIVERY_QUEUES } from "./delivery-work-notifications.js";
 import { historicalQuestionCondition } from "./issue-question-context.js";
@@ -1083,6 +1084,7 @@ async function resolveLinkedToolActionRequests(
   },
 ) {
   if (interaction.kind !== "request_confirmation") return;
+  await notifyToolReviewChange(db, interaction.companyId);
   await db
     .update(toolActionRequests)
     .set({
@@ -1159,6 +1161,7 @@ async function resolveLinkedSecretProposal(
 ) {
   const proposalId = linkedSecretProposalId(interaction);
   if (!proposalId) return;
+  await notifyDeliveryWork(db, DELIVERY_QUEUES.secretProposalExpiry, interaction.companyId);
   const [proposal] = await db
     .update(companySecretProposals)
     .set({
@@ -3181,6 +3184,7 @@ export function issueThreadInteractionService(
           : execution.status;
         if (executionStatus === "failed" && proposal.status === "pending") {
           const resolutionReason = `Interaction acceptance failed: ${execution.errorCode ?? "secret_proposal_execution_failed"}`;
+          await notifyDeliveryWork(tx, DELIVERY_QUEUES.secretProposalExpiry, proposal.companyId);
           await tx
             .update(companySecretProposals)
             .set({

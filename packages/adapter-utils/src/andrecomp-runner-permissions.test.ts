@@ -44,6 +44,7 @@ describe("Andrecomp Runner permission defaults", () => {
     ["codex_local", "codexPermissionMode", "never"],
     ["opencode_local", "opencodePermissionMode", "allow"],
     ["pi_local", "acpxPermissionMode", "approve-all"],
+    ["grok_local", "acpxPermissionMode", "approve-all"],
   ])("uses full auto when converting %s to the new runner", (adapter, key, value) => {
     expect(andrecompRunnerTransitionConfig(adapter, undefined)).toMatchObject({ [key]: value });
   });
@@ -51,6 +52,15 @@ describe("Andrecomp Runner permission defaults", () => {
   it("keeps Pi models explicit during conversion", () => {
     expect(andrecompRunnerTransitionConfig("pi_local", undefined)).toMatchObject({ provider: "acpx", acpxAgent: "pi", model: "" });
     expect(andrecompRunnerTransitionConfig("pi_local", "openrouter/provider/model")).toMatchObject({ provider: "acpx", acpxAgent: "pi", model: "openrouter/provider/model" });
+  });
+
+  it("keeps Grok's harness and model when converting its adapter", () => {
+    expect(andrecompRunnerTransitionConfig("grok_local", "grok-4.7"))
+      .toMatchObject({ provider: "acpx", acpxAgent: "grok", model: "grok-4.7" });
+  });
+
+  it.each([undefined, "", "grok-build"])("resolves Grok's legacy default %s to the native model", model => {
+    expect(andrecompRunnerTransitionConfig("grok_local", model)).toMatchObject({ model: "grok-4.7" });
   });
 
   it("recognizes only exact provider identifiers", () => {
