@@ -1875,7 +1875,7 @@ function createSandboxEnvironmentDriver(
         ? qualifiedSandboxSnapshotId(configuredEnvironment, input.companyId, parsed.config, selectedTemplate.value) : null;
       if (input.adapterType === "andrecomp_runner" && !pinnedSnapshotId
         && hasSandboxSnapshotQualification(configuredEnvironment, input.companyId)) {
-        throw new Error("sandbox_snapshot_qualification_required: The snapshot qualification is missing or stale. Test this environment again before running Andrecomp Runner.");
+        throw new Error("sandbox_snapshot_qualification_required: The snapshot qualification is missing or stale. Open the agent's Harness / Runtime page and select Run test before running Andrecomp Runner.");
       }
       if (input.configuredEnvironment) parsed.config = { ...parsed.config, reuseLease: storedParsed.config.reuseLease, archiveOnRelease: storedParsed.config.archiveOnRelease };
       if (pinnedSnapshotId) parsed.config = { ...parsed.config, snapshot: pinnedSnapshotId };

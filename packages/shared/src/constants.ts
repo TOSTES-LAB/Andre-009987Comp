@@ -1325,6 +1325,7 @@ export const PLUGIN_CAPABILITIES = [
   "companies.read",
   "projects.read",
   "projects.instance-secrets",
+  "projects.git-credentials",
   "project.workspaces.read",
   "execution.workspaces.read",
   "workspaces.manage",

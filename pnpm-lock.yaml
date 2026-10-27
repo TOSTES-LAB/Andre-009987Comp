@@ -16,7 +16,7 @@ overrides:
 
 patchedDependencies:
   '@agentclientprotocol/claude-agent-acp@0.73.0':
-    hash: huf7r65vwve4ofrrdvc3x76loa
+    hash: n6cey4jwwkfq2znxc44h6vcn24
     path: patches/@agentclientprotocol__claude-agent-acp@0.73.0.patch
   '@agentclientprotocol/codex-acp@1.6.2':
     hash: vx7smpvfhgz6p3tddkrzq2cspm
@@ -49,7 +49,7 @@ patchedDependencies:
     hash: 55uhvnotpqyiy37rn3pqpukhei
     path: patches/embedded-postgres@18.1.0-beta.16.patch
   postgres@3.4.9:
-    hash: sryle6qd5qfmnxvoebal4gashi
+    hash: 6q4cic6qawywsyeo2spgnjamda
     path: patches/postgres@3.4.9.patch
 
 importers:
