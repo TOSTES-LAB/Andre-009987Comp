@@ -135,6 +135,10 @@ export function buildRunnerE2EProcessEnvironment(
   const installed = usesInstalledCli(source);
   if (installed) assertInstalledCliSelection(source, executions);
   const result = { ...source };
+  // The supervisor's read-only recovery observer must use the same disposable
+  // instance key as the serving child, never a launching shell's vault key.
+  delete result.ANDRECOMP_SECRETS_MASTER_KEY;
+  delete result.ANDRECOMP_SECRETS_MASTER_KEY_FILE;
   delete result.ANDRECOMP_E2E_GATEWAY_PHASE_PATH;
   delete result.ANDRECOMP_E2E_OTLP_RELAY_URL;
   delete result.ANDRECOMP_E2E_REMOTE_GATEWAY_ORIGIN;
@@ -211,7 +215,7 @@ export function buildAndrecompServerEnvironment(
   ]) {
     delete result[key];
   }
-  for (const key of [...GENERATED_SERVER_SECRET_KEYS, ...installedCliKeys, ...installedDaytonaPluginKeys]) delete result[key];
+  for (const key of [...GENERATED_SERVER_SECRET_KEYS, ...installedCliKeys, ...installedDaytonaPluginKeys, "ANDRECOMP_RUNNER_E2E_UPGRADE_ARTIFACTS"]) delete result[key];
   Object.assign(result, overrides);
   return result;
 }

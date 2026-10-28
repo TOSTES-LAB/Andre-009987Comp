@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { lstat, readdir, readFile, readlink } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import acpxProfiles from "../../packages/andrecomp-runner/acpx-profiles.json" with { type: "json" };
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 
@@ -10,11 +11,7 @@ export const DAYTONA_IMAGE_CONTENT_SCHEMA =
 export const DAYTONA_IMAGE_PLATFORM = "linux/amd64";
 export const DAYTONA_IMAGE_DOCKERFILE_PATH = "docker/daytona-runner/Dockerfile";
 
-// This mirrors the explicit repository-local build inputs copied by
-// docker/daytona-runner/Dockerfile. Broad package-tree COPYs are forbidden by
-// the contract test so development-only files cannot silently enter the image
-// without first changing this content-identity contract.
-export const DAYTONA_IMAGE_INPUT_PATHS = [
+export const DAYTONA_IMAGE_INPUT_PATHS = [...new Set([
   ".dockerignore",
   ".npmrc",
   "docker/daytona-runner/Dockerfile",
@@ -29,6 +26,8 @@ export const DAYTONA_IMAGE_INPUT_PATHS = [
   "packages/andrecomp-eval-kernel/tsconfig.json",
   "packages/andrecomp-runner/scripts/provision-grok.mjs",
   "packages/andrecomp-runner/package.json",
+  "packages/andrecomp-runner/acpx-profiles.json",
+  `packages/andrecomp-runner/test/fixtures/copilot-profile-v${acpxProfiles.profiles.copilot.agentProfileVersion}-identity.json`,
   "packages/andrecomp-runner/cursor-distributions.json",
   "packages/andrecomp-runner/cursor-contract.json",
   "packages/andrecomp-runner/protocol",
@@ -63,11 +62,15 @@ export const DAYTONA_IMAGE_INPUT_PATHS = [
   "packages/andrecomp-runner/test/fixtures/copilot-profile-v52-identity.json",
   "packages/andrecomp-runner/test/fixtures/copilot-profile-v54-identity.json",
   "packages/andrecomp-runner/test/fixtures/copilot-profile-v55-identity.json",
+  "packages/andrecomp-runner/test/fixtures/copilot-profile-v56-identity.json",
   "packages/andrecomp-runner/test/fixtures/copilot-profile-v57-identity.json",
   "packages/andrecomp-runner/test/fixtures/copilot-profile-v58-identity.json",
+  "packages/andrecomp-runner/test/fixtures/copilot-profile-v59-identity.json",
   "packages/andrecomp-runner/test/fixtures/copilot-profile-v61-identity.json",
   "packages/andrecomp-runner/test/fixtures/copilot-profile-v65-identity.json",
   "packages/andrecomp-runner/test/fixtures/copilot-profile-v66-identity.json",
+  "packages/andrecomp-runner/test/fixtures/copilot-profile-v67-identity.json",
+  "packages/andrecomp-runner/test/fixtures/copilot-profile-v68-identity.json",
   "packages/andrecomp-runner/scripts/materialize-cursor-distribution.mjs",
   "packages/andrecomp-runner/scripts/cursor-runtime-patch.mjs",
   "packages/andrecomp-runner/scripts/build-verified-provider-entrypoints.mjs",
@@ -86,7 +89,7 @@ export const DAYTONA_IMAGE_INPUT_PATHS = [
   "packages/andrecomp-runner/styles.css",
   "packages/andrecomp-runner/tsconfig.json",
   "packages/andrecomp-runner/tsconfig.surfaces.json",
-] as const;
+])] as const;
 
 const ignoredRunnerDevelopmentDirectoryPaths = new Set([
   "packages/andrecomp-runner/devtools",

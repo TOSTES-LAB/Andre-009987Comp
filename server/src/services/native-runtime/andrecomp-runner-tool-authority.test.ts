@@ -19,8 +19,8 @@ import {
   issueThreadInteractions,
   issues,
 } from "@andrecomp/db";
-import { startEmbeddedPostgresTestDatabase } from "../../__tests__/helpers/embedded-postgres.js";
 import { createDatabaseResponseCapture, installDatabaseResponseCapture } from "@andrecomp/db/response-capture";
+import { startRecoveryPostgres } from "../../__tests__/helpers/recovery-postgres.js";
 import { initializeRunIdentity, reserveSteeredIdentity, reconcileSteeredIdentity } from "../run-identity.js";
 import { documentService } from "../documents.js";
 import { issueService } from "../issues.js";
@@ -36,7 +36,7 @@ import { CAPABILITY_SEMANTIC_TOOL_CATALOG, runnerCodexDynamicToolsFit } from "..
 describe("AndrecompRunnerToolAuthority", () => {
   const credentialDocumentBody = "Use a secret manager for credential handling.\nAuthorization: Bearer intentional-document-credential";
   let temporary: Awaited<
-    ReturnType<typeof startEmbeddedPostgresTestDatabase>
+    ReturnType<typeof startRecoveryPostgres>
   > | null = null;
   let db: ReturnType<typeof createDb>;
   const companyId = "00000000-0000-4000-8000-000000000101";
@@ -51,7 +51,7 @@ describe("AndrecompRunnerToolAuthority", () => {
   afterEach(() => vi.unstubAllEnvs());
 
   beforeAll(async () => {
-    temporary = await startEmbeddedPostgresTestDatabase(
+    temporary = await startRecoveryPostgres(
       "andrecomp-runner-tools-",
     );
     db = createDb(temporary.connectionString);
