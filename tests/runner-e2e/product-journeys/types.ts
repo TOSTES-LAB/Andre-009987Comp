@@ -29,6 +29,7 @@ export interface JourneyEvidence {
   operations?: JourneyOperations;
   artifact?: OnboardingArtifactEvidence;
   onboardingConnect?: import("./onboarding-connect.js").OnboardingConnectEvidence;
+  onboardingPreAcceptance?: import("./onboarding-pre-acceptance.js").OnboardingPreAcceptanceEvidence;
 }
 export interface OnboardingArtifactEvidence {
   schema: "andrecomp.product-journey.artifact/v1";

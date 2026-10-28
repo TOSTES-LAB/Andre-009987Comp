@@ -503,6 +503,17 @@ const MIGRATIONS_WITH_TOP_LEVEL_STATEMENTS = new Set([
   "0369_late_logan.sql",
   "0381_mean_scream.sql",
   "0382_narrow_the_executioner.sql",
+  "0385_open_madame_web.sql",
+  "0386_steady_epoch.sql",
+  "0387_boring_professor_monster.sql",
+  "0388_ambitious_micromax.sql",
+  "0389_brave_hulk.sql",
+  "0390_salty_killraven.sql",
+  "0391_third_roulette.sql",
+  "0392_small_frightful_four.sql",
+  "0393_open_grandmaster.sql",
+
+
   "0384_funny_adam_warlock.sql",
   "0383_tool_review_company_expiry.sql",
 ]);

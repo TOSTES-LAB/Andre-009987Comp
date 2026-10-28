@@ -1,3 +1,14 @@
+import { joinRequestRetentionService, registerJoinRequestRetentionWork } from "./services/join-request-retention.js";
+import { approvalRetentionService, registerApprovalRetentionWork } from "./services/approval-retention.js";
+import { registerDecisionTargetWork } from "./services/decision-target-work.js";
+import { registerDecisionEffectRecoveryWork } from "./services/decision-effect-recovery-work.js";
+import { registerDecisionExpiryWork } from "./services/decision-expiry-work.js";
+import { registerDecisionContinuationWork } from "./services/decision-continuation-work.js";
+
+import { registerDecisionArchiveDeliveryWork } from "./services/decision-archive-delivery-work.js";
+
+import { registerToolReviewProjectionWork } from "./services/tool-review-projection-work.js";
+import { registerToolReviewInterruptionWork } from "./services/tool-review-interruption-work.js";
 import { registerToolReviewRecoveryWork } from "./services/tool-review-recovery-work.js";
 import { registerToolReviewExpiryWork } from "./services/tool-review-expiry-work.js";
 import { registerGatewayCredentialExpiryWork } from "./services/gateway-credential-expiry-work.js";
@@ -1479,7 +1490,16 @@ async function startServerWithDatabaseTeardown(
     } else {
       await app.locals.toolGateway.recoverApprovedActionReviews();
     }
-    return app.locals.toolGateway.sweepActionReviews({ includeExpiry: false, includeApproved: false });
+    if (config.heartbeatSchedulerEnabled) {
+      await registerToolReviewInterruptionWork(deliveryWork, app.locals.toolGateway,
+        () => !isIdleTaskDrainActive() && !heartbeatSchedulerStopped && !isWarmStandby()).ready;
+    } else {
+      await app.locals.toolGateway.settleInterruptedActionReviews();
+    }
+    return config.heartbeatSchedulerEnabled
+      ? registerToolReviewProjectionWork(deliveryWork, { sweep: app.locals.toolGateway.repairActionReviewProjections, companies: app.locals.toolGateway.actionReviewProjectionCompanies },
+        () => !isIdleTaskDrainActive() && !heartbeatSchedulerStopped && !isWarmStandby()).ready
+      : app.locals.toolGateway.repairActionReviewProjections();
   }).catch((err: unknown) => logger.error({ err }, "startup tool review recovery failed"));
   await timeStartupRecovery("gateway_sessions", () => config.heartbeatSchedulerEnabled
     ? registerGatewayCredentialExpiryWork(deliveryWork, app.locals.toolGateway,
@@ -1793,13 +1813,13 @@ async function startServerWithDatabaseTeardown(
         // per company per tick.
         const page = await attentionService(db as any).list(company.id, {
           includeDismissed: true,
+          excludeSources: ["approval", "join_request"],
           all: true,
           allowUnscopedAll: true,
         });
         archived += await retentionExecutor.autoArchive({ companyId: company.id, items: page.items });
       }
-      const notifications = await retentionExecutor.deliverNotifications();
-      return { archived, ...notifications };
+      return { archived };
     };
     // Startup housekeeping: provider and connection sweeps that every timer tick
     // repeats and that neither serving requests nor run recovery depends on.
@@ -1823,7 +1843,14 @@ async function startServerWithDatabaseTeardown(
           logger.warn({ ...toolHealthSweep }, "startup tool connection health sweep found failing connections");
         }
       });
-      await step("decision_expiry", () => decisionExecutor.sweepExpired());
+      await step("decision_continuation_worker", () => registerDecisionContinuationWork(deliveryWork, decisionExecutor,
+        () => !isIdleTaskDrainActive() && !isWarmStandby() && !heartbeatSchedulerStopped).ready);
+      await step("decision_expiry_worker", () => registerDecisionExpiryWork(deliveryWork, decisionExecutor,
+        () => !isIdleTaskDrainActive() && !isWarmStandby() && !heartbeatSchedulerStopped).ready);
+      await step("decision_effect_recovery_worker", () => registerDecisionEffectRecoveryWork(deliveryWork, decisionExecutor,
+        () => !isIdleTaskDrainActive() && !isWarmStandby() && !heartbeatSchedulerStopped).ready);
+      await step("decision_target_worker", () => registerDecisionTargetWork(deliveryWork, decisionExecutor,
+        () => !isIdleTaskDrainActive() && !isWarmStandby() && !heartbeatSchedulerStopped).ready);
       const loginSchedule = loginCleanupSchedule(db, config.heartbeatSchedulerIntervalMs);
       await step("login_cleanup_workers", () => registerLoginCleanupWork(deliveryWork, [
         { queue: DELIVERY_QUEUES.adapterLoginCleanup, run: () => adapterLoginReaper.sweep().then(logAdapterLoginReaperResult), next: loginSchedule.adapter },
@@ -1832,6 +1859,12 @@ async function startServerWithDatabaseTeardown(
       // Retry any orphan sandbox teardown left by a failed acquire before a
       // server restart, so a leaked sandbox does not stay allocated.
       await step("environment_lease_cleanup", startEnvironmentCleanup);
+      await step("archive_notification_worker", () => registerDecisionArchiveDeliveryWork(deliveryWork, retentionExecutor,
+        () => !isIdleTaskDrainActive() && !isWarmStandby() && !heartbeatSchedulerStopped).ready);
+      await step("approval_retention", () => registerApprovalRetentionWork(deliveryWork, approvalRetentionService(db as any),
+        () => !isIdleTaskDrainActive() && !isWarmStandby() && !heartbeatSchedulerStopped).ready);
+      await step("join_request_retention", () => registerJoinRequestRetentionWork(deliveryWork, joinRequestRetentionService(db as any),
+        () => !isIdleTaskDrainActive() && !isWarmStandby() && !heartbeatSchedulerStopped).ready);
       await step("retention_sweep", runRetentionSweep);
     };
 
@@ -1842,9 +1875,6 @@ async function startServerWithDatabaseTeardown(
       trackHeartbeatSchedulerWork((async () => {
         if (isIdleTaskDrainActive() || heartbeatSchedulerStopped) return;
         scheduleRoutineStatusReconcile();
-        trackHeartbeatSchedulerWork(decisionExecutor.sweepExpired().catch((err: unknown) => {
-          logger.error({ err }, "decision expiry sweep failed");
-        }));
         trackHeartbeatSchedulerWork(runRetentionSweep().catch((err: unknown) => {
           logger.error({ err }, "decision retention sweep failed");
         }));
@@ -1909,8 +1939,6 @@ async function startServerWithDatabaseTeardown(
           .catch((err) => {
             logger.error({ err }, "periodic tool connection health sweep failed");
           }));
-
-        trackHeartbeatSchedulerWork(app.locals.toolGateway.sweepActionReviews({ includeExpiry: false, includeApproved: false }).catch((err: unknown) => logger.error({ err }, "tool review recovery failed")));
 
         if (isIdleTaskDrainActive() || heartbeatSchedulerStopped) return;
         if (!(await heartbeat.resolveSchedulingSuppression()).suppressed) {
