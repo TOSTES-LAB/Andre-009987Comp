@@ -64,6 +64,11 @@ export interface BundledPluginCatalogEntry {
  */
 export const BUNDLED_PLUGIN_CATALOG: readonly BundledPluginCatalogEntry[] = [
   {
+    key: "boxd",
+    pluginKey: "andrecomp.boxd-sandbox-provider",
+    relativePath: "sandbox-providers/boxd",
+  },
+  {
     key: "createos",
     pluginKey: "andrecomp.createos-sandbox-provider",
     relativePath: "sandbox-providers/createos",

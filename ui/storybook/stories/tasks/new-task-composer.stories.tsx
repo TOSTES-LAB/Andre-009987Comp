@@ -123,7 +123,7 @@ function NewTaskStory({
     }
     if (opened.current) return;
     opened.current = true;
-    localStorage.removeItem("andrecomp:issue-draft");
+    localStorage.removeItem(`andrecomp:issue-draft:${storybookAuthSession.user!.id}`);
     localStorage.removeItem("andrecomp:recent-assignees");
     localStorage.removeItem(`andrecomp:recent-assignees:${COMPANY_ID}`);
     localStorage.removeItem("andrecomp:recent-projects");

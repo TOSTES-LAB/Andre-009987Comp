@@ -345,11 +345,12 @@ export type PrivacyState = ReturnType<typeof createPrivacyState>;
 export function installPrivacyApi(state: PrivacyState) {
   const previous = window.fetch;
   const failed = new Set<string>();
-  const oldDraft = localStorage.getItem("andrecomp:issue-draft");
-  localStorage.removeItem("andrecomp:issue-draft");
+  const draftKey = `andrecomp:issue-draft:${state.user.id}`;
+  const oldDraft = localStorage.getItem(draftKey);
+  localStorage.removeItem(draftKey);
   if (state.options.draft)
     localStorage.setItem(
-      "andrecomp:issue-draft",
+      draftKey,
       JSON.stringify({
         title: "Continue my private briefing",
         description: "Saved personal draft.",
@@ -770,8 +771,8 @@ export function installPrivacyApi(state: PrivacyState) {
   };
   return () => {
     window.fetch = previous;
-    if (oldDraft === null) localStorage.removeItem("andrecomp:issue-draft");
-    else localStorage.setItem("andrecomp:issue-draft", oldDraft);
+    if (oldDraft === null) localStorage.removeItem(draftKey);
+    else localStorage.setItem(draftKey, oldDraft);
   };
 }
 

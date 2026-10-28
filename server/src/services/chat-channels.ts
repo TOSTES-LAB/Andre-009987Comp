@@ -1,6 +1,7 @@
 import { leasedChatProvider } from "./chat-channels/runtime/receiver-policy.js";
 import { chatReceiverSchedule } from "./chat-channels/runtime/receiver-schedule.js";
 import { registerChatReceiverWork } from "./chat-channels/runtime/receiver-work.js";
+import { notifyChatRunMilestones } from "./chat-run-milestone-notifications.js";
 import { notifyChatEndpointConfiguration } from "./chat-channels/configuration-work-notifications.js";
 import { registerDiscordCommandWork } from "./chat-channels/discord/command-work.js";
 import { discordCommandSchedule } from "./chat-channels/discord/command-schedule.js";
@@ -1235,6 +1236,8 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     processFailedChatRunRetry,
     processFailedChatRunRetries,
     enqueueFailedChatRetryPublications,
+    loadFailedRetryNoticeScopes,
+    reconcileFailedRetryNotices,
     pendingFailedRetries,
   } = createChatFailedRunRetry(db, {
     authorizeInboundWakeup,
@@ -1257,7 +1260,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     withCredentialMutationLease, teamsFileRetryAfter, isShuttingDown: () => shuttingDown,
     get teamsFileUploadRequest() { return options.teamsFileUploadRequest; },
   });
-  const { enqueueInboundWakeupPublications, authorizeInboundWakePublication } = createInboundWakeNotices(db, { authorizeInboundWakeup, enqueueFailedChatRetryPublications, authorizeRetainedChatSourcePublication, isExternalActionAuthorizationChange, isShuttingDown: () => shuttingDown });
+  const { enqueueInboundWakeupPublications, loadInboundWakeNoticeScopes, reconcileInboundWakeNotices, authorizeInboundWakePublication } = createInboundWakeNotices(db, { authorizeInboundWakeup, enqueueFailedChatRetryPublications, authorizeRetainedChatSourcePublication, isExternalActionAuthorizationChange, isShuttingDown: () => shuttingDown });
 
   async function authorizeRetainedChatSourcePublication(
     tx: DbOrTransaction,
@@ -2121,6 +2124,9 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         taskUserId: string | null,
       ) => {
         let conversation = existingConversation;
+        if (conversation) {
+          await notifyChatRunMilestones(taskTx, { companyId: taskEndpoint.companyId, issueId: conversation.issueId });
+        }
         if (!conversation) {
           const [taskResource] = await taskTx.select({ executionDefaults: chatEndpointResources.executionDefaults })
             .from(chatEndpointResources).where(and(eq(chatEndpointResources.id, resource.id), eq(chatEndpointResources.endpointId, taskEndpoint.id)));
@@ -2162,6 +2168,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             },
             taskTx,
           );
+          await notifyChatRunMilestones(taskTx, { companyId: taskEndpoint.companyId, issueId: issue.id });
           await taskTx
             .insert(chatConversations)
             .values({
@@ -3343,9 +3350,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
 
   async function processPublicationMaintenance(limit = 25) {
     scheduleGitHubMaintenance();
-    await enqueueInboundWakeupPublications();
-    await reconcileTerminalConfirmationActions(limit);
-    await processPendingInteractionWakeups(limit);
   }
 
   // The app refills free endpoint slots on commits and durable deadlines.
@@ -3470,10 +3474,11 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     withCredentialMutationLease, receiptReactionCompletionRunId,
   });
   const { processSelectedPublication } = publicationWorker;
-  const { processPendingInteractionWakeups } = createChatInteractionContinuations(db, {
+  const { processPendingInteractionWakeups, registerInteractionContinuationWork } = createChatInteractionContinuations(db, {
+    preparePublications: (scope, canContinue) => processPendingPublications(25, { maintenance: false, scope, canContinue }),
     redactError, CONFIRMATION_WAKEUP_RETRY_BACKOFF_MS, get heartbeat() { return options.heartbeat; },
   });
-  const { handleAction, handleModalSubmit, reconcileTerminalConfirmationActions } = createChatInteractionCallbacks(db, {
+  const { handleAction, handleModalSubmit, reconcileTerminalConfirmationActions, registerTerminalConfirmationWork } = createChatInteractionCallbacks(db, {
     heartbeat: options.heartbeat,
     CAPABILITIES, MAX_ERROR_TEXT, actionThreadMatchesConversation, nonDirectDestinationAllowed, sameTeamsThreadIdentity,
     ensurePrincipal, endpointRecord, runtimeCallbackRecord, runtimeCallbackEndpoint,
@@ -3497,6 +3502,10 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
   const { prepareTeamsBoardSend } = createTeamsBoardSendPreparation(db, { endpointRecord, runtimeFor });
   const { getPublicationBatchStatus, publishComment, publishBoardMessage } = createChatPublicationRequests(db, { endpointRecord, stageTeamsBoardFileIntent, processPendingSlackBoardMessages, processPendingPublications, prepareTeamsBoardSend });
 return {
+    registerInteractionContinuationWork,
+    registerTerminalConfirmationWork,
+    loadFailedRetryNoticeScopes,
+    reconcileFailedRetryNotices,
     registerTeamsAttemptRecoveryWork,
     registerTeamsConsentExpiryWork,
     registerCommandWork,
@@ -3546,6 +3555,8 @@ return {
     reconcileProviderRuntimes,
     processPendingPublications,
     enqueueInboundWakeupPublications,
+    loadInboundWakeNoticeScopes,
+    reconcileInboundWakeNotices,
     schedulePendingPublications,
     processPendingDeliveries,
     processQueuedDeliveries: () => processPendingDeliveries(25, undefined, false),

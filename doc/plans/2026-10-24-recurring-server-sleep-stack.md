@@ -1853,3 +1853,476 @@ children pass 30 report/startup tests after propagation. Fresh remote gates stil
 apply. The next new reason is chat run-milestone projection, separate from wake
 notices, terminal confirmations, interaction continuations and GitHub recovery.
 The entire original inventory and older unresolved findings remain open.
+
+
+Slice 28 native finalization checkpoint: existing native finalizer transactions
+now signal milestone projection; governed review metadata restoration avoids
+unchanged writes and signals only actual changes. Both missing wake and repeated
+rewrite were reproduced before repair. All 16 milestone worker cases, nine
+selected native chat recovery integrations, and server production types pass.
+See the slice audit for failure logs and coverage limits. The production scan
+remains until status-decision/effect, admission, lineage, publication, and remaining
+producer coverage is complete. This is local progress, not a published migration
+or completion of the full stack.
+
+
+Slice 28 now also covers new native status-decision commits and pending-effect
+receipts, after their no-op exits. Two regressions failed first; all 18 milestone
+worker cases, nine native chat recovery integrations, and server production types
+pass after repair. Real late continuation receipts now reactivate projection.
+Next is heartbeat queue/admission/recovery producer coverage. Periodic projection
+and all remaining inventory/remote acceptance duties remain outstanding.
+
+
+Slice 28 queue checkpoint: issue admission, ordinary/comment claims, drain
+release, coalesced lineage and native review claims now notify from their owning
+transactions. Real missing-wake regressions were reproduced for admission,
+coalescence and all ordinary/comment claim/release paths. The 24 milestone worker
+cases and 92 existing queue/policy cases pass, as does server production typecheck.
+The audit records the initial fixture FK failure, exact logs, remaining raw
+cancellation/promotion/receipt writers, and native reviewer acceptance gap.
+Periodic projection remains until producer coverage is complete; no new PR or
+full-goal completion is claimed.
+
+
+Slice 28 retry/recovery checkpoint: due retry promotion, suppressed retry and
+stale-run cancellation, deferred wake promotion and immediate recovery admission
+now signal from their existing transactions. Five real missing-notice regressions
+were reproduced before repair; all 166 selected worker/module/policy cases and
+server production types pass. The slice audit preserves the initial invalid
+staleness fixture and corrected causal evidence. Periodic projection remains
+until all supported producers are covered. Remaining original inventory, open
+PR gates/findings and final master reconciliation are unchanged.
+
+
+Slice 28 native wake receipt checkpoint: interrupted recovery, same-scope
+coalescence and fresh admission receipt writes now notify from narrow database
+transactions. Both missed-recovery and admission-before-receipt races were
+reproduced. All 56 milestone/queue cases, 13 existing dependency cases and server
+production types pass; four native cases were rerun after fixing external-test
+fixture cleanup. The audit preserves setup failures and provider-acceptance
+limits. No periodic projector has been removed yet. Fresh remote inspection
+still finds #17590 Andrecomp Review queued, #17592 neutral, and #17490 E2E shard
+3 plus aggregate failing. Those gates and all remaining original scope stay open.
+
+
+Slice 28 raw queue cancellation checkpoint: general chat-control recovery,
+superseded case handoffs, stale scheduled retries and reassigned execution owners
+now signal before terminal writes. Missing notices were reproduced for the first
+two; replacement-admission tests cover the latter two and their early intent
+placement is audited. All 60 milestone/queue tests and server production types
+pass. Queued-comment/lineage and remaining dependency producers still prevent
+removing periodic projection. No new PR, merge, or full-goal completion is claimed.
+
+
+Slice 28 lineage checkpoint: queued-comment run-context rewrites, deletion and
+cancellation signal through their existing adapter transaction. Real queue
+reconstruction and caller-owned discard regressions failed before repair. The
+native reviewer claim now has real database integration and causal signal-removal
+coverage. All 74 selected worker/adapter/policy cases and server production types
+pass. Remaining publication, interaction, configuration, question and monitor
+producer coverage still gates periodic-projector removal. Original inventory,
+remote gates/findings and final master reconciliation remain open.
+
+## Slice 28 draft and publication/interaction coverage
+
+[Draft #17606](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17606) is stacked on
+#17592. It adds the lifecycle projector worker and covered producer signals;
+production registration and polling removal remain intentionally unfinished until
+the remaining producer audit is complete. Native progress stays a separate slice.
+
+The latest local checkpoint covers real publication success/failure/operator
+resolution and question answer/cancel/withdraw/skip/terminal-expiry paths,
+including historical answers that enqueue no continuation. All 160 milestone and
+interaction-service cases pass on fresh isolated PostgreSQL databases. Four
+existing chat acceptance cases, publication policy cases, and server production
+typecheck passed at their recorded checkpoints. See the detailed milestone audit
+for retained regression/setup failures, controlled ports and remaining coverage.
+The initial draft CI was running; no final green-check or readiness claim is made.
+
+
+Slice 28 now also wakes lifecycle projection from confirmation accept/reject and
+live/historical comment invalidation of questions and confirmations. Six real
+producer regressions failed before the added intent signals. All 169 cases across
+the worker and interaction-service suites pass, as does production server
+typechecking. The draft remains incomplete: other producers and production
+registration/polling removal are still pending. See the milestone audit for logs.
+
+
+Slice 28 creation/sibling replacement now registers intent before the first
+interaction write. Both question and confirmation replacement failed before the
+fix; all 184 milestone/integration/unit interaction cases and production server
+typechecking pass. Remaining terminal-interaction writers are document-target
+expiry, deleted-addressee cancellation and startup supersession; other producer
+audits and production migration remain pending.
+
+
+Slice 28 covers the remaining direct terminal-interaction writers in the
+interaction service: document-target expiry, deleted addressees and startup
+supersession. Seven real-producer regressions failed before the fix; all 191
+worker/integration/unit cases and production server typechecking pass. Database
+fixture setup/cleanup moved to a cohesive helper, keeping the worker test file
+below 1,000 lines. The broader raw-writer audit still includes external services
+(secret proposals, tool reviews, conversation reset and native review retirement),
+plus the previously listed publication/configuration/recovery dependencies.
+
+
+Slice 28 now covers binding-proposal terminal reflection and tool-review human
+verdict/expiry reflection. Nine governed-producer cases (including outer rollback
+and dependent rejection) pass with the lifecycle/interaction suites, 200 total;
+all 109 existing tool-gateway cases and server production typechecking pass.
+The audit retains the initial invalid tool-publication fixture assertion and
+corrected before-fix failures. Native external-review supersession is already
+covered by its status-decision outer transaction. Other external interaction and
+lineage producers remain under audit; the draft is not production-wired yet.
+
+
+Slice 28 covers native automatic/obsolete review retirement and conversation
+reset with seven additional governed cases, including retained-history and
+explicit-request controls. Three missing wakes were reproduced before repair;
+207 lifecycle/governed/interaction cases pass. The draft CI chat-shard failure
+was reproduced as a test subscribing to unrelated unresolved transaction intent;
+isolating that test's DB owner preserves the production protocol and passes three
+native review acceptance cases. Server production types pass. The slice audit
+retains the invalid fixture and missed test-file selection. Polling removal,
+remaining producers, fresh CI/review, older findings and the full inventory remain
+unfinished; no stack merge or whole-goal completion is claimed.
+
+
+Slice 28 also covers interactive callback recovery of an unknown prompt receipt.
+Its existing Slack acceptance test failed before the answer-write barrier without
+the receipt signal, then five Slack/Discord/Telegram cases and server production
+types passed after the one-line integration. File transport and ordinary tool
+receipt ordering were audited without adding unnecessary notifications. Remaining
+configuration/recovery producers and production wiring still gate polling removal.
+
+
+## Drain review repair and fresh stack gates
+
+The first broad stack refresh found #17576 Greptile finding 4370544173: dirty
+in-memory hints kept the coordinator's settled-write activity hold alive during
+drain. SQL silence alone had missed it. It failed a new real-PostgreSQL counter
+assertion before repair. The owning parent is fixed at 1b43332c74; all checks now
+pass and that review thread is resolved. Slice 22 carries the repair into its
+shared dispatcher at b2af095de2. Open/uncertain writes remain fenced centrally;
+settled hints and their next deadlines survive resume without holding idle active.
+
+The fix is propagated through #17580 (0aab051900), #17583 (c46bcbf9ff), #17586
+(6d99318a8d), #17590 (0bb6de2343), #17592 (6e40ac2570) and #17606 (71a84ee0c0).
+Report and retention resume tests initially returned early because their flush
+helper checked only the active counter. Those parent-owned tests now advance the
+actual retained nextWakeAt and prove the durable result, plus unchanged idle
+snapshots while paused. See 2026-10-25-voice-drain-repair.md for all retained
+failure logs, including one invalid intermediate report-field assertion.
+
+Verified selection at the combined tip:
+- 99 chat lifecycle/governed/voice recovery cases pass.
+- 24 Teams consent/abandoned-attempt scheduler cases pass.
+- 38 inbound cleanup, retention and call-report cases pass after test repairs.
+- Production server typecheck passes. The 108-case full voice integration suite
+  passed at the shared-dispatch parent; strengthened reply drain passed separately.
+
+Fresh current-head rollup is saved at
+/tmp/sleep-stack-checks-after-drain-20261025.json. #17490 still fails E2E shard 3
+and aggregate at 31bcd19888. #17518 Andrecomp Review remains pending. #17578 and
+newer propagated heads have pending checks, with no failures in that snapshot.
+The inbound cleanup/company-deletion review and security finding is NOT repaired
+by this drain change; current pending checks do not discharge that finding.
+No blind reruns or merges into master occurred.
+
+Next actionable parent audit: tool health (#17554), Discord command registration
+(#17557), and receiver discovery (#17572) still contain the same unconditional
+hasPending dirty-scope predicate. Reproduce their idle-hold behavior, repair at
+their owning branches, and propagate. Their currently passing CI is not evidence
+against that missing idle-counter assertion. Then continue milestone configuration
+and alternate-receipt coverage, production registration/poll removal, the entire
+original inventory, older E2E/cleanup findings and final master reconciliation.
+
+## Configuration drain propagation and resource milestone producers
+
+Discord #17557 at 954a0faa75 and receiver #17572 at 8815dfad38 now carry the
+confirmed drain-hold repairs, following tool health #17554 at e685a0e7ef.
+The prerequisite #17561 inherited health at 05ac7835fc. Propagation reached
+#17576 a4bc3ea50e, #17578 05797e2b9f, #17580 82d023a3a0, #17583 f4f7e14f7a,
+#17586 920a951505, #17590 d626ff4b13, #17592 33ffff8a12, and #17606 9775b2bc4a.
+All 109 configuration lifecycle/protocol cases pass together after applying the
+tip schema to their disposable databases. See the configuration-worker drain
+repair document for individual causal failures and parent evidence.
+
+Slice 28 adds real inventory/lifecycle resource reactivation wakes. The two
+regressions fail before repair; all 90 milestone lifecycle/governed/resource cases
+and six selected provider acceptance cases pass after it. The owning resource
+module only wakes reopened issue scopes, never unchanged inventory or completed
+history. See the milestone audit for full commands/results and remaining producers.
+
+Fresh gate snapshot /tmp/sleep-stack-gates-configuration-drain-20261025.json has
+no failures for slices 1–12 and 14–16, plus #17505; #17490 still fails E2E shard 3
+and its aggregate. #17518/#17554 have pending review and later updated heads have
+pending checks. New #17576 security finding 4371283330 concerns repeated
+connection writes loading every live voice session in that connection. Inspect
+and address it without dropping future deadlines or configuration revocation.
+The existing #17580 cleanup/company-deletion denial finding remains open. No
+review blocker is resolved merely by pushing inherited changes. No PRs merged.
+
+Origin/master refreshed to e335265568 (task-run UI polling removal #17608).
+Full base reconciliation, remaining recurring-work slices, milestone startup
+wiring, fresh reviews, and all latest-head CI gates remain required.
+
+
+Slice 28 Telegram migration now registers affected issue intents in its owning
+transaction before reactivating/rebinding conversations. The missing wake was
+reproduced first. All 92 milestone/resource/governed tests, eight existing
+Telegram migration cases, server typecheck and server build pass. Duplicate
+migration and unchanged inventory remain quiet. See the milestone audit for
+failure and verification logs. Inbound activation and remaining producer audits
+still gate production wiring; no recurring projector has been removed yet.
+
+Fresh pre-push gates: #17606 at b634353059 has passing checks; #17572 at
+8815dfad38 and #17490 at 31bcd19888 still fail E2E shard 3 and aggregate.
+Three local cancellation diagnostic runs passed, including full projects coverage
+and a database-only delay, without proving the CI deadlock's competing owner.
+Those failures, parent security/deletion findings, all other original slices,
+fresh remote review and reconciliation with master 7ebf98eafd remain open.
+
+
+Slice 28 ordinary ingress now wakes existing milestone debt before reactivating
+conversation bindings and writing inbound links. A real Slack ingress regression
+failed before repair and passes without depending on a new run being created.
+All 12 selected ingress/revocation/Telegram migration cases and server types/build
+pass. The milestone audit records evidence, isolated DB, and remaining authority/
+lineage producers. This is another producer checkpoint in draft #17606, not
+production polling removal or completion of the full requested stack.
+
+
+Slice 28 now signals successful inbound action settlement and repaired delivery
+acceptance for already-admitted runs. Both post-close missing notices reproduced
+before repair. All 41 selected post-close/ingress/revocation/migration cases and
+server types/build pass; recovery proves it does not admit a second wake. The
+audit retains the initial contention-sensitive assertion and its correction to
+honor the existing retry. Identity activation and remaining authority/lineage
+producers still gate production polling removal. All original slices and older
+parent CI/review findings remain required.
+
+
+Slice 28 identity activation now signals the bound issue before changing the
+responsible user. Two before-fix failures now pass with outer commit/rollback,
+pending steering, replay and settled quiet checks. All 43 existing identity and
+GitHub credential tests pass after repairing their external-DB fixture URL;
+server types/build pass. Recovery terminalization/classification writers are the
+next audit. Master 34409a92c4 was fetched without disturbing this draft. The
+worker is still not production-registered and all original stack duties remain.
+
+
+Slice 28 now covers orphan-run terminalization in stale-lock recovery. Both
+real-producer missing-notice cases failed before repair and pass afterward;
+all 40 existing stale-lock ownership/race cases and server types/build pass.
+The conditional update and provider/process authority retain their existing
+owners. Adapter-failure classification and remaining producer audits still gate
+production registration; this does not migrate the stale-lock polling duty itself.
+
+
+Slice 28 now covers the late adapter-failure classification write, which can
+return an old failed run to the existing publication window after the issue's
+earlier wake. The missing notice reproduced before repair; all three recovery
+milestone cases, 89 recovery-action cases and server types/build pass. Four
+classification callers reuse their issue identity, with no new queue table or
+provider policy in shared code. Authority/configuration audit and production
+wiring remain next; the original full stack and remote gates remain incomplete.
+
+
+Slice 28 now covers nine real authority-restoration owners: connection/resource
+reach, unlinked policy, identity confirmation, four membership paths and task
+visibility. Seven initial causal failures plus connection/resource reproductions
+now pass; the invalid Discord group-reach fixture is explicitly retained in the
+failure record. Final local selection: 50 chat integrations, 18 access tests,
+six action-worker tests, server typecheck/build. No provider authorization was
+relaxed. Cloud trusted-header membership sync and board claim remain alternate
+writers to cover before production registration/poll removal. Older parent
+findings and the complete original stack remain open.
+
+
+Slice 28 now covers Cloud trusted-header sync and board claim. The missing
+Cloud notice and absent board-claim intents were reproduced before repair.
+All 39 post-close cases plus 30 provisioning/auth/claim cases pass; server types
+and build pass. Unchanged Cloud profile synchronization and active board membership
+stay silent. See the milestone audit for transaction boundaries and retained logs.
+The previous pushed head 0f38d1079d has the recurring E2E shard-3 cancellation
+failure; process-identity event append deadlock evidence is retained for diagnosis.
+Production registration/poll removal and the entire remaining stack are still open.
+
+
+Slice 28 production milestone migration: the app now registers the scoped
+lifecycle worker and the periodic coordinator invokes only native progress.
+The final GitHub guest/sponsor settings owner signals actual authority changes
+inside its existing transaction; its missing intent reproduced before repair.
+159 worker/startup/coordinator cases, four GitHub acceptance cases and all 16
+assembled-app project-chat E2Es pass; server typecheck passes. The milestone
+audit has a consolidated alternate-writer disposition table. Native progress
+remains the next separate reason. Remote gates, parent findings and the rest of
+the original stack are not complete; local cancellation success does not repair
+the recorded CI deadlock.
+
+
+Slice 28 review repair: cover GitHub observed-identity linking, suppress
+unchanged native-finalization recovery wakes, and repair the voice callback and
+Cloud-auth test contracts. Restore shared user profile after the Cloud authority
+test so downstream Slack publication tests see their original identity. Local
+40 stale-lock, 122 voice, 38 auth/session and 28 combined chat cases pass; server
+typecheck/build pass. See the milestone audit for failed-run dispositions.
+Latest-head remote gates and parent failures remain open.
+
+## Slice 29: native chat progress implementation
+
+PR [#17639](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17639), branch
+`codex/sleep-29-native-chat-progress`, parent #17606 at `ed76256b97`.
+Native event producers and existing eligibility notifications now wake a scoped
+worker. Progress leaves the chat timer; retained history becomes quiet. The
+worker retains only unfinished batches, concrete lock contention and failures.
+See [the owner audit](2026-10-25-native-chat-progress-sleep-audit.md) for producer
+coverage, cursor precision repair, authorization boundaries and retained failures.
+
+Forty-four focused native-progress cases pass, as do 13 app coordinator cases and
+the server build/typecheck. All 16 browser chat cases pass before the final
+base-publication hook. The hook fixes a reproduced commit-order wake gap; its
+19 worker and 13 coordinator cases pass. A second fresh browser run passes all
+16 cases at `bcf2f38ff5`; final typecheck passes too. Remote checks/review are pending.
+Parent #17606 now has passing checks and Greptile 5/5 on `ed76256b97`; all three
+review threads are resolved. This is not completion of the broader stack.
+
+## Current gate update: native progress and inbound notices (2026-10-25)
+
+#17639 at `6c40618ec1bb098e1c7fe4098133d1de71d287ee` now has all checks
+passing (CI run 40218349023), a fresh Greptile 5/5 review of that commit, and
+zero review threads. The circular signal-payload and over-wide atomic-event
+selection failures were repaired, not bypassed by rerunning unchanged failures.
+The PR remains unmerged.
+
+Slice 30 now registers its scoped notice worker and removes normal inbound
+notices from periodic publication maintenance. Focused acceptance passes 42
+cases. Its full verification and new PR are still pending. See the dated inbound
+wake notice audit for the producer inventory, regressions and fixture corrections.
+This update does not clear the older Grok/runtime-discovery CI failures, voice
+session recovery review, or inbound voice cleanup ownership findings, and it does
+not shrink the remaining original checklist.
+
+
+## Slice 30 gate and slice 31 projection checkpoint (2026-10-25)
+
+[#17647](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17647) at
+`fee07f3fa8cbc489cb9bbf657a6065c6e00748c3` has all 53 checks passing,
+a fresh Greptile 5/5 review, and its fairness finding resolved. The pre-repair
+full chat/startup acceptance passed 1,486 cases; the bounded-candidate repair
+passes 44 selected integration cases and server typecheck/build. No merge occurred.
+
+The next separate branch, `codex/sleep-31-failed-retry-notices`, fixes a reproduced
+manual-cursor starvation defect and adds scoped, bounded retry-notice projection.
+Its normal periodic pass remains until producer/lifecycle migration is complete.
+See [the retry notice audit](2026-10-25-failed-retry-notices-sleep-audit.md).
+
+Fresh older-parent audit still shows #17490 at `31bcd19888` and #17572 at
+`8815dfad38` failing E2E shard 3 and its aggregate. #17576 still has unresolved
+voice inventory amplification findings 4371283330/4371307607, and #17580 still
+has unresolved company-offboarding/cleanup findings 4370459800/4370543984. These
+are required repairs, not exemptions. The full original migration scope,
+master reconciliation, and all latest-head gates remain required.
+
+
+## Slice 31 worker and producer checkpoint (2026-10-25)
+
+Failed-retry notices now register a scoped worker and leave periodic publication
+maintenance. Real missed wakes were reproduced for admission, agent/tree
+cancellation, resumed-admission denial, early admission refusal, and requester
+restoration. Their owning transactions now notify through the existing shared
+boundary. Fourteen selected lifecycle cases and all 1,503 chat/startup acceptance
+cases pass. Workspace typecheck and build pass. See the retry audit for retained
+failures, exact commands/logs, and native source-cleanup qualification still open.
+This is a draft checkpoint, not a merge-ready claim. Older parent gates and every
+remaining original recurring-server duty stay in scope. No merge occurred.
+
+
+## Slice 31 native producer repairs
+
+Draft [#17649](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17649) now covers
+source lease cleanup and reusable-lease retirement, each with a reproduced
+missing notice and real writer transaction tests. All 36 selected native/notice
+cases pass. The owning audit distinguishes notice authority from the stronger
+filesystem execution proof, and retains the fake-clock connection failure and
+Runner CI receipt timeout. Existing lease acceptance, updated full acceptance,
+remote gates, older parent findings, and every remaining original duty are still
+required. No stack PR has been merged.
+
+
+## Slice 31 accepted checkpoint and slice 32 owner audit
+
+[#17649](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17649) at
+`2384384eeec4f32d073242ebf597b81df2df1ccb` has all 53 checks passing,
+fresh Greptile 5/5, and no inline review findings. Full chat/startup acceptance
+passes all 1,505 cases on fresh `andrecomp_sleep31_native_full_20261025_test`
+(`/tmp/sleep31-native-full-chat.log`, 446.10 seconds, exit 0). The lease service
+passes 51 tests; focused native/notice acceptance passes 36; final server
+typecheck and build pass. This supersedes the earlier slice-31 pending statuses.
+The initial Runner receipt timeout did not reproduce after building debug Rust
+binaries (10 local tests pass), nor in a controlled 500ms event-loop-delay
+experiment. The updated-head remote Runner gate passes without an unchanged-job
+retry. Its exact initial cause remains unproven.
+
+The next branch is `codex/sleep-32-terminal-confirmations`, based on the accepted
+slice-31 commit. See the terminal confirmation owner audit. There is no slice-32
+implementation or PR yet. Older #17490/#17572 CI failures, #17576 inventory
+amplification findings, #17580 offboarding/cleanup ownership findings, the entire
+remaining original list, final master reconciliation and all final-head checks
+remain required. All stack PRs remain unmerged.
+
+
+## Slice 32 implementation checkpoint
+
+`codex/sleep-32-terminal-confirmations` implements terminal-confirmation recovery
+on committed signals and the shared scoped coordinator. Its Telegram owner keeps
+payload validation, settlement, continuation staging and activity attribution.
+The audit is `2026-10-25-terminal-confirmation-sleep-audit.md`. Nine distinct focused
+cases pass across the recorded commands, including real callback failure, outer
+commit/rollback, historical waiting/invalid prefixes, and a write during an active
+settlement. The new source guard excludes this duty from periodic maintenance.
+Full local acceptance, remote review/checks and publication are pending here.
+This supersedes the audit-only slice-32 status above. All older stack gates and
+every remaining original obligation remain required; no PR is merged.
+
+Slice 32 is now draft [#17651](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17651).
+Initial workspace types/build pass; full chat/startup acceptance passes 1,511 of
+1,512, with a prior retry-notice test fake-clock CONNECT_TIMEOUT retained and
+corrected. Initial CI passes 51 gates but fails a plugin test at a cron boundary
+and its aggregate. A controlled timestamp diagnostic establishes an additional
+owed cron occurrence; fixing that fixture clock passes all 28 plugin tests.
+Thirteen selected chat lifecycle cases pass after the retry-notice wait fix.
+Initial Greptile is 5/5 without findings. Fresh full acceptance and corrected-head
+remote gates remain required; see the slice-32 audit for all retained failures.
+
+## Slice 32 accepted-head verification and slice 33 start
+
+At `8b43e6222706491f2d8044af3bf86358085069af`, #17651 passes all
+53 remote checks and fresh Greptile 5/5, with no review threads. The corrected
+full chat/startup run passed all 1,512 tests on a fresh database in 463.63 seconds;
+final server typecheck also passed. Prior failed runs remain documented above.
+The PR remains unmerged. Latest fetched master is `67aa87a93b`; final stack
+reconciliation and older unresolved gates/reviews remain outstanding.
+
+Slice 33 starts from that accepted head and owns interaction continuation
+recovery only. The owner audit is in
+`2026-10-25-interaction-continuation-sleep-audit.md`. GitHub history maintenance
+and host-sleep eligibility remain separate work.
+
+Slice 33 now implements interaction continuation recovery with committed action
+signals, saved retry/claim deadlines, and a scoped call into the existing
+publication dispatcher before claiming continuation work. It preserves paused
+and future-retry publication behavior. Eleven new real-database cases pass,
+including outer rollback/commit, historical prefixes, and concurrent response
+commit. Existing Telegram acceptance also passes. Broad acceptance and fresh
+PR gates remain pending; no merge or full-stack completion is claimed.
+
+Slice 33 is [#17653](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17653), draft
+and unmerged. Initial broad acceptance passed 1,523 tests with 14 skipped;
+workspace types/build passed. Review found that publication preparation could
+start another send after drain/standby/shutdown. Three regressions reproduced
+it. Per-send admission/abort checks now pass all 14 new lifecycle cases, and the
+previously skipped publication suite plus startup guards pass 27 cases with the
+external test database. Fresh corrected-head verification remains required.

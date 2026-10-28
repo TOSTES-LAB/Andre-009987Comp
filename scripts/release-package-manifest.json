@@ -125,6 +125,11 @@
     "publishFromCi": true
   },
   {
+    "dir": "packages/plugins/sandbox-providers/boxd",
+    "name": "@andrecomp/plugin-boxd",
+    "publishFromCi": false
+  },
+  {
     "dir": "packages/plugins/sandbox-providers/cloudflare",
     "name": "@andrecomp/plugin-cloudflare-sandbox",
     "publishFromCi": true

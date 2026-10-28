@@ -71,8 +71,12 @@ export function boardSendDraftKey(
   issueId: string,
   endpointId: string,
   conversationId: string,
+  owner?: string,
 ) {
-  return `andrecomp:board-send:v1:${JSON.stringify([companyId, issueId, endpointId, conversationId])}`;
+  const scope = [companyId, issueId, endpointId, conversationId];
+  return owner === undefined
+    ? `andrecomp:board-send:v1:${JSON.stringify(scope)}`
+    : `andrecomp:board-send:v2:${JSON.stringify([owner, ...scope])}`;
 }
 
 export function readBoardSendDraft(key: string): RetainedBoardSend | null {

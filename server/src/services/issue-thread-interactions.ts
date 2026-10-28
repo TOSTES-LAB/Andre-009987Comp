@@ -1,3 +1,5 @@
+import { notifyChatConfirmationResolution } from "./chat-confirmation-notifications.js";
+import { notifyChatRunMilestones } from "./chat-run-milestone-notifications.js";
 import { notifyToolReviewChange } from "./tool-review-work-notifications.js";
 import { normalizeEscapedLineBreaks } from "@andrecomp/shared/validators/text";
 import { notifyDeliveryWork, DELIVERY_QUEUES } from "./delivery-work-notifications.js";
@@ -1912,6 +1914,8 @@ async function expireStaleRequestConfirmationTarget(
     snapshot,
   });
   const expireInTransaction = async (tx: Db | any) => {
+    await notifyChatConfirmationResolution(tx, args.row);
+    if (args.row.kind === "request_confirmation") await notifyChatRunMilestones(tx, args.row);
     const [updated] = await tx
       .update(issueThreadInteractions)
       .set({
@@ -2189,6 +2193,8 @@ export function issueThreadInteractionService(
     const postCommitActivityPublications: ActivityPublication[] = [];
     const result = await db.transaction(async (tx) => {
       await assertInteractionRunWriteAllowed(tx as unknown as Db, args.issue, args.actor);
+      await notifyChatConfirmationResolution(tx, args.current);
+      if (args.current.kind === "request_confirmation") await notifyChatRunMilestones(tx, args.current);
       await args.mutationOptions?.beforeResolveInTransaction?.(tx);
       // Policy mutations and review transitions use the same issue-row lock,
       // so the authoritative review policy and requester are stable through
@@ -2472,6 +2478,8 @@ export function issueThreadInteractionService(
     const now = new Date();
     const updated = await db.transaction(async (tx) => {
       await assertInteractionRunWriteAllowed(tx as unknown as Db, args.issue, args.actor);
+      await notifyChatConfirmationResolution(tx, args.current);
+      if (args.current.kind === "request_confirmation") await notifyChatRunMilestones(tx, args.current);
       await args.mutationOptions?.beforeResolveInTransaction?.(tx);
       const issueContext = await tx
         .select({
@@ -2758,6 +2766,7 @@ export function issueThreadInteractionService(
           })
           .map((candidate) => candidate.id);
         if (supersededIds.length > 0) {
+          await notifyChatConfirmationResolution(tx, { companyId: issue.companyId, issueId: issue.id, kind: "connection_intent" });
           await tx
             .delete(toolOauthStates)
             .where(inArray(toolOauthStates.interactionId, supersededIds));
@@ -2856,6 +2865,7 @@ export function issueThreadInteractionService(
             : "expired";
       const resolvedAt = now();
       const updated = await db.transaction(async (tx) => {
+        await notifyChatConfirmationResolution(tx, current);
         await mutationOptions.beforeResolveInTransaction?.(tx);
         const [row] = await tx
         .update(issueThreadInteractions)
@@ -3290,6 +3300,8 @@ export function issueThreadInteractionService(
       const cancelled: IssueThreadInteraction[] = [];
       for (const row of rows) {
         const updated = await db.transaction(async (tx) => {
+          await notifyChatConfirmationResolution(tx, row);
+          if (["ask_user_questions", "request_confirmation"].includes(row.kind)) await notifyChatRunMilestones(tx, row);
           if (row.kind === "request_confirmation") await notifyToolProjectionForInteractions(tx, row.companyId, [row.id]);
           const [resolved] = await tx
             .update(issueThreadInteractions)
@@ -3375,6 +3387,8 @@ export function issueThreadInteractionService(
       const expired: IssueThreadInteraction[] = [];
       for (const { row, replacementInteractionId } of supersededRows) {
         const updated = await db.transaction(async (tx) => {
+          await notifyChatConfirmationResolution(tx, row);
+          if (["ask_user_questions", "request_confirmation"].includes(row.kind)) await notifyChatRunMilestones(tx, row);
           if (row.kind === "request_confirmation") await notifyToolProjectionForInteractions(tx, row.companyId, [row.id]);
           const [updatedRow] = await tx
             .update(issueThreadInteractions)
@@ -3736,6 +3750,9 @@ export function issueThreadInteractionService(
                 eq(chatVoiceSessions.callerAuthority, "guest_intake"))).limit(1);
             if (guest) throw unprocessable("Ask this unverified caller a clarification in a task comment; submit_request will deliver their spoken follow-up. Protected human-input questions require authenticated access.", {code: "voice_guest_use_task_comment"});
           }
+          if (data.kind === "ask_user_questions" || data.kind === "request_confirmation") {
+            await notifyChatRunMilestones(tx, { companyId: issue.companyId, issueId: issue.id });
+          }
           const [row] = await tx
             .insert(issueThreadInteractions)
             .values({
@@ -4062,6 +4079,7 @@ export function issueThreadInteractionService(
       const createdWakeTargets: IssueWakeTarget[] = [];
 
       await db.transaction(async (tx) => {
+        await notifyChatConfirmationResolution(tx, current);
         await mutationOptions.beforeResolveInTransaction?.(tx);
         await assertInteractionRunWriteAllowed(tx as unknown as Db, issue, actor);
         const resolvedAt = new Date();
@@ -4368,6 +4386,7 @@ export function issueThreadInteractionService(
       }
 
       const [updated] = await db.transaction(async (tx) => {
+        await notifyChatConfirmationResolution(tx, current);
         await mutationOptions.beforeResolveInTransaction?.(tx);
         await assertInteractionRunWriteAllowed(tx as unknown as Db, issue, actor);
         const rows = await tx.update(issueThreadInteractions)
@@ -4459,6 +4478,8 @@ export function issueThreadInteractionService(
       const expired: IssueThreadInteraction[] = [];
       for (const row of superseded) {
         const updated = await db.transaction(async (tx) => {
+          await notifyChatConfirmationResolution(tx, row);
+          if (["ask_user_questions", "request_confirmation"].includes(row.kind)) await notifyChatRunMilestones(tx, row);
           if (row.kind === "connection_intent") {
             await tx
               .delete(toolOauthStates)
@@ -4595,6 +4616,7 @@ export function issueThreadInteractionService(
           );
           if (!sampleQuestionRow) continue;
           const updatedInteractions = await db.transaction(async (tx) => {
+            await notifyChatRunMilestones(tx, sampleQuestionRow);
             const updatedRows = await tx
               .update(issueThreadInteractions)
               .set({
@@ -4633,6 +4655,8 @@ export function issueThreadInteractionService(
           );
           if (!sampleConfirmationRow) continue;
           const updatedInteractions = await db.transaction(async (tx) => {
+            await notifyChatConfirmationResolution(tx, sampleConfirmationRow);
+            if (commentRows.some(row => row.kind === "request_confirmation")) await notifyChatRunMilestones(tx, sampleConfirmationRow);
             await notifyToolProjectionForInteractions(tx, issue.companyId, confirmationRowIds);
             const updatedRows = await tx
               .update(issueThreadInteractions)
@@ -4693,6 +4717,7 @@ export function issueThreadInteractionService(
 
         for (const row of connectionIntentRows) {
           const [updated] = await db.transaction(async (tx) => {
+            await notifyChatConfirmationResolution(tx, row);
             await tx
               .delete(toolOauthStates)
               .where(eq(toolOauthStates.interactionId, row.id));
@@ -4778,6 +4803,8 @@ export function issueThreadInteractionService(
           document,
         });
         const updated = await db.transaction(async (tx) => {
+          await notifyChatConfirmationResolution(tx, row);
+          if (row.kind === "request_confirmation") await notifyChatRunMilestones(tx, row);
           const [resolved] = await tx
             .update(issueThreadInteractions)
             .set({
@@ -4840,27 +4867,29 @@ export function issueThreadInteractionService(
         const subject = payload?.purpose === "ai"
           ? "the AI account"
           : `the ${payload?.serviceName?.trim() || "requested"} connection`;
-        const [updated] = await db
-          .update(issueThreadInteractions)
-          .set({
-            status: "expired",
-            result: {
-              version: 1,
-              outcome: "expired",
-              reason: `The task was reassigned before the connection request was answered, so ${subject} is still not connected. Reconnect it or choose an available connection.`,
-            },
-            resolvedAt: now(),
-            updatedAt: now(),
-          })
-          .where(and(
-            eq(issueThreadInteractions.id, row.id),
-            eq(issueThreadInteractions.status, "pending"),
-          ))
-          .returning();
-        if (updated) {
-          await enqueueTerminalIssueInteractionChatPublications(db, hydrateInteraction(updated));
-          expired.push(updated);
-        }
+        const updated = await db.transaction(async tx => {
+          await notifyChatConfirmationResolution(tx, { companyId: issue.companyId, issueId: issue.id, kind: "connection_intent" });
+          const [resolved] = await tx
+            .update(issueThreadInteractions)
+            .set({
+              status: "expired",
+              result: {
+                version: 1,
+                outcome: "expired",
+                reason: `The task was reassigned before the connection request was answered, so ${subject} is still not connected. Reconnect it or choose an available connection.`,
+              },
+              resolvedAt: now(),
+              updatedAt: now(),
+            })
+            .where(and(
+              eq(issueThreadInteractions.id, row.id),
+              eq(issueThreadInteractions.status, "pending"),
+            ))
+            .returning();
+          if (resolved) await enqueueTerminalIssueInteractionChatPublications(tx as unknown as Db, hydrateInteraction(resolved));
+          return resolved;
+        });
+        if (updated) expired.push(updated);
       }
       if (expired.length) await db.delete(toolOauthStates).where(inArray(toolOauthStates.interactionId, expired.map((item) => item.id)));
       return expired;
@@ -4898,6 +4927,8 @@ export function issueThreadInteractionService(
         // lifecycle reflection.
         const updated = await db
           .transaction(async (tx) => {
+            await notifyChatConfirmationResolution(tx, row);
+            if (["ask_user_questions", "request_confirmation"].includes(row.kind)) await notifyChatRunMilestones(tx, row);
             if (row.kind === "connection_intent") {
               await tx
                 .delete(toolOauthStates)
@@ -4988,6 +5019,8 @@ export function issueThreadInteractionService(
       // request must not outlive a withdrawn card.
       const updated = await db.transaction(async (tx) => {
         await assertInteractionRunWriteAllowed(tx as unknown as Db, issue, actor);
+        await notifyChatConfirmationResolution(tx, current);
+        if (["ask_user_questions", "request_confirmation"].includes(current.kind)) await notifyChatRunMilestones(tx, current);
         await resolveLinkedToolActionRequests(tx, current, {
           status: "cancelled",
           fromStatuses: ["pending", "approved"],
@@ -5123,6 +5156,7 @@ export function issueThreadInteractionService(
           if (!historicalAnswer) throw interactionIssueClosedError();
         }
         await assertInteractionRunWriteAllowed(tx as unknown as Db, issue, actor);
+        await notifyChatRunMilestones(tx, current);
         await mutationOptions.beforeResolveInTransaction?.(tx);
         const resolvedAt = new Date();
         const [row] = await tx
@@ -5247,6 +5281,8 @@ export function issueThreadInteractionService(
       const now = new Date();
       const updated = await db.transaction(async (tx) => {
         await assertInteractionRunWriteAllowed(tx as unknown as Db, issue, actor);
+        await notifyChatConfirmationResolution(tx, current);
+        if (["ask_user_questions", "request_confirmation"].includes(current.kind)) await notifyChatRunMilestones(tx, current);
         await resolveLinkedToolActionRequests(tx, current, {
           status: "cancelled",
           fromStatuses: ["pending", "approved"],
@@ -5344,6 +5380,7 @@ export function issueThreadInteractionService(
       const reason = data.reason?.trim() || null;
       const updated = await db.transaction(async (tx) => {
         await assertInteractionRunWriteAllowed(tx as unknown as Db, issue, actor);
+        await notifyChatRunMilestones(tx, current);
         const resolvedAt = new Date();
         const [row] = await tx
           .update(issueThreadInteractions)
