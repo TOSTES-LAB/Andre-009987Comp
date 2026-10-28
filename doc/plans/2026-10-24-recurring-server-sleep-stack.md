@@ -17,7 +17,7 @@ Do not mark an item done from a timer removal or a green check alone.
 | 03 | Run and task recovery | Orphan runs and active leases; shutdown workspace settlement; scheduled retries; queued runs; stranded assignments; resolved dependencies; task watchdogs; silent-run monitoring; stale locks | Pending |
 | 04 | Decision retention and notifications | Retention deadlines and notification delivery are separate reasons | Approval retention [#17497](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17497) and archive delivery [#17475](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17475) merged; other source retention pending |
 | 05 | Decision expiry and interrupted effects | Expiry, effect recovery, continuation recovery | Continuations [#17478](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17478) merged; expiry [#17479](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17479) merged; effects [#17482](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17482) merged; targets [#17486](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17486) merged |
-| 06 | Tool connection health | Configuration/use activation and defined proactive health deadlines | #17554 repaired at `8c1d293d1a`; fresh CI/review in progress |
+| 06 | Tool connection health | Configuration/use activation and defined proactive health deadlines | [#17554](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17554) merged after all checks and both 5/5 reviews |
 | 07 | Secret proposals, tool reviews, gateway tokens | Separate expiry/scrub/recovery owners | Slices 02–07 merged: [secret proposals](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17446), [credentials](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17450), [review expiry](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17453), [approved recovery](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17454), [interrupted claims](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17458), [projection](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17468) |
 | 08 | GitHub connection events and continuity | Event discovery/replay and credential continuity separately | Pending |
 | 09 | Merged-PR confirmations | Candidate writes, webhook activation where supported, outstanding-candidate fallback | Pending |
@@ -1483,6 +1483,172 @@ loops or changing domain backoff. All 152 selected command/coordinator/health,
 producer/Slack, delivery/standby/startup cases and server types/build pass. Publish
 for fresh CI/review. The full inventory, #17490 CI failure, and stack/master
 reconciliation remain open; no merge authority is implied.
+
+
+## Slice 20 receiver implementation
+
+Receiver discovery now uses scoped committed configuration changes, startup
+reconstruction, foreign-lease deadlines, and listener-stop completion. Voice and
+all other maintenance reasons remain separate. See
+[the receiver audit](2026-10-25-chat-receiver-discovery-sleep-audit.md).
+A failed-scope deadline regression and a real concurrent listener-stop race were
+reproduced and repaired. All 218 selected receiver/startup, Discord, Photon,
+command/delivery and standby cases pass, with workspace typechecking passing.
+Workspace build also passes; publication and fresh remote gates remain open. This is not
+completion of the slice or the full stack. Master is refreshed at 0d73505098;
+final stack/master reconciliation remains required.
+
+Parent Discord #17557 at d3187f76a4 and company cleanup #17561 at e8febb30eb now
+have no failed or pending checks (Andrecomp Review skipped). No merge was made.
+The older #17490 E2E cancellation failure remains unresolved. The entire original
+inventory stays in scope, with voice the next separate reason after receivers.
+
+
+Receiver discovery is published and attached as [#17572](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17572)
+at 643f4766227e15006b684d2cc7bea7ddd5cc2147, based on #17557. Its live CI run is
+40173962833; security and reviews are pending. All 218 selected local cases,
+workspace types and build pass. The next audit splits voice into five separate
+reasons: live-session recovery, reply push, inbound admission expiry/provider
+cleanup, inbound history retention, and call reports. See
+[the voice owner audit](2026-10-25-voice-maintenance-sleep-audit.md).
+Branch codex/sleep-21-voice-session-recovery starts with the first reason; the
+other four remain explicit required slices. No voice migration is implemented yet.
+## Receiver review repair
+
+The real company-removal producer regression reproduced two inventory reads for
+one observed removal. Discovery-initiated stops now suppress their own completion
+wake; independent token loss still wakes discovery after listener retirement.
+A full reconstruction also covers its already-pending scoped hints. Hints that
+arrive during the load remain dirty, and narrower writes cannot bypass a failed
+full reconstruction's retry deadline.
+
+Both redundant-load regressions failed before repair. All 45 selected receiver,
+startup and real Discord producer tests pass after repair, including the added
+full-refresh failure/backoff case. Server typecheck and build pass. Prior broad
+consumer/workspace verification remains recorded above; these 45 overlap that
+coverage and are not an additional unique total. Publication requires fresh
+remote CI and review. The full migration inventory remains outstanding.
+
+
+Voice recovery checkpoint: receiver repair `1604a9fcba` is published to #17572
+and incorporated into the unpublished voice child. The complete 93-case voice
+suite, eight new recovery lifecycle tests, and 16 startup wiring cases pass.
+See the voice audit for precise coverage and remaining work. Receiver CI
+40175242445 is live with no failures at inspection; no final acceptance or merge
+is claimed. All remaining reasons, older #17490 failure, and final master
+reconciliation stay in scope.
+
+
+Live voice recovery is [#17576](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17576),
+head 8f5e861dbd, based on #17572. All 837 selected tests, workspace typecheck and
+build pass; remote checks and review remain required. The full local test command
+was stopped after repeated embedded PostgreSQL setup failures, not counted as a
+pass. Slice 22 owns voice reply delivery and begins with the multipart/outcome
+policy and publication-settlement producer audit. See
+[reply delivery audit](2026-10-25-voice-reply-delivery-sleep-audit.md).
+
+Slice 22 now implements voice reply delivery from committed changes and saved
+retry/dispatch deadlines. The periodic reply scan and pre-publication direct push
+are removed. Real normal/operator publication tests prove the final-commit wake;
+turning that notification off reproduces zero delivered replies. The branch has
+786 selected passing tests across isolated voice, recovery, startup, and shared
+consumers, plus workspace typecheck/build. See the reply audit for retained
+fixture failures and local full-suite infrastructure limitations. Publication and
+latest-head review/check acceptance remain outstanding. Inbound admission cleanup,
+inbound history retention, and call reports remain separate next slices.
+
+Voice reply delivery is [#17578](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17578),
+head 439d0a86eb75c129c30742a8cc24bf18e2a6ebf3, stacked on #17576. Local selected
+checks pass; remote acceptance is pending. Slice 23 starts the inbound admission
+cleanup audit in `2026-10-25-voice-inbound-cleanup-sleep-audit.md`. It explicitly
+separates retention and reports and requires proof of approval/cleanup handoff,
+termination confirmation, and protection against deleting unfinished cleanup.
+
+
+Voice reply review repairs are published at #17578 head `90caaf3fa9`: shared scoped
+worker, actual authority-restoration wiring regression, 191 overlapping selected
+consumer tests and workspace types/build passing. Removing the real notification
+reproduces the lost reply. Both review threads are resolved; fresh CI/review remain.
+
+Inbound cleanup slice 23 now makes approval/session handoff atomic, after a real
+expiry regression reproduced termination of an already authorized call. All 110
+voice integration cases and server typechecking pass. This slice is not published:
+locked cleanup claims, legacy handoff recovery, bound-guest ownership, termination
+confirmation, retention protection and scheduler/producer migration remain required.
+The full original inventory, older #17490 E2E failure, and stack/master reconciliation
+remain outstanding. No stack PR has been merged by this work.
+
+
+Slice 23 inbound cleanup now uses committed admission/session changes and actual
+expiry/retry deadlines. The admission row separately records physical confirmation
+and saved provider account. Locked claims, legacy handoff repair, bound-call owner
+handoff, retention/deletion protection and safe same-account rotation are verified.
+All 205 selected tests, workspace types and build pass; publication and remote
+acceptance remain pending. History retention and call reports remain separate next
+slices. Parent #17578 at 90caaf3fa9 has no pending/failed checks and exact-head
+Greptile 5/5; the second Andrecomp reviewer stopped before completion. The original
+remaining inventory, #17490 E2E failure and final reconciliation remain in scope.
+
+
+Inbound cleanup is [#17580](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17580),
+head 4b4bf2d8af6e08d3859ada4b720e7fbd3ea27e24, stacked on #17578. It is
+mergeable; CI 40181994295 and review 40181994134 are live with no initial failure.
+The final migration applies/replays and its backfill is tested twice. Slice 24
+starts the separate inbound-history retention audit. Its deadline preserves both
+seven-day age conditions and requires confirmed cleanup plus no task/session
+binding. Call reports follow separately. No original remaining scope is removed.
+
+## Slice 24: inbound voice history retention
+
+Branch `codex/sleep-24-voice-inbound-retention` follows inbound cleanup #17580
+including its migration runner repair `4f0364d269`. It removes only periodic
+history pruning. The existing admission row owns the seven-day deadline and
+confirmation/binding conditions. The existing notification helper wakes retention
+on outer transaction settlement; no new table or caller wrapper is added.
+
+218 selected tests pass: 131 full voice/app wiring, 24 retention/cleanup lifecycle,
+52 deletion/startup, and 11 parent recovery. Workspace typecheck/build and final
+server typecheck pass. Tests prove real signed-callback and provider-cleanup
+reactivation, pre-deadline quiet, exact deadlines, concurrent binding protection,
+restart, drain, rollback, failure and shutdown. Initial fixture failures remain
+recorded in the slice audit. Remote checks and review are pending publication.
+
+Next separate owner: voice call-report reconciliation. Preserve the existing
+24-hour post-call refresh obligation, transcript ordering, task projection and
+provider diagnostics while removing scans with no eligible calls. Inspect
+completion semantics before treating a report marked available as fully settled.
+
+Slice 24 is published as [#17583](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17583)
+at `9c38ddfe53`, based on #17580 `4f0364d269`. It is attached to this chat.
+CI/review are running; no merge. The next branch is
+`codex/sleep-25-voice-call-reports`, with its owner audit recorded separately.
+
+## Slice 25: voice call reports
+
+Report refresh now owns a scoped deadline worker. Terminal transitions, signed
+callbacks, and reply call-ended responses activate existing report/session rows.
+Attempts save the next retry before provider I/O, and callback/new-attempt fences
+prevent stale settlement. The existing 24-hour refresh obligation is preserved,
+including available reports. Empty/configured-idle/live/old history is quiet.
+This removes the last voice duty from recurring chat maintenance.
+
+Acceptance: 174 selected real-database/wiring cases, workspace typecheck and build
+pass. A new integration case exposed missing baseRevisionId on an existing guest
+transcript; the fix uses the document revision contract and preserves lock
+behavior. Full failure history and external-wake limits are in
+`2026-10-25-voice-call-report-sleep-audit.md`. Publication and remote checks follow.
+Parent #17583 has a Discord rollback/drain test failure to repair at its owner;
+parent #17580 has two new cleanup review findings. Neither is marked complete.
+The remaining chat duties, original ledger, #17490 E2E failure, and final
+master/stack reconciliation remain required. No stack merge is authorized.
+
+Slice 25 published as [#17586](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17586).
+Parent Discord test settlement and denial-latency repairs are propagated. At the
+report tip, 41 Discord tests and 138 full voice/app tests pass; unchanged report,
+cleanup and retention workers had 37 passing cases. CI/reviews remain required.
+Next owner audit splits Teams unused-consent expiry from abandoned send/upload
+attempt recovery, preserving one reason per PR. Company deletion cleanup policy
+and the earlier E2E failure remain unresolved completion duties.
 ## Acceptance follow-up after the plugin parent merged (October 27)
 
 Eighteen preceding sleep PRs are merged through plugin scheduling #17518 at
@@ -1498,6 +1664,29 @@ status and test counts above are historical. The original remaining inventory
 is still in scope beyond the 65 published numbered slices; native backups and
 the remaining aggregate duties have not been migrated by this follow-up.
 
+## Receiver follow-up with current Discord parent, October 27
+
+Nineteen sleep PRs are merged through health #17554. Receiver discovery #17572
+now includes current Discord parent `cedf2030c4`, retaining the original 27-file
+scope. Its existing slow-failure and stop-wake repairs have guarded mutation
+proofs, 131 targeted cases pass, and both newly supported external fixtures
+self-migrate. See [the owning audit](2026-10-25-chat-receiver-discovery-sleep-audit.md#current-parent-and-review-acceptance-october-27)
+for exact evidence and the older CI runner-loss failure. Fresh CI/reviews and
+parent landing are still required. The original remaining-duty inventory is unchanged.
+
+
+## Voice inventory amplification acceptance, October 27
+
+The voice recovery slice keeps the original single-duty scope and adds the
+normalized health-observation notification contract. Five real metadata writes
+and one health check over 205 future calls previously selected 1,230 call rows;
+they now select zero and preserve the saved deadline. Startup and changed-parent
+reconstruction use bounded pages and retain concurrent wakes.
+
+The updated [voice audit](2026-10-25-voice-maintenance-sleep-audit.md#voice-session-inventory-amplification-repair-october-27)
+records all 725 distinct targeted passing cases, typecheck, build, failed attempts
+and guarded regressions. This is worker acceptance, not deployed sleep proof.
+Fresh exact-head review and CI remain required before the voice PR can merge.
 
 ## Discord registration landing compatibility, October 27
 
@@ -1505,3 +1694,162 @@ Company deletion has landed. The Discord command slice retains only its original
 26-file delta against the landed parent and current master at `f8563d2507`. All
 141 targeted cases, server typecheck and build pass. The [owning audit](2026-10-25-discord-command-registration-sleep-audit.md#acceptance-after-the-company-deletion-parent-landed-october-27)
 records exact scope, fixture setup and remaining remote gates.
+
+
+## Receiver integration with landed foundations, October 27
+
+Receiver discovery keeps its 27-file scope on Discord parent `547fdf2139` and
+preserves current master queue declarations. All 131 targeted cases, server
+typecheck and build pass. See the [receiver audit](2026-10-25-chat-receiver-discovery-sleep-audit.md#landed-foundation-integration-acceptance-october-27).
+Fresh exact-head review, CI and parent landing remain required.
+
+
+## Voice integration with landed foundations, October 27
+
+The bounded voice repair now includes receiver `6e88ca0201` and retains its
+22-file scope. All 725 targeted cases, production typecheck and server build pass
+again. The [voice audit](2026-10-25-voice-maintenance-sleep-audit.md#landed-foundation-acceptance-october-27)
+records exact scope, database setup, the initial partial tool-access run and
+remaining remote gates.
+
+
+## Reply delivery preserves bounded parent reconstruction, October 27
+
+The reply child includes voice recovery `712f3862b5`. Its existing shared-worker
+extraction now supports the parent's paged result contract. The real inherited
+205-call regression fails before repair and passes afterward; all 445 distinct
+targeted cases, production typecheck and server build pass. The [reply audit](2026-10-25-voice-reply-delivery-sleep-audit.md#current-parent-paging-contract-acceptance-october-27)
+records the 31-file scope and effects on the four existing shared consumers.
+Current-head review, CI and parent landing remain required.
+
+## Voice trusted-policy checkout repair, October 27
+
+Receiver `ab39569250` supplies the landed policy checker now required by trusted
+CI. Voice server/package code and tests remain identical to the 725-case tested
+head. The policy checker and its Node tests pass. The [voice audit](2026-10-25-voice-maintenance-sleep-audit.md#trusted-policy-checkout-compatibility-october-27)
+keeps the four old failed gates, including the independent runner shutdown,
+separate from current local evidence. Fresh review and CI remain required.
+
+
+## Voice review follow-up, October 28
+
+Voice recovery isolates a failed broad inventory retry from ready exact hints
+and cached due calls, while retaining on-use authority checks and exact-scope
+fences. The generation test uses controlled scheduler turns instead of elapsed
+SQL time. All 210 current targeted cases, production typecheck and server build
+pass; guarded mutations catch both regressions. The [voice audit](2026-10-25-voice-maintenance-sleep-audit.md#wildcard-failure-and-deterministic-generation-acceptance-october-28)
+keeps the actual CI assertion failure and earlier failed attempts separate.
+
+
+## Reply publication inventory acceptance, October 28
+
+Reply delivery now scopes final publication wakes to the actual conversation and
+returns at most 100 identity rows per refresh. Five real publications previously
+selected 1,065/1,060 rows across unrelated calls; both paths pass the same 125-row
+budget after repair. The [reply audit](2026-10-25-voice-reply-delivery-sleep-audit.md#publication-inventory-and-paging-acceptance-october-28)
+records restart, denial-cursor and guarded-mutation coverage. All 449 current
+targeted cases, server typecheck/build and the policy check pass on parent
+`ad79c7e805`. Fresh exact-head review, CI and parent landing remain required.
+
+
+## Inbound cleanup current-parent acceptance, October 28
+
+Inbound cleanup #17580 now includes reply parent `d2c0a7de8c` and uses its existing
+paged worker contract. Startup yields after 100 rows per scope refresh, and a
+same-owner restart reconstructs all 105 saved fixture deadlines. Migration 0395
+was generated on the parent's 0394 lineage, preserves all historical SQL/journal
+entries, and commits historical backfill in batches of at most 1,000. The
+[inbound cleanup audit](2026-10-25-voice-inbound-cleanup-sleep-audit.md#current-parent-acceptance-and-bounded-discovery-october-28)
+records 266 passing cases, negative probes, migration lineage, preserved failures,
+and limits. Exact-head review, CI, and the preceding stack still must pass before
+landing. History retention and call reports remain separate duties.
+
+
+## Inbound history retention current-parent acceptance, October 28
+
+Retention #17583 includes cleanup parent `b8b12199b9` and preserves its generated
+0395 migration. The existing shared page contract now yields after 100 history
+rows per scope refresh and resets on same-owner restart. All 280 distinct cases,
+server types/build and module boundaries pass. The [retention audit](2026-10-25-voice-inbound-retention-sleep-audit.md#current-parent-paging-and-restart-acceptance-october-28)
+records the 13-path scope, real 105-row reconstruction, negative probe, setup and
+merge failures, and limits. Latest-head review, CI and parent landing remain
+required. Call-report reconciliation follows as a separate duty.
+
+
+## Retention notification review follow-up, October 28
+
+The current retention review found repeated configuration-driven history scans.
+Five real connection saves selected 1,025 rows across 205 retained admissions.
+Retention now wakes only for admission writes and startup; cleanup retains all
+of its broader scopes. The same writes select zero history rows and preserve the
+saved deadline. Confirmed deletes also avoid a redundant reload. The
+[retention review ledger](2026-10-25-voice-inbound-retention-sleep-audit.md#configuration-rescan-review-repair-october-28)
+records 282 passing cases, types/build, failures, writer coverage and limits.
+Current-head review/CI and the earlier stack remain required.
+
+
+## Report current-parent acceptance, October 28
+
+Report scheduling #17586 integrates retention `68b62b6d13` and uses the existing
+shared paged result contract. It yields after 100 headers per scope refresh,
+resets same-owner partial scans and retains the finite 24-hour report obligation.
+Officially generated migration 0396 preserves the preceding 394 SQL files and
+retains the five newest snapshots. The [report acceptance ledger](2026-10-25-voice-call-report-sleep-audit.md#current-parent-reconstruction-and-migration-acceptance-october-28)
+records 302 passing cases, types/build, migration/plan checks, guarded restart and
+fairness probes, failures and limits. Current-head review, all CI and parent
+landing still gate this slice. The full remaining stack stays in scope.
+
+
+## Report notification review follow-up, October 28
+
+Report reconstruction also received configuration hints that could not alter
+its eligibility or saved retry. Five real connection saves over 205 saved
+reports selected 1,025 session rows. The report owner now accepts exact session
+notifications and startup; those saves select zero rows and preserve the deadline.
+The [report notification ledger](2026-10-25-voice-call-report-sleep-audit.md#configuration-scope-review-repair-october-28)
+records 303 passing cases, types/build, the narrower contract and limits. Fresh
+exact-head review and CI are required after the repair.
+
+
+## Slice 26: Teams unused-consent expiry
+
+The Teams owner now selects existing unused-consent phases and their saved expiry
+through scoped deadline work. Production maintenance retains only abandoned
+attempts; these are the next distinct reason. No new table or Cloud alarm policy
+is included. The [audit](2026-10-25-teams-consent-expiry-sleep-audit.md) records
+222 unique selected passing cases, workspace types/build, and initial fixture
+failures. Publication and fresh remote checks/review remain required.
+Parent #17586 Actions/security/Greptile pass at 250fca6cff; Andrecomp Review is
+still running. The original full inventory, older E2E failure, deletion-policy
+finding and master reconciliation remain outstanding. No stack PR is merged.
+
+
+Slice 26 is published as [#17590](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17590)
+at 5ddb4543ed, based on #17586. It is attached; remote gates remain required.
+Slice 27 begins the separate Teams abandoned transport-attempt audit. The full
+original inventory, older findings and final master reconciliation remain open.
+
+
+## Slice 27: Teams abandoned transport attempts
+
+Attempt recovery now follows committed claims and saved 90-second deadlines.
+It preserves unknown outcomes and performs no provider I/O. This removes the last
+Teams periodic maintenance callback; unused consent remains the separate parent
+owner. The [audit](2026-10-25-teams-attempt-recovery-sleep-audit.md) records 235
+unique selected passing cases and preserved initial test failures. Workspace
+typecheck and build pass; publication and remote acceptance remain open.
+#17590 has Greptile 5/5; CI is running. #17586 has new review findings for writer
+support and report-query indexing. Fix at that parent and propagate before
+acceptance. All original remaining work and previous unresolved findings remain.
+
+
+Teams attempts are published as [#17592](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17592).
+Voice report review repair 94c60683b8 adds the bounded report-window index and
+precise keyset pagination, with the single-active-writer contract explicit. The
+20,001-old-row cost regression failed before repair, then all 14 report tests,
+138 full voice/wiring cases and workspace types/build passed. Both review threads
+are resolved. Consent #17590 incorporates it at e501d6c99d; both combined Teams
+children pass 30 report/startup tests after propagation. Fresh remote gates still
+apply. The next new reason is chat run-milestone projection, separate from wake
+notices, terminal confirmations, interaction continuations and GitHub recovery.
+The entire original inventory and older unresolved findings remain open.

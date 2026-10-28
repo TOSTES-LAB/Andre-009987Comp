@@ -25,7 +25,6 @@ describe("createChatReconciliationCoordinator", () => {
         processFailedGitHubWebhookDeliveries,
         processPendingDeliveries,
         flushPublications,
-        reconcileProviderRuntimes: async () => undefined,
         projectRunMilestones: async () => 0,
         processPendingSlackFileUploadReceipts: async () => undefined,
         processPendingSlackSessionSyncs: async () => undefined,
@@ -73,6 +72,32 @@ describe("createChatReconciliationCoordinator", () => {
       }
     },
   );
+
+  it("keeps receiver and voice inventory out of periodic chat maintenance", () => {
+    const source = readFileSync(new URL("../app.ts", import.meta.url), "utf8");
+    const maintenance = source.slice(source.indexOf("const chatReconciliation ="), source.indexOf("const unsubscribeChatPublicationSignals"));
+    expect(maintenance).not.toContain("chatChannels.reconcileProviderRuntimes()");
+    expect(maintenance).not.toContain("chatChannels.voice.");
+    expect(source).toContain("chatChannels.registerReceiverWork(deliveryWork,");
+    expect(source).toContain("chatChannels.registerTeamsConsentExpiryWork(deliveryWork,");
+    const teams = readFileSync(new URL("../services/chat-channels/microsoft-teams/file-delivery.ts", import.meta.url), "utf8");
+    expect(source).toContain("chatChannels.registerTeamsAttemptRecoveryWork(deliveryWork,");
+    expect(teams).not.toContain("scheduleTeamsFileMaintenance");
+    expect(teams).not.toContain("selectDistinct");
+    const chat = readFileSync(new URL("../services/chat-channels.ts", import.meta.url), "utf8");
+    expect(chat).not.toContain("scheduleTeamsFileMaintenance");
+  });
+
+  it("separates live voice recovery from the remaining periodic maintenance", () => {
+    const source = readFileSync(new URL("../app.ts", import.meta.url), "utf8");
+    expect(source).toContain("chatChannels.voice.registerRecoveryWork(deliveryWork,");
+    expect(source).toContain("chatChannels.voice.registerReplyWork(deliveryWork,");
+    expect(source).toContain("chatChannels.voice.inbound.registerCleanupWork(deliveryWork,");
+    expect(source).toContain("chatChannels.voice.inbound.registerRetentionWork(deliveryWork,");
+    expect(source).toContain("chatChannels.voice.registerReportWork(deliveryWork,");
+    expect(source).not.toContain("reconcileVoiceSessions");
+    expect(source).not.toContain("chatChannels.voice.reconcile()");
+  });
 
   it("wires GitHub recovery into its independent lane", () => {
     const source = readFileSync(new URL("../app.ts", import.meta.url), "utf8");
@@ -135,7 +160,6 @@ describe("createChatReconciliationCoordinator", () => {
       const onError = vi.fn();
       const coordinator = createChatReconciliationCoordinator({
         projectRunMilestones,
-        reconcileProviderRuntimes: async () => undefined,
         processPendingDeliveries: async () => undefined,
         flushPublications,
         processPendingSlackFileUploadReceipts: async () => undefined,
@@ -198,7 +222,6 @@ describe("createChatReconciliationCoordinator", () => {
     const coordinator = createChatReconciliationCoordinator({
       projectRunMilestones,
       flushPublications,
-      reconcileProviderRuntimes: async () => undefined,
       processPendingDeliveries: async () => undefined,
       processPendingSlackFileUploadReceipts: async () => undefined,
       processPendingSlackSessionSyncs: async () => undefined,
@@ -238,7 +261,6 @@ describe("createChatReconciliationCoordinator", () => {
     const slackStatusReleased = new Promise<void>((resolve) => {
       releaseSlackStatus = resolve;
     });
-    const reconcileProviderRuntimes = vi.fn(async () => undefined);
     const processPendingDeliveries = vi.fn(async () => deliveryReleased);
     const flushPublications = vi.fn(async () => undefined);
     const processPendingSlackFileUploadReceipts = vi.fn(async () => undefined);
@@ -248,7 +270,6 @@ describe("createChatReconciliationCoordinator", () => {
     const onError = vi.fn();
     const coordinator = createChatReconciliationCoordinator({
       projectRunMilestones: async () => 0,
-      reconcileProviderRuntimes,
       processPendingDeliveries,
       flushPublications,
       processPendingSlackFileUploadReceipts,
@@ -258,7 +279,6 @@ describe("createChatReconciliationCoordinator", () => {
 
     coordinator.reconcile();
     await vi.waitFor(() => {
-      expect(reconcileProviderRuntimes).toHaveBeenCalledTimes(1);
       expect(processPendingDeliveries).toHaveBeenCalledTimes(1);
       expect(flushPublications).toHaveBeenCalledTimes(1);
       expect(processPendingSlackFileUploadReceipts).toHaveBeenCalledTimes(1);
@@ -266,7 +286,6 @@ describe("createChatReconciliationCoordinator", () => {
     });
     coordinator.reconcile();
     await vi.waitFor(() => {
-      expect(reconcileProviderRuntimes).toHaveBeenCalledTimes(2);
       expect(flushPublications).toHaveBeenCalledTimes(2);
       expect(processPendingSlackFileUploadReceipts).toHaveBeenCalledTimes(2);
     });
@@ -293,14 +312,12 @@ describe("createChatReconciliationCoordinator", () => {
           await receiptReleased;
           if (rejects) throw lookupError;
         });
-      const reconcileProviderRuntimes = vi.fn(async () => undefined);
       const processPendingDeliveries = vi.fn(async () => undefined);
       const flushPublications = vi.fn(async () => undefined);
       const processPendingSlackSessionSyncs = vi.fn(async () => undefined);
       const onError = vi.fn();
       const coordinator = createChatReconciliationCoordinator({
         projectRunMilestones: async () => 0,
-        reconcileProviderRuntimes,
         processPendingDeliveries,
         flushPublications,
         processPendingSlackFileUploadReceipts,
@@ -318,7 +335,6 @@ describe("createChatReconciliationCoordinator", () => {
         });
         coordinator.reconcile();
         await vi.waitFor(() => {
-          expect(reconcileProviderRuntimes).toHaveBeenCalledTimes(2);
           expect(processPendingDeliveries).toHaveBeenCalledTimes(2);
           expect(flushPublications).toHaveBeenCalledTimes(2);
           expect(processPendingSlackSessionSyncs).toHaveBeenCalledTimes(2);
