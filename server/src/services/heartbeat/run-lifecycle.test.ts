@@ -1,3 +1,4 @@
+import { resolveExternalTestDatabaseUrl } from "../../__tests__/helpers/external-test-database.js";
 import { randomBytes } from "node:crypto";
 import type { Db } from "@andrecomp/db";
 import { agents, agentWakeupRequests, companies, createDb, EMBEDDED_POSTGRES_TEST_TIMEOUT_MS, heartbeatRunEvents, heartbeatRuns } from "@andrecomp/db";
@@ -107,14 +108,15 @@ describe("heartbeat lifecycle module boundary", () => {
   });
 });
 
-const support = await getEmbeddedPostgresTestSupport();
+const external = resolveExternalTestDatabaseUrl("ANDRECOMP_LIFECYCLE_TEST_DATABASE_URL");
+const support = external ? { supported: true as const } : await getEmbeddedPostgresTestSupport();
 if (!support.supported) console.warn(`Skipping lifecycle module database tests: ${support.reason}`);
 describe.skipIf(!support.supported)("heartbeat lifecycle database wiring", () => {
   let database: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
   let db: Db;
   beforeAll(async () => {
-    database = await startEmbeddedPostgresTestDatabase("andrecomp-heartbeat-lifecycle-module");
-    db = createDb(database.connectionString);
+    if (!external) database = await startEmbeddedPostgresTestDatabase("andrecomp-heartbeat-lifecycle-module");
+    db = createDb(external ?? database.connectionString);
   }, EMBEDDED_POSTGRES_TEST_TIMEOUT_MS);
   afterAll(async () => {
     await db?.$client.end();

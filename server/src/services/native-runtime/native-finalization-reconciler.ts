@@ -1,3 +1,7 @@
+import { pendingNativeStatusEffectsCondition } from "./native-pending-effect-work.js";
+import { notifyUnsafeWorkspaceExportRunChange } from "../unsafe-workspace-export-notifications.js";
+import { notifyCancelledWorkspacePreservation } from "../cancelled-workspace-preservation-notifications.js";
+import { notifyInstructionCollection } from "../instruction-collection-notifications.js";
 import { readRequiredQualityReview } from "../required-quality-review.js";
 import type { WorkspaceWorkers } from "../plugin-workspaces.js";
 import { recoverLegacyUnsafeWorkspaceExports } from "./native-workspace-export-recovery.js";
@@ -515,6 +519,9 @@ export async function claimNativeSessionResumptions(input: {
           nextAttemptAt: null,
           updatedAt: now,
         }).where(eq(nativeRunFinalizations.runId, row.run.id));
+        await notifyInstructionCollection(tx, { companyId: row.run.companyId, runId: row.run.id });
+        await notifyCancelledWorkspacePreservation(tx, { companyId: row.run.companyId, runId: row.run.id });
+        await notifyUnsafeWorkspaceExportRunChange(tx, row.run);
         const [updatedRun] = await tx.update(heartbeatRuns).set({
           status: "failed",
           finishedAt: now,
@@ -633,6 +640,10 @@ export async function claimNativeSessionResumptions(input: {
 }
 
 type NativeReconciliationOptions = {
+  skipObsoletePolicyReviews?: boolean;
+  skipAutomaticCompletionReviews?: boolean;
+  skipUnsafeWorkspaceExports?: boolean;
+  skipNativePendingEffects?: boolean;
   pluginWorkerManager?: WorkspaceWorkers;
   environmentRuntime?: EnvironmentRuntimeService;
   onWorkspaceSettled?: (input: {
@@ -715,21 +726,27 @@ async function reconcileNativeFinalizationsPass(
   options: NativeReconciliationOptions,
   timing: NativeReconciliationPassTiming,
 ) {
-  timing.phase("legacy_workspace_exports");
-  await recoverLegacyUnsafeWorkspaceExports(db, runIds).catch((err) => {
-    logger.warn({ err }, "Historical unsafe export recovery remains pending");
-  });
-  timing.phase("obsolete_policy_reviews");
-  await dismissObsoleteNativePolicyReviews(db, runIds).catch((err) => {
-    logger.warn({ err }, "Obsolete native policy review lookup failed; continuing native reconciliation");
-  });
-  timing.phase("automatic_completion_reviews");
-  if (runIds?.length) {
-    const scopes = await db.select({ issueId: nativeRunFinalizations.issueId }).from(nativeRunFinalizations)
-      .where(inArray(nativeRunFinalizations.runId, runIds));
-    for (const scope of scopes) await dismissAutomaticCompletionReviews(db, scope.issueId);
-  } else {
-    await dismissAutomaticCompletionReviews(db);
+  if (!options.skipUnsafeWorkspaceExports) {
+    timing.phase("legacy_workspace_exports");
+    await recoverLegacyUnsafeWorkspaceExports(db, runIds).catch((err) => {
+      logger.warn({ err }, "Historical unsafe export recovery remains pending");
+    });
+  }
+  if (!options.skipObsoletePolicyReviews) {
+    timing.phase("obsolete_policy_reviews");
+    await dismissObsoleteNativePolicyReviews(db, runIds).catch((err) => {
+      logger.warn({ err }, "Obsolete native policy review lookup failed; continuing native reconciliation");
+    });
+  }
+  if (!options.skipAutomaticCompletionReviews) {
+    timing.phase("automatic_completion_reviews");
+    if (runIds?.length) {
+      const scopes = await db.select({ issueId: nativeRunFinalizations.issueId }).from(nativeRunFinalizations)
+        .where(inArray(nativeRunFinalizations.runId, runIds));
+      for (const scope of scopes) await dismissAutomaticCompletionReviews(db, scope.issueId);
+    } else {
+      await dismissAutomaticCompletionReviews(db);
+    }
   }
   timing.phase("candidate_scan");
   const now = new Date();
@@ -761,6 +778,7 @@ async function reconcileNativeFinalizationsPass(
       eq(heartbeatRuns.runtimeMode, "native"),
       isNotNull(nativeRunFinalizations.resultId),
       notInArray(nativeRunFinalizations.phase, ["terminal_failure"]),
+      options.skipNativePendingEffects ? not(pendingNativeStatusEffectsCondition(db)) : undefined,
       or(
         isNull(nativeRunFinalizations.nextAttemptAt),
         lte(nativeRunFinalizations.nextAttemptAt, new Date()),
@@ -790,6 +808,7 @@ async function reconcileNativeFinalizationsPass(
         ))
       : [];
     if (row.decisionId && pendingEffects.length > 0) {
+      if (options.skipNativePendingEffects) continue;
       const decision = resolveNativeReconciliationStatus({
         facts: { undeliveredEffectCount: pendingEffects.length },
         priorIssueStatus: row.issueStatus as NativeAuthoritativeIssueStatus,

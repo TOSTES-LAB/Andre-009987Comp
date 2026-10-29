@@ -2455,3 +2455,263 @@ Slice 36 final remote gates: all 53 checks passed on 01efd3f4f7, with fresh
 Greptile 5/5 and no review threads. Slice 37 final scalar-query selection passed
 20 tests; workspace typecheck and build passed. Full local acceptance and remote
 PR gates are still pending. No PR in this stack was merged.
+
+## Slice 37 accepted; slice 38 direct webhook recovery
+
+[#17664](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17664), head
+`0a25cae9ef10a8714801d72ac798823de335e050`, has all 53 remote checks
+passing and fresh Greptile 5/5 without actionable findings. Complete local
+chat/publication/startup acceptance passed 1,592 tests in 556.33 seconds.
+The PR remains draft and unmerged.
+
+Slice 38 now routes direct GitHub missed-webhook recovery through saved checkpoint
+deadlines and removes the last production chat reconciliation interval. The
+required external-source cadence remains only for eligible direct integrations;
+Cloud relay registrations and disabled/unconfigured states are quiet. A real
+signed installation-deletion regression exposed and fixed a missing producer
+notification. Forty-one selected cases pass, including 106-endpoint pagination,
+five-item company-fair batches, and an existing default-batch consumer. Complete
+acceptance and remote gates remain required. See
+[the provider audit](2026-10-25-github-webhook-recovery-sleep-audit.md).
+
+Earlier #17490/#17572 CI failures, #17576/#17580 review findings, the entire
+remaining original list, and final reconciliation with master stay open. The
+current inspected master is `5a28f7acf8`; no stack PR has been merged.
+
+
+## Slice 38 review repair and corrected acceptance
+
+Initial #17666 at `936e132c01` has 52 passing checks and a valid Greptile P1:
+a receipt committed immediately before drain/stop could suppress a POST that
+never started. Four regressions reproduced the loss. The owner now restores a
+known-unsent claim with an exact attempt predicate while retaining uncertainty
+after transport starts. Fifty-nine selected tests pass; six stop-boundary cases
+also cover preservation of a newer receipt. Final verification is running.
+
+The initial broad command passed 1,586 tests in two files but misspelled the
+standalone publication filename. The corrected three-file command is running
+on a fresh database; the earlier result is not full publication acceptance.
+Earlier stack CI/review issues, all remaining migrations, and master reconciliation
+remain outstanding. No stack PR is merged or claimed ready as a whole.
+
+
+Slice 38 production repair is pushed at `491a7e1eef`; fresh review is 5/5 and
+the P1 thread is resolved. Workspace types/build passed. The corrected complete
+three-suite run passed 1,605 tests and failed one assertion that read the timer
+before worker settlement. The assertion now waits for settled idle tracking and
+the actual future deadline; all 37 affected lifecycle/publication/startup cases
+pass. The full failure remains in the audit; latest-head remote gates are required.
+No full-run success or stack completion is inferred from that focused repair.
+
+
+## Slice 38 accepted; slice 39 retry cancellation
+
+[#17666](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17666) at
+`d8e1bd97f530fc7a5119549a35b871b7b3d9f737` has all 53 remote checks
+passing, fresh Greptile 5/5, and its review finding resolved. The PR remains
+draft and unmerged. Its earlier local failure and focused repair remain recorded.
+
+Slice 39 separates interrupted scheduled-retry cancellation from the periodic
+orphan reaper. Existing run rows and transaction notifications drive bounded
+recovery through the existing cancellation owner. No table or external alarm is
+added. The producer audit includes dispatch deferral, budget fences, correlated
+Stop, lifecycle transitions, settings, and deletion. See
+[the owner audit](2026-10-25-scheduled-retry-cancellation-sleep-audit.md).
+Thirty route tests and all 34 recovery tests pass. Shared-helper consumers pass
+20 tests. Final combined owner acceptance and remote gates remain required.
+Earlier #17490/#17572 CI failures, #17576/#17580 review findings, master
+reconciliation, and every other original inventory duty remain outstanding.
+
+Final combined owner acceptance passed all 164 tests in five suites, with no
+skips, in 41.14 seconds using separate dispatch and recovery databases. Together
+with the 30 retry-route tests this covers 194 tests. Remote PR gates remain pending.
+
+
+## Startup CI fixture repair
+
+Initial head bd490ee50b failed server shard 4/12: eleven tests in the startup
+suite used a heartbeat test double without the new registration method. The
+real worker and owner acceptance passed, but startup wiring coverage was missing
+from the local selection. The double now exposes the method, and new assertions
+verify scheduler enablement and periodic-reaper exclusion. All 48 startup tests
+pass in 5.34 seconds. This is a test-only repair; fresh head CI/review is required.
+
+Slice 39 is draft [#17667](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17667),
+initial head `bd490ee50b303187f0ae6f8fe2aa95477d66a40f`, targeting slice 38.
+Its initial review was 5/5. The startup repair is now pushed at `ecef7776a4`;
+fresh CI and review are required. No merge or full-stack acceptance is claimed.
+
+The instruction-copy audit splits the apparent two reaper calls into three
+reasons: stopped collection, captured-byte commit, and post-save directory release.
+Slice 40 will own captured-byte commit only. See
+[instruction recovery audit](2026-10-25-instruction-recovery-sleep-audit.md).
+Existing instruction-copy and directory suites pass 20 and 87 tests respectively
+on separate external PostgreSQL databases before any production behavior changes.
+
+
+## Slice 39 accepted; slice 40 captured instruction commits
+
+[#17667](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17667), head
+`ecef7776a4b38e0c7e0b86d7009fcd01ed7658e5`, has all 53 checks passing,
+fresh Greptile 5/5, and no unresolved threads. The startup fixture failure and
+repair remain recorded. This PR is still draft and unmerged.
+
+Slice 40 migrates only captured instruction commits. Existing saved bytes,
+attempt counts, and retry deadlines drive a bounded worker. Local writes signal
+the existing transaction boundary; the revision service still owns authorization,
+conflicts, file replacement, and exact-byte replay. A race test exposed a newer
+retry deadline being ignored; the attempt claim now checks that it is still due.
+Manual/startup recovery shares the guarded owner. Stopped collection and post-save
+directory release remain separate duties. No schema migration is needed.
+
+Final instruction acceptance passes 33 tests, directory/startup passes 137, and
+startup/instruction-release wiring passes 64 (184 distinct tests across these
+selections). Workspace types/build pass. Fresh remote gates remain required.
+See the instruction recovery audit for producer coverage and all failed attempts.
+Earlier stack CI/review findings and final master reconciliation remain outstanding.
+
+## Slice 40 remote acceptance and slice 41 directory cleanup
+
+Captured instruction commits (#17670) at
+`03e1b3cd7270c7438a47562b170b3a9b2dbf112e` now have all 53 checks successful,
+fresh Greptile 5/5, and zero unresolved threads. The PR remains unmerged.
+
+Slice 41 owns post-save directory release only. It reconstructs existing cleanup
+receipts, signals relevant copy writes and invalidations, and delegates deletion
+to the existing directory owner. It schedules saved retry times and leaves
+settled history quiet. See [directory cleanup audit](2026-10-25-directory-cleanup-sleep-audit.md)
+for producer coverage, lifecycle, index plan, failure history and local tests.
+Local verification currently has 200 passing cases across directory, startup,
+captured instruction and heartbeat release suites, plus workspace typecheck/build.
+Remote acceptance is pending. Stopped collection and the remaining
+original inventory and older stack review/CI gates remain outstanding.
+
+## Slice 41 acceptance and slice 42 collection
+
+Parent directory cleanup PR #17671 at
+`854244092a993b621ab8efd2ca9f80a0e3b0b9d4` has all 53 checks successful,
+Greptile 5/5 at that head, and no unresolved review findings. It remains open.
+
+Slice 42 migrates stopped instruction collection, including terminal-run writers
+that make unchanged copy rows eligible. The producer, lifecycle, partial-index,
+and verification audit is in
+[the stopped collection audit](2026-10-25-stopped-instruction-collection-sleep-audit.md).
+The initial eight-suite acceptance selection passed 269 tests; directory-owner
+coverage passed 101 separately. Exact-head remote acceptance is still required.
+Other native recovery, dispatch, retention, integration and aggregate-tick duties
+remain in scope. The older CI/review gates recorded above are not discharged by
+this slice's local tests.
+
+## Slice 42 acceptance and slice 43 cancelled workspace preservation
+
+Stopped instruction collection PR #17674 at
+`6dc58115cdebb988a63bb45dce4521f5bb5013f6` has all 53 checks successful,
+Greptile 5/5 at that head and zero unresolved threads. It remains draft and open.
+
+Slice 43 moves cancelled native workspace preservation out of periodic reaping.
+Its owner and producer contract is recorded in
+[the preservation audit](2026-10-25-cancelled-workspace-preservation-sleep-audit.md).
+It preserves known file debt separately from coordinator/lease readiness and
+keeps teardown with the existing stop-only worker. Exact-head remote acceptance
+is still required. The full remaining stack and older unresolved gates remain
+in scope.
+
+Slice 43 final local acceptance: 120 owner/startup cases plus 209 affected consumer cases pass, without skips. Workspace typecheck/build, final server types, migration application/replay and index-plan checks passed. The negative fixture FK rejection and its correction remain in the owner audit. Remote CI and review are still required.
+
+## Slice 43 accepted; slice 44 obsolete policy reviews
+
+Cancelled workspace preservation is draft [#17677](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17677) at `33567f91551d60053722c013f0d9b402c1db29e6`. All 53 checks passed, Greptile reviewed that head at 5/5, and there are no unresolved review threads. It remains unmerged.
+
+The native finalization audit found separate historical unsafe-export recovery, obsolete policy-review cleanup, automatic completion-review cleanup, effect delivery, committed response repair, evidence reassessment and workspace/result finalization. Slice 44 owns obsolete policy-review cleanup only. See [its audit](2026-10-25-obsolete-policy-review-sleep-audit.md). The owner/startup selection passes 116 tests after repairing a reproduced notification serialization bug. Consumer and final workspace verification remain pending. Older stack gates and final master reconciliation remain outstanding.
+
+## Slice 44 accepted; slice 45 automatic completion reviews
+
+Obsolete policy-review cleanup is draft [#17679](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17679) at `e671c66bba6e9a42aa570826e6f3420dba199399`. All 53 checks pass, Greptile reviewed that head at 5/5, and no unresolved threads remain. It is mergeable and unmerged.
+
+Slice 45 owns automatic completion-review retirement only. It preserves direct finalizer ordering and the durable withdrawal trigger for reassessment. The worker's raw lookup propagates failures so failed discovery cannot look empty. See [the audit](2026-10-25-automatic-completion-review-sleep-audit.md). All 370 local owner/startup/consumer tests pass, as do workspace types/build. Exact-head remote gates remain required. Older stack CI/review gaps, master reconciliation and the remaining original duties are still outstanding.
+
+## Slice 45 accepted; slice 46 unsafe-export audit
+
+[#17680](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17680) at
+`be668fb975f119efeb4830405d4bb1ab65791f87` has 53 successful remote gates,
+Greptile 5/5 at that head, and no unresolved review threads. It remains draft
+and unmerged. The unsafe-export baseline passed all 51 tests on a fresh external
+PostgreSQL database (`/tmp/sleep46-baseline.log`). Slice 46 must distinguish
+action retirement and eligible result recovery from dormant historical failure.
+The periodic backstop remains until all reactivation producers are covered.
+
+Slice 46 now has a scoped worker and initial producer coverage, with the periodic
+backstop deliberately retained until the direct-writer audit is complete. See
+[the unsafe-export audit](2026-10-25-unsafe-workspace-export-sleep-audit.md) for
+work predicates, remaining producers, test evidence, and preserved failures.
+
+
+## Slice 46 producer wiring and verification
+
+The unsafe-export worker now registers through heartbeat/startup and the periodic
+reaper skips its historical scan. Direct task/run/action producers signal their
+existing transaction boundaries. Physical-owner contention, real admin/stale-lock
+release, queued-run cancellation, cancellation during ownership contention,
+shutdown/restart, and multiple discovery pages are tested. The owner/startup and
+consumer selections establish 626 distinct passing cases across 13 files after
+running the initially skipped lifecycle cases against an explicit database.
+
+A measured retained-history scan justified partial index migration 0398; fresh
+application, replay, and validity checks passed. The owner audit records timings,
+producer coverage, fixture failures, and the supported writer boundary. Workspace
+typechecks and build passed; remote acceptance remains outstanding. Origin/master was fetched at
+`6336c34041`; the full stack still needs final reconciliation with master. No PR
+in this stack has been merged, and the original remaining scope is unchanged.
+
+## Slice 46 published; slice 47 pending-effects audit
+
+Unsafe-export recovery is draft [#17687](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17687)
+at `b9fe9e2e40ab48104cf18822b5302a740d1957a7`, stacked on #17680. Workspace types
+and build passed. Greptile reviewed that exact head at 5/5 with no actionable
+findings; full remote CI remains active. This is not acceptance or merge proof.
+The attempted full local `pnpm test:run` hit embedded PostgreSQL initialization
+failures (15 native-session failures plus database-suite skips) and was stopped
+with its log preserved at `/tmp/sleep46-full-tests.log`. It did not pass. The
+626 focused external-database cases remain the local acceptance evidence.
+
+Slice 47 begins with native pending status effects. The current writer already
+materializes targets and records delivered effects atomically; historical pending
+or failed rows still require recovery. The existing owner validates targets and
+settles the ledger without recreating effects. The audit and open producer/
+ordering questions are in [the pending-effects audit](2026-10-25-native-pending-effects-sleep-audit.md).
+Its 72-case status-arbiter baseline passed. No source migration is implemented yet.
+
+Older gates were revalidated: #17490 and #17572 still have E2E shard 3 and aggregate
+failures at their recorded heads. #17576 additionally reports an action-required
+check. #17580 has successful/neutral CI, but its recorded review findings still
+require resolution. These remain part of the full requested stack finish line.
+
+
+## Slice 46 accepted; slice 47 locally verified
+
+#17687 at `b9fe9e2e40ab48104cf18822b5302a740d1957a7` has all 53 checks passing,
+Greptile 5/5, no unresolved review threads, and a mergeable base. It remains
+unmerged. Its full-local-suite PostgreSQL failure above remains part of the record.
+
+Slice 47 implements native pending-effect recovery with exact coordinator binding,
+commit-aware producers, saved lease/retry deadlines, lock-time eligibility checks,
+and pending-only indexed discovery. Periodic finalization skips this duty and
+preserves ordering; explicit/startup recovery remains compatible. No provider turn,
+new queue table, or host-sleep exemption is introduced. See the
+[pending-effects audit](2026-10-25-native-pending-effects-sleep-audit.md).
+
+The expanded consumer run passed 680 tests across 15 files. The final producer
+audit found a lease-shortening wake gap; its new real-store regression failed
+before the fix and passed afterward. Final owner/startup tests pass 158 cases;
+the finalizer rerun passes 29 on a fresh database (683 distinct local cases across
+these runs). The initial finalizer rerun reused a fixed company prefix and failed
+setup; that failure is preserved. Index discovery was measured with 10,000 delivered
+effects and 10,000 completed coordinators. Migration replay and valid/ready checks
+pass. Final workspace and remote gates must be recorded before acceptance.
+
+The remaining original scope, older CI/review issues, full master reconciliation,
+and all final-head PR gates remain open. No PR has been merged by this stack work.
+
+Final slice 47 source passes workspace typecheck/build and 158 worker/startup
+cases, including exact near-term concurrent deadlines. Remote publication and
+acceptance are the next gates; local success does not satisfy the full stack.

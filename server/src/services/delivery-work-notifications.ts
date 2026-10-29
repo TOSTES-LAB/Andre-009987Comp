@@ -2,6 +2,15 @@ import { signalDatabaseWork, subscribeDatabaseWork } from "@andrecomp/db";
 
 /** Topics for existing durable queues; register intent before their writes. */
 export const DELIVERY_QUEUES = {
+  nativePendingEffects: "native-pending-effects",
+  unsafeWorkspaceExportRecovery: "unsafe-workspace-export-recovery",
+  automaticCompletionReviews: "automatic-completion-reviews",
+  obsoletePolicyReviews: "obsolete-policy-reviews",
+  cancelledWorkspacePreservation: "cancelled-workspace-preservation",
+  instructionCollection: "instruction-collection",
+  directoryCleanup: "directory-cleanup",
+  instructionCommit: "instruction-commit",
+  scheduledRetryCancellation: "scheduled-retry-cancellation",
   executionFinalization: "execution-finalization",
   workspaceRecovery: "workspace-recovery",
   executionReplacement: "execution-replacement",
@@ -39,6 +48,7 @@ export const DELIVERY_QUEUES = {
   chatReceiptReactions: "chat-receipt-reactions",
   chatSessionStops: "chat-session-stops",
   chatProviderEffects: "chat-provider-effects",
+  chatGitHubWebhookRecovery: "chat-github-webhook-recovery",
   chatGitHubIngress: "chat-github-ingress",
   chatGitHubPublications: "chat-github-publications",
   chatGitHubReviewProjection: "chat-github-review-projection",
