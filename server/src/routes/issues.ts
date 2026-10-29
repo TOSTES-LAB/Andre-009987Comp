@@ -1,3 +1,5 @@
+import { notifyNativeRecoveryNotices } from "../services/native-recovery-notice-notifications.js";
+import { notifyNativeStatusReassessment } from "../services/native-status-reassessment-notifications.js";
 import { notifyUnsafeWorkspaceExportRecovery } from "../services/unsafe-workspace-export-notifications.js";
 import { notifyChatInboundWakeNotices } from "../services/chat-inbound-wake-notice-notifications.js";
 import { completeIssueCommentReceipt } from "../services/issue-comment-receipt.js";
@@ -9424,11 +9426,16 @@ export function issueRoutes(
     );
     if (!issue) return;
     if (!(await timing.time("authorization", () => assertIssueReadAllowed(req, res, issue, { allowBreakGlass: true })))) return;
-    // The cold-open read owns only the task row. Related objects and recovery
-    // projections retain their existing authorized detail path.
+    // Saved cards are structural conversation data. Include their local
+    // projection before first paint, independently of slow recovery, workspace
+    // and related-task enrichment. This never refreshes external providers.
     if (req.query.view === "core") {
+      const [documentPayload, workProducts] = await Promise.all([
+        timing.time("documents", () => documentsSvc.getIssueDocumentPayload(issue)),
+        timing.time("work_products", () => workProductsSvc.listForIssue(issue.id)),
+      ]);
       res.setHeader("Server-Timing", timing.header());
-      res.json(issue);
+      res.json({ ...issue, ...documentPayload, workProducts });
       return;
     }
     const inboxArchiveFieldsPromise =
@@ -9932,6 +9939,7 @@ export function issueRoutes(
                 );
               }
               await notifyUnsafeWorkspaceExportRecovery(tx, { companyId: lockedIssue.companyId, issueId: lockedIssue.id });
+              await notifyNativeRecoveryNotices(tx, { companyId: lockedIssue.companyId, issueId: lockedIssue.id });
               const [reopened] = await tx
                 .update(issueRecoveryActions)
                 .set({ status: "active", outcome: null, resolvedAt: null })
@@ -11816,6 +11824,7 @@ export function issueRoutes(
         promotedAt,
       });
       const product = await db.transaction(async (tx) => {
+        await notifyNativeStatusReassessment(tx, { companyId: issue.companyId, issueId: issue.id });
         const markPromoted = {
           sourceTrust: promotionTrust,
           updatedAt: promotedAt,

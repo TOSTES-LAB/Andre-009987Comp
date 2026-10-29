@@ -1,3 +1,5 @@
+import { notifyExternalAgentSettlement } from "../../external-agents/index.js";
+import { notifyNativeStatusReassessment } from "../../../services/native-status-reassessment-notifications.js";
 import { notifyUnsafeWorkspaceExportRecovery } from "../../../services/unsafe-workspace-export-notifications.js";
 import { notifyCancelledWorkspacePreservation } from "../../../services/cancelled-workspace-preservation-notifications.js";
 import { notifyInstructionCollection } from "../../../services/instruction-collection-notifications.js";
@@ -108,6 +110,7 @@ function buildTransaction(tx: Db, companyId: string, issueId: string, deps: Queu
     async cancelQueueRun({ queueRunId, reason, now }) {
       await notifyUnsafeWorkspaceExportRecovery(tx, { companyId, issueId });
       await notifyInstructionCollection(tx, { companyId, runId: queueRunId });
+      await notifyExternalAgentSettlement(tx, { companyId, runId: queueRunId });
       await notifyCancelledWorkspacePreservation(tx, { companyId, runId: queueRunId });
       await notifyChatRunMilestones(tx, { companyId, issueId });
       const row = await tx
@@ -120,6 +123,7 @@ function buildTransaction(tx: Db, companyId: string, issueId: string, deps: Queu
     },
 
     async clearExecutionLockAndTouchIssue({ issueId, executionRunId, updatedAt }) {
+      await notifyNativeStatusReassessment(tx, { companyId, issueId });
       await notifyUnsafeWorkspaceExportRecovery(tx, { companyId, issueId });
       await tx
         .update(issues)

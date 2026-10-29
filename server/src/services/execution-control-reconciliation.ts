@@ -1,4 +1,7 @@
-import { notifyNativePendingEffects } from "./native-pending-effect-notifications.js";
+import { notifyNativeEnvironmentSettlement } from "./native-environment-settlement-notifications.js";
+import { notifyExternalAgentSettlement } from "../modules/external-agents/index.js";
+import { notifyNativeStatusReassessment } from "./native-status-reassessment-notifications.js";
+import { notifyNativeFinalizationWork } from "./native-finalization-notifications.js";
 import { notifyUnsafeWorkspaceExportRunChange } from "./unsafe-workspace-export-notifications.js";
 import { notifyCancelledWorkspacePreservation } from "./cancelled-workspace-preservation-notifications.js";
 import { notifyInstructionCollection } from "./instruction-collection-notifications.js";
@@ -147,7 +150,7 @@ export async function reconcileAbandonedExecutionControl(
           }
           // A persisted result belongs to the existing finalizer, not a replacement provider.
           if (coordinator?.resultId) {
-            await notifyNativePendingEffects(tx, { companyId: run.companyId, runId: run.id });
+            await notifyNativeFinalizationWork(tx, { companyId: run.companyId, runId: run.id });
             await tx
               .update(nativeRunFinalizations)
               .set({
@@ -189,6 +192,8 @@ export async function reconcileAbandonedExecutionControl(
               })
               .where(eq(nativeRunFinalizations.runId, run.id));
           await notifyInstructionCollection(tx, { companyId: run.companyId, runId: run.id });
+          await notifyExternalAgentSettlement(tx, { companyId: run.companyId, runId: run.id });
+          await notifyNativeEnvironmentSettlement(tx, { companyId: run.companyId, runId: run.id });
           await notifyCancelledWorkspacePreservation(tx, { companyId: run.companyId, runId: run.id });
           await notifyUnsafeWorkspaceExportRunChange(tx, run);
           await notifyExecutionRunWork(tx);
@@ -246,6 +251,7 @@ export async function reconcileAbandonedExecutionControl(
             if (updatedRun) await preserveNativeFailedWorkspace(tx as unknown as Db, updatedRun);
             return true;
           }
+          await notifyNativeStatusReassessment(tx, { companyId: task.companyId, issueId: task.id });
           await tx
             .update(issues)
             .set({ executionRunId: null, checkoutRunId: null, updatedAt: now })

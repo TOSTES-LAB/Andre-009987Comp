@@ -1,4 +1,7 @@
-import { notifyNativePendingEffects } from "../native-pending-effect-notifications.js";
+import { notifyNativeResultCommit } from "../native-result-commit-notifications.js";
+import { notifyNativeWorkspaceFinalization } from "../native-workspace-finalization-notifications.js";
+import { isNativeResponseEvidence, notifyNativeResponsePresentation } from "../native-response-presentation-notifications.js";
+import { notifyNativeFinalizationWork } from "../native-finalization-notifications.js";
 import { notifyUnsafeWorkspaceExportRecovery } from "../unsafe-workspace-export-notifications.js";
 import { isSafeNativeChatProgressEventType } from "../safe-native-chat-progress.js";
 import { notifyChatNativeProgress } from "../chat-native-progress-notifications.js";
@@ -297,6 +300,9 @@ export class NativeRunCoordinatorStore {
       if (isSafeNativeChatProgressEventType(event.eventType)) {
         await notifyChatNativeProgress(tx, { companyId: this.#binding.companyId, issueId: this.#binding.issueId });
       }
+      if (isNativeResponseEvidence(event.eventType, canonicalPayload)) {
+        await notifyNativeResponsePresentation(tx, this.#binding);
+      }
       const cursor = run.nextEventSeq;
       const [inserted] = await tx
         .insert(heartbeatRunEvents)
@@ -387,6 +393,8 @@ export class NativeRunCoordinatorStore {
         return { disposition: "duplicate" as const, resultId: existing.id };
       }
 
+      await notifyNativeResultCommit(tx, this.#binding);
+      await notifyNativeWorkspaceFinalization(tx, this.#binding);
       const [inserted] = await tx
         .insert(nativeRunResults)
         .values({
@@ -523,7 +531,8 @@ export class NativeRunCoordinatorStore {
       ) {
         throw new Error("native_finalization_lease_conflict");
       }
-      if (row.decisionId) await notifyNativePendingEffects(tx, this.#binding);
+      if (row.decisionId) await notifyNativeFinalizationWork(tx, this.#binding);
+      else await notifyNativeResultCommit(tx, this.#binding);
       if (
         row.leaseOwner === input.leaseOwner &&
         row.leaseExpiresAt &&
@@ -566,7 +575,7 @@ export class NativeRunCoordinatorStore {
       throw new Error("native_finalization_retry_invalid");
     }
     const [updated] = await this.#db.transaction(async tx => {
-      await notifyNativePendingEffects(tx, this.#binding);
+      await notifyNativeFinalizationWork(tx, this.#binding);
       if (input.failureCode === "native_workspace_sync_out_unsafe_archive") {
         await notifyUnsafeWorkspaceExportRecovery(tx, this.#binding);
       }

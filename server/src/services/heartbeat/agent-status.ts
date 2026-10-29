@@ -1,3 +1,4 @@
+import { DELIVERY_QUEUES, notifyDeliveryWork } from "../delivery-work-notifications.js";
 import { agents, heartbeatRuns, type Db } from "@andrecomp/db";
 import { and, asc, desc, eq, lte, sql } from "drizzle-orm";
 import { trackAgentFirstHeartbeat } from "@andrecomp/shared/telemetry";
@@ -90,6 +91,7 @@ export function createHeartbeatAgentStatus(db: Db) {
       )).limit(1);
       const nextStatus = running ? "running" : settledStatus(outcome, options?.keepIdleOnFailure);
       const now = new Date();
+      await notifyDeliveryWork(tx, DELIVERY_QUEUES.agentTimers);
       const [updated] = await tx.update(agents).set({
         status: nextStatus,
         errorReason: nextStatus === "error" ? errorReason(failureReason) : null,

@@ -1,4 +1,4 @@
-import { notifyNativePendingEffects } from "../native-pending-effect-notifications.js";
+import { notifyNativeFinalizationWork } from "../native-finalization-notifications.js";
 import { alias } from "drizzle-orm/pg-core";
 import { notifyUnsafeWorkspaceExportRecovery, type UnsafeWorkspaceExportScope } from "../unsafe-workspace-export-notifications.js";
 import type { createDeliveryWorkCoordinator } from "../delivery-work-coordinator.js";
@@ -95,13 +95,11 @@ async function recoverCandidate(db: Db, candidate: { runId: string; companyId: s
       let updatedRun: typeof heartbeatRuns.$inferSelect | undefined;
       if (eligible) {
         await ownership.assertHeld();
-
-
+        await notifyNativeFinalizationWork(tx, { companyId: run.companyId, runId: run.id });
         await tx.insert(workspaceOperations).values({ companyId: run.companyId, heartbeatRunId: run.id, issueId: issue.id,
           phase: "workspace_finalize", status: "succeeded", exitCode: 0, finishedAt: now,
           metadata: { owningService: "native_workspace_finalizer", workspaceSync: { omitted: true, reason: "restore_unsafe_archive", legacy: true } },
         });
-        await notifyNativePendingEffects(tx, { companyId: run.companyId, runId: run.id });
         await tx.update(nativeRunFinalizations).set({ phase: "result_accepted", failureCode: null, nextAttemptAt: null,
           failureDetail: { workspaceFinalizeAttempt: 0, legacyUnsafeExportOmitted: { resultId: result.id, recoveredAt: now.toISOString() } }, updatedAt: now,
         }).where(eq(nativeRunFinalizations.runId, run.id));

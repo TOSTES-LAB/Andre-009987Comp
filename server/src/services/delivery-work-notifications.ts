@@ -2,6 +2,18 @@ import { signalDatabaseWork, subscribeDatabaseWork } from "@andrecomp/db";
 
 /** Topics for existing durable queues; register intent before their writes. */
 export const DELIVERY_QUEUES = {
+  databaseBackups: "database-backups",
+  importSpoolCleanup: "import-spool-cleanup",
+  externalConversationSettlement: "external-conversation-settlement",
+  nativeRecoveryNotices: "native-recovery-notices",
+  nativeEnvironmentSettlement: "native-environment-settlement",
+  nativeRunProjection: "native-run-projection",
+  nativeResultCommit: "native-result-commit",
+  nativeWorkspaceFinalization: "native-workspace-finalization",
+  retainedNativeSessionCleanup: "retained-native-session-cleanup",
+  nativeStatusReassessment: "native-status-reassessment",
+  nativeReviewResponse: "native-review-response",
+  nativeResponsePresentation: "native-response-presentation",
   nativePendingEffects: "native-pending-effects",
   unsafeWorkspaceExportRecovery: "unsafe-workspace-export-recovery",
   automaticCompletionReviews: "automatic-completion-reviews",
@@ -98,6 +110,7 @@ export const DELIVERY_QUEUES = {
   terminalWorkspaces: "terminal-workspaces",
   routineSchedules: "routine-schedules",
   issueMonitors: "issue-monitors",
+  agentTimers: "agent-timers",
   caseHandoffs: "case-handoffs",
   nativeCheckpointExpiration: "native-checkpoint-expiration",
 } as const;
