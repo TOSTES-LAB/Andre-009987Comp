@@ -2967,6 +2967,7 @@ function sanitizedEnvironment(
   overrides: Record<string, string>,
 ): NodeJS.ProcessEnv {
   const allowed = [
+    "ANDRECOMP_RUNTIME_NOTIFICATION_CONTEXT", "ANDRECOMP_RUNTIME_NOTIFICATION_HELPER",
     "ANDRECOMP_AGENT_KEY_ID", "ANDRECOMP_AGENT_PUBLIC_KEY", "ANDRECOMP_AGENT_PRIVATE_KEY",
     "PATH",
     "LANG",
@@ -2989,6 +2990,7 @@ function sanitizedEnvironment(
 
 function sanitizedEnvironmentKeys(): string[] {
   return [
+    "ANDRECOMP_RUNTIME_NOTIFICATION_CONTEXT", "ANDRECOMP_RUNTIME_NOTIFICATION_HELPER",
     "PATH",
     "LANG",
     "LC_ALL",

@@ -1034,6 +1034,8 @@ impl SupervisedProcess {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         for key in [
+            "ANDRECOMP_RUNTIME_NOTIFICATION_CONTEXT",
+            "ANDRECOMP_RUNTIME_NOTIFICATION_HELPER",
             "PATH",
             "PATHEXT",
             "SystemRoot",

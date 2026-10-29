@@ -894,6 +894,8 @@ describe("OpenCodeServerDriver", () => {
       environment: {
         PATH: process.env.PATH,
         OPENROUTER_API_KEY: "test-openrouter-key",
+        ANDRECOMP_RUNTIME_NOTIFICATION_CONTEXT: join(root, "runtime-notifications.json"),
+        ANDRECOMP_RUNTIME_NOTIFICATION_HELPER: join(root, "runnerd"),
         ANDRECOMP_API_KEY: "must-not-leak",
         UNRELATED_SECRET: "must-not-leak",
         ANDRECOMP_PROVIDER_TRACE_PATH: tracePath,
@@ -1037,6 +1039,8 @@ describe("OpenCodeServerDriver", () => {
         "utf8",
       ),
     );
+    expect(environment.notificationContext).toBe(join(root, "runtime-notifications.json"));
+    expect(environment.notificationHelper).toBe(join(root, "runnerd"));
     expect(environment.keys).not.toContain("OPENROUTER_API_KEY");
     expect(environment.keys).not.toContain("ANDRECOMP_API_KEY");
     expect(environment.keys).not.toContain("UNRELATED_SECRET");

@@ -129,6 +129,8 @@ export function createSanitizedAcpxSpawnInput(
     "all_proxy",
     "RUST_BACKTRACE",
     "ANDRECOMP_NATIVE_MCP_NAME",
+    "ANDRECOMP_RUNTIME_NOTIFICATION_CONTEXT",
+    "ANDRECOMP_RUNTIME_NOTIFICATION_HELPER",
     "ANDRECOMP_NATIVE_MCP_URL",
     ...(environment === undefined ? [] : ["ANDRECOMP_AGENT_KEY_ID", "ANDRECOMP_AGENT_PUBLIC_KEY", "ANDRECOMP_AGENT_PRIVATE_KEY"]),
     ...credentialNames,
