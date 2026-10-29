@@ -2326,3 +2326,132 @@ start another send after drain/standby/shutdown. Three regressions reproduced
 it. Per-send admission/abort checks now pass all 14 new lifecycle cases, and the
 previously skipped publication suite plus startup guards pass 27 cases with the
 external test database. Fresh corrected-head verification remains required.
+
+## Slice 33 accepted verification and GitHub owner split
+
+#17653 at `276ef23d2a0b01b15e6bfb8ff31ab13495741b19` passes all 53
+remote checks, fresh Greptile 5/5, and has no unresolved review threads. Workspace
+typecheck/build pass. All 1,540 tests across chat integration, standalone
+interaction publication, and startup guards passed on a fresh database with no
+skips in 473.47 seconds. The initial skipped suite and the stop-boundary failure
+remain documented. The PR is unmerged.
+
+Slice 34 starts from that verified head and owns initial GitHub response-comment
+acknowledgement delivery. The same maintenance helper also contains terminal
+response reconciliation, review-check publication, and late stale-head review
+projection repair. Those are separate reasons and remain separate planned PRs.
+See `2026-10-25-github-chat-maintenance-sleep-audit.md` for the inspected owners,
+producer boundaries, and response-slot dependencies. No GitHub migration is yet
+claimed implemented or verified.
+
+## Slice 34: initial GitHub acknowledgement delivery
+
+Based on accepted slice 33 (`276ef23d2a0b01b15e6bfb8ff31ab13495741b19`).
+The implementation moves only initial response-comment acknowledgement out of
+recurring GitHub maintenance. The existing response actions, fast-response
+records, and publication leases own durability. Committed response-slot changes
+and actual saved deadlines drive recovery. Terminal responses, review checks,
+and stale-head projection remain separate upcoming reasons.
+
+Fourteen new real-PostgreSQL lifecycle cases and the existing startup guard pass.
+The producer-removal regression fails as expected when fast-response settlement
+has no notification. Migration application/replay pass after adding the generated
+concurrent-index migration to the existing top-level execution registry. Broader
+local and remote acceptance is pending. See the detailed
+[GitHub owner audit](2026-10-25-github-chat-maintenance-sleep-audit.md).
+
+All earlier failing CI, review findings, stack/master reconciliation, and remaining
+inventory duties retain their existing requirements. This slice does not claim
+that the stack is ready or authorize a merge.
+
+Slice-34 final focused acceptance passes 17 new cases plus the startup guard.
+Workspace typecheck/build pass again after the receipt-lifecycle correction.
+The fast-response suites pass 69 tests. The initial complete chat run passed
+1,554 tests; a fresh complete run with the three added lifecycle regressions
+is in progress. No remote gate or full-stack readiness claim is made yet.
+
+## Slice 34 accepted head and slice 35 checkpoint
+
+[#17656](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17656) at
+`43900c1f94500af4c4de1987f9608ac4e12feae6` passes all 53 remote checks,
+fresh Greptile 5/5, and has zero review threads. Final chat/publication/startup
+acceptance passes all 1,557 tests with no skips in 514.70 seconds. Workspace
+types/build and 69 fast-response cases pass. The PR remains draft and unmerged.
+
+Branch `codex/sleep-35-github-terminal-responses` starts from that head.
+It extracts provider-owned terminal-state decisions, records successful paused
+presentation versions in existing receipts, and adds a scoped worker plus
+committed issue/run/response-slot notifications. Eight new real-database
+lifecycle cases and nine existing owner cases pass; server types/build pass.
+The broader GitHub workflow suite is running. Startup registration and polling
+removal wait for the three identified direct issue writers and remaining audit
+and acceptance requirements in the terminal-response audit. No slice-35 PR or
+full-stack readiness is claimed yet. Earlier parent CI/review findings, all other
+inventory duties, and reconciliation with current master remain required.
+
+Slice 35 now covers the reproduced direct tree-restoration, workspace-admission
+and exhausted-recovery producers. Real publication-owner tests preserve both
+known-unsent cancellation and ambiguous outcome parking. Startup registers the
+new terminal worker and recurring GitHub maintenance no longer invokes that duty.
+Fourteen new worker cases plus one existing case pass; workspace types/build and
+migration application/replay/safety pass. The partial candidate index excludes
+10,000 completed rows in a rollback-only query-plan experiment. Fresh full
+chat/publication/startup acceptance is running; remote gates remain required.
+See the terminal-response audit for all retained failures and scoped evidence.
+
+## Slice 35 accepted; slice 36 wired
+
+Slice 35 is [#17661](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17661), head
+`3d7c79c262f92563555b278d101de8240e6f011b`. Complete local chat/publication/startup
+acceptance passed all 1,571 tests in 517.41 seconds. All 53 remote checks passed,
+and fresh Greptile is 5/5 with no findings. The PR remains draft and unmerged.
+
+Slice 36, `codex/sleep-36-github-review-checks`, owns GitHub review-check publication.
+It uses existing actions and scoped scheduling. Received nonterminal checks retain
+the existing five-second remote-head reconciliation deadline because webhook
+receipt is not a reliable proof of all future pushes. Completed history and
+configuration alone do not schedule work. Current authority, assessment ownership,
+provider identity, check replacement, lease fencing, and failure backoff remain
+with the GitHub owner. Late stale-head projection repair is the separate next duty.
+
+Eleven new worker tests cover real enqueue and nested transaction settlement,
+run-identity wake before a saved deadline, missed-head recovery, lifecycle states,
+retry reconstruction, lease contention, a full revoked prefix, retained history,
+and HTTP shutdown recovery. The fresh targeted selection passed 36 tests including
+existing maintenance/startup cases. Workspace typecheck/build, migration/replay,
+and candidate-index evidence passed. Full local acceptance and remote PR gates
+remain required. See `2026-10-25-github-review-check-sleep-audit.md` for the failed
+attempts, repairs, exact boundary, and external reconciliation limitation.
+
+Slice 36 is draft [#17662](https://github.com/TOSTES-LAB/Andre-009987Comp/pull/17662).
+Its initial full local run had 13 failures and 1,569 passes, and CI failed an
+inherited login-cleanup fixture. The quiet observation and fake-clock settlement
+repairs are documented in its owner audit. The corrected selections passed 23
+chat cases and all 16 login-cleanup tests; full/new-head verification is required.
+The earlier cancellation browser failures were not reproduced in six local
+replays. #17490 and #17572 remain unresolved gates, not inferred green from that
+negative result. The next untouched duty remains late stale-head projection repair.
+
+Slice 36 follow-up: all 53 remote checks and fresh 5/5 review passed on
+`59f8c8b3e5`. The second local full run had one startup-quiescence assertion
+failure and 1,581 passes. Waiting for the actual quiet condition fixes that
+fixture; all 211 GitHub workflow tests pass after the change. Fresh remote gates
+for the fixture-only commit remain required. The next slice may build on this
+commit while those independent gates run; no stack merge is authorized.
+
+Slice 37, codex/sleep-37-github-review-projection, separates late stale-head
+review projection repair from periodic chat maintenance. Existing cancellation
+receipts and exact admitted deliveries authorize the repair. Committed receipt,
+cancellation, and relevant review-state writes wake the provider-owned worker;
+assessment ownership is rechecked atomically. The obsolete provider maintenance
+wrapper is removed. Explicit manual recovery and the independent missed-webhook
+lane remain. No table or Cloud wake contract is added. Ten new real-database
+cases plus legacy/startup coverage pass; final scalar-query acceptance and remote
+gates remain pending. See the owner audit for fixture failures, repairs, index
+plan evidence, and lifecycle limits. Other original inventory items and earlier
+stack gates remain open.
+
+Slice 36 final remote gates: all 53 checks passed on 01efd3f4f7, with fresh
+Greptile 5/5 and no review threads. Slice 37 final scalar-query selection passed
+20 tests; workspace typecheck and build passed. Full local acceptance and remote
+PR gates are still pending. No PR in this stack was merged.

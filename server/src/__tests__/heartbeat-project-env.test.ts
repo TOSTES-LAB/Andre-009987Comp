@@ -234,6 +234,7 @@ describe("resolveExecutionRunAdapterConfig", () => {
       environmentEnv: {
         ANDRECOMP_API_KEY: "environment-api-key",
         ANDRECOMP_RUNNER_NETWORK_ACCESS: "enabled",
+        ANDRECOMP_RUNNER_PREPARED_HARNESS_HOME: "/environment/claude",
         ANDRECOMP_CLOUD_PROVIDER_TOKEN_ENV: "environment-cloud",
         ENV_ONLY: "environment-only",
       },
@@ -241,16 +242,19 @@ describe("resolveExecutionRunAdapterConfig", () => {
         env: {
           ANDRECOMP_API_KEY: { type: "secret_ref", secretId: "secret-api-key", version: "latest" },
           ANDRECOMP_CLOUD_PROVIDER_TOKEN_AGENT: "agent-cloud",
+          ANDRECOMP_RUNNER_PREPARED_HARNESS_HOME: "/agent/claude",
           AGENT_ONLY: "agent-only",
         },
       },
       projectEnv: {
         ANDRECOMP_API_KEY: "project-api-key",
+        andrecomp_runner_prepared_harness_home: "/project/claude",
         ANDRECOMP_CLOUD_PROVIDER_TOKEN_PROJECT: "project-cloud",
         PROJECT_ONLY: "project-only",
       },
       routineEnv: {
         ANDRECOMP_API_KEY: "routine-api-key",
+        ANDRECOMP_RUNNER_PREPARED_HARNESS_HOME: "/routine/claude",
         ANDRECOMP_CLOUD_PROVIDER_TOKEN_ROUTINE: "routine-cloud",
         ROUTINE_ONLY: "routine-only",
       },

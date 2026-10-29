@@ -1,7 +1,12 @@
-import type { AttentionFeed, AttentionFeedQuery } from "@andrecomp/shared";
+import type { AttentionFeed, AttentionFeedQuery, DecisionHistoryPage, DecisionHistoryQuery } from "@andrecomp/shared";
 import { api } from "./client";
 
 export const attentionApi = {
+  history: (companyId: string, options: DecisionHistoryQuery = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(options)) if (value !== undefined && value !== "") params.set(key, String(value));
+    return api.get<DecisionHistoryPage>(`/companies/${companyId}/attention/history?${params.toString()}`);
+  },
   /**
    * Fetch the ranked Decisions attention feed for a company. The server
    * unions every attention source (approvals, interactions, recovery, reviews,

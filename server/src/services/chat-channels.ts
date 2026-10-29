@@ -1,3 +1,4 @@
+import { githubReviewCheckService } from "./chat-github-checks.js";
 import { leasedChatProvider } from "./chat-channels/runtime/receiver-policy.js";
 import { chatReceiverSchedule } from "./chat-channels/runtime/receiver-schedule.js";
 import { registerChatReceiverWork } from "./chat-channels/runtime/receiver-work.js";
@@ -11,7 +12,7 @@ import { credentialFingerprint } from "./chat-channels/credential-fingerprint.js
 import { createChatSdkMessageReceiver } from "./chat-channels/runtime/sdk-messages.js";
 import { admitDiscordSdkMessage } from "./chat-channels/discord/messages.js";
 import { resolveInboundConversationBinding } from "./chat-channels/inbound/conversation-binding.js";
-import { createGitHubMaintenance } from "./chat-channels/github/maintenance.js";
+import { githubResponseCommentService } from "./chat-github-response-comments.js";
 import { createSpekoChannelService, authorizeSpekoPublicVoiceTask, replaceSpekoChannelRuntime, SPEKO_CONVERSATION_IS_LINEAR } from "./chat-channels/speko/runtime.js";
 import { prepareDiscordRuntimeCommand } from "./chat-channels/discord/runtime-commands.js";
 import { createSlackSetupServices } from "./chat-channels/slack/setup-services.js";
@@ -3344,18 +3345,14 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
   }
 
   const githubReviews = githubChatReviewService(db, fetchImpl);
-  const { scheduleGitHubMaintenance } = createGitHubMaintenance(db, fetchImpl, {
-    scheduleMessageProcessing, isShuttingDown: () => shuttingDown,
-  });
-
-  async function processPublicationMaintenance(limit = 25) {
-    scheduleGitHubMaintenance();
+  async function processPublicationMaintenance() {
+    await githubReviewCheckService(db, fetchImpl).repairSupersededReviews();
   }
 
   // The app refills free endpoint slots on commits and durable deadlines.
   // Work remains tracked by this service and is joined before runtime shutdown.
   async function schedulePendingPublications(limit = 25) {
-    await processPublicationMaintenance(limit);
+    await processPublicationMaintenance();
     return processPendingPublications(limit, { waitForCompletion: false, maintenance: false });
   }
 
@@ -3503,6 +3500,9 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
   const { getPublicationBatchStatus, publishComment, publishBoardMessage } = createChatPublicationRequests(db, { endpointRecord, stageTeamsBoardFileIntent, processPendingSlackBoardMessages, processPendingPublications, prepareTeamsBoardSend });
 return {
     registerInteractionContinuationWork,
+    registerGitHubReviewCheckWork: githubReviewCheckService(db, fetchImpl).registerCheckWork,
+    registerGitHubTerminalResponseWork: githubResponseCommentService(db, fetchImpl).registerTerminalResponseWork,
+    registerGitHubAcknowledgementWork: githubResponseCommentService(db, fetchImpl).registerAcknowledgementWork,
     registerTerminalConfirmationWork,
     loadFailedRetryNoticeScopes,
     reconcileFailedRetryNotices,
