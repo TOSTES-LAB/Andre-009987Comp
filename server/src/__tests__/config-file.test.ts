@@ -91,6 +91,20 @@ describe("readConfigFile", () => {
     });
   });
 
+  it("preserves explicit bucket provenance without changing defaults for existing readers", () => {
+    for (const bucket of [undefined, "andrecomp"]) {
+      writeConfig(configPath, {
+        ...minimalConfig() as object,
+        storage: { provider: "s3", s3: bucket === undefined ? {} : { bucket } },
+      });
+      expect(readConfigFile()?.storage.s3.bucket).toBe("andrecomp");
+      expect(readConfigFile({ includeProvenance: true })).toMatchObject({
+        config: { storage: { s3: { bucket: "andrecomp" } } },
+        explicitStorageS3Bucket: bucket !== undefined,
+      });
+    }
+  });
+
   it("warns about likely misspellings without stripping them", () => {
     const config = {
       ...(minimalConfig() as Record<string, unknown>),

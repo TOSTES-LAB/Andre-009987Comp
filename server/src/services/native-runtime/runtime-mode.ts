@@ -156,11 +156,11 @@ export function resolveNativeRuntimeMode(input: {
       "Andrecomp Runner requires an active agent.",
     );
   }
-  const allowedWorkModes = ["standard", "planning", "ask"];
+  const allowedWorkModes = ["standard", "planning", "ask", "skill_test"];
   if (!input.issue || !allowedWorkModes.includes(input.issue.workMode)) {
     throw ineligible(
       "andrecomp_runner_issue_ineligible",
-      "Andrecomp Runner requires a standard, planning, or ask task.",
+      "Andrecomp Runner requires a standard, planning, ask, or skill test task.",
     );
   }
   const rollout = resolveNativeMigrationStatus({

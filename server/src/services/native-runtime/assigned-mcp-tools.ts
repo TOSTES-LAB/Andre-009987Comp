@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { Db } from "@andrecomp/db";
 import { deduplicateToolDescriptors, ToolGatewayHttpError, type ToolGatewayDescriptor, type ToolGatewayService } from "../tool-gateway.js";
 
-type WorkMode = "standard" | "planning" | "ask";
+type WorkMode = "standard" | "planning" | "ask" | "skill_test";
 type ToolDefinition = Record<string, unknown>;
 
 const SEARCH_TOOL = "andrecomp_search_assigned_tools";

@@ -20,8 +20,22 @@ function formatConfigValidationError(error: ZodError): string {
     .join("; ");
 }
 
-export function readConfigFile(): AndrecompConfig | null {
-  if (isCloudManagedInstance()) return toAndrecompConfig(getCloudRuntimeConfigSnapshot().config);
+interface ConfigFileWithProvenance {
+  config: AndrecompConfig;
+  explicitStorageS3Bucket: boolean;
+}
+
+export function readConfigFile(options: { includeProvenance: true }): ConfigFileWithProvenance | null;
+export function readConfigFile(): AndrecompConfig | null;
+export function readConfigFile(options?: { includeProvenance: true }): AndrecompConfig | ConfigFileWithProvenance | null {
+  if (isCloudManagedInstance()) {
+    const saved = getCloudRuntimeConfigSnapshot().config;
+    const config = toAndrecompConfig(saved);
+    // A stored snapshot is canonical configuration, including its bucket.
+    // It must not inherit local-file provenance or inspect an old home.
+    return config && options?.includeProvenance ? { config, explicitStorageS3Bucket: true } : config;
+  }
+
   const configPath = resolveAndrecompConfigPath();
 
   if (!fs.existsSync(configPath)) return null;
@@ -40,6 +54,12 @@ export function readConfigFile(): AndrecompConfig | null {
       console.warn(
         `Unknown config key ${warning.path}; did you mean ${warning.suggestion}? It will be preserved.`,
       );
+    }
+    if (options?.includeProvenance) {
+      // Schema validation above establishes the input shape, but fills omitted
+      // buckets with a default. Keep only that provenance at the file boundary.
+      const input = raw as Partial<AndrecompConfig>;
+      return { config, explicitStorageS3Bucket: input.storage?.s3?.bucket !== undefined };
     }
     return config;
   } catch (error) {

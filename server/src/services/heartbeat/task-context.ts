@@ -15,7 +15,7 @@ import { getTaskPlanContext } from "../task-plan-context.js";
 import { caseExecutionMarkdown, getCaseExecutionContext } from "../case-context.js";
 import type { TrustPresetResolution } from "../trust-preset-resolver.js";
 import { liveVoiceExecutionGuidance } from "../voice/voice-execution-guidance.js";
-import { buildAndrecompWakePayload, ANDRECOMP_WAKE_PAYLOAD_KEY, type createHeartbeatRunPreparation } from "./run-preparation.js";
+import { buildAndrecompWakePayload, ConfigurationIncompleteFailure, ANDRECOMP_WAKE_PAYLOAD_KEY, type createHeartbeatRunPreparation } from "./run-preparation.js";
 import { buildAndrecompTaskMarkdown } from "./task-markdown.js";
 import { workspacePreferenceService } from "../workspace-preferences.js";
 
@@ -92,10 +92,16 @@ export async function prepareHeartbeatTaskContext(db: Db, input: HeartbeatTaskCo
       ? { kind: "skill_test", issueId: issueRef.id }
       : { kind: "standard" };
   }
+  const isSkillTest = parseObject(context.andrecompAgentJwtScope).kind === "skill_test";
   const pinnedSkillTestContext =
-    issueRef?.workMode === "skill_test"
+    isSkillTest && issueRef
       ? await getPinnedSkillTestContext(agent.companyId, issueRef.id)
       : null;
+  if (isSkillTest && !pinnedSkillTestContext) {
+    throw new ConfigurationIncompleteFailure("The skill test's saved version is unavailable.", {
+      configurationIncomplete: { reason: "skill_unavailable", actionUrl: "/skills" },
+    });
+  }
   if (pinnedSkillTestContext) {
     context.andrecompSkillTest = {
       ...pinnedSkillTestContext,
@@ -406,5 +412,7 @@ export async function prepareHeartbeatTaskContext(db: Db, input: HeartbeatTaskCo
   } else {
     delete context.andrecompTurnContext;
   }
-  return { continuationSummary, executionContinuation, andrecompWakePayload, safeWakeComments, safeWakeCommentContext };
+  const pinnedSkillTest = pinnedSkillTestContext
+    ? { key: pinnedSkillTestContext.skillKey, versionId: pinnedSkillTestContext.skillVersionId } : null;
+  return { continuationSummary, executionContinuation, andrecompWakePayload, safeWakeComments, safeWakeCommentContext, pinnedSkillTest };
 }
