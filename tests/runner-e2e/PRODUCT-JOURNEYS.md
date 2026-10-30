@@ -40,6 +40,21 @@ journey without another setup. A recipe reports `startingState: recipe`;
 reusing successful onboarding reports `onboarding`. Preconfigured state is never
 counted as onboarding coverage.
 
+The scripted onboarding request supplies a self-contained child brief. The
+parent must copy the full marked brief verbatim into `create_task.description`,
+including tool names, parameters, and the encoded input. It orders the child's
+work: create the files, publish `connection-proof.json` with that exact filename
+and workspace-relative content reference, save its Andrecomp task document with
+the returned file link, then report completion. A Markdown workspace note does
+not replace the task document. It explains the native completion contract:
+include actual verification, omit the optional schema, and use receipt-derived
+deliverable references in evidence and file artifacts. Local input paths are verification
+details. Correcting rejected tool arguments stays within the same attempt;
+it does not retry the journey. The model still computes the result, publishes
+the file, saves the document, and completes the tasks. Independent download,
+math, provenance, document, and parent-link checks remain authoritative.
+Historical failed attempts retain their original fixture and outcome.
+
 Save this credential-free local target config outside the repository:
 
 ```json
@@ -93,6 +108,31 @@ bot is not a general-work fixture.
 The private provider supplies its exact execution identity through the `agent`
 capability and collects normalized run usage. The existing Cloud provider still
 owns authentication, conditional leases, fixture ownership, and cleanup.
+
+The Plan, Stop and protected-action decline checks reload the owned task and bind its exact,
+unique visible reply to the final successful native run. A settled native turn
+can render its saved reply before the comments projection exists; that path also
+requires exactly one matching final assistant message in the complete durable
+event stream, with the same company, agent, run and validated PRP source. If the run
+has a projected selected completion comment, only that attributed comment can
+satisfy the check. A pending or suppressed comment can use the same proven native
+reply path. A finish summary by itself, an earlier turn, a progress
+bubble, or a cancelled run cannot satisfy it. Private receipts record the run,
+thread anchor and observed text; classic protocol comment matchers stay strict.
+Markdown replies compare complete text, GFM checkbox states and exact link destinations after parsing
+through the UI-owned projection of its existing Markdown renderer and GFM/issue-reference plugins. The observer receives the
+same visible-company prefix list used by the UI, so bare issue keys and URLs
+match their rendered links. Whitespace and inline formatting can change during rendering. A
+document or issue chip can replace a link label, but must retain its destination.
+Ordinary links retain their source label. Destination resolution uses the existing
+production company-route helper and the current task URL for fragments.
+Receipts retain both source Markdown and observed content. Unsupported structures
+such as images, raw HTML, tables and fenced code fail closed. Exact marker checks
+remain exact, and decline checks inspect both visible explanations and source
+text for unread service data.
+The decline oracle accepts this explicit native receipt without inventing an
+issue comment. The final run must start after the saved decline, and the usual
+truthful explanation, zero service calls and no unread marker checks still apply.
 A model allowance is an accounting threshold; reused direct-provider routes do
 not acquire the onboarding gateway's request-level cash guarantee. The question
 observer allows one run and waits at most four minutes. Cleanup stops only

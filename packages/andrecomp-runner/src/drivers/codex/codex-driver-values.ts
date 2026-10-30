@@ -40,6 +40,8 @@ export const RUNNERD_CANONICAL_ITEM = Symbol(
   "andrecomp.runnerd.canonical-item",
 );
 
+export const RUNNERD_RUNTIME_ACTIVITY = Symbol("andrecomp.runnerd.runtime-activity");
+
 export function text(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
