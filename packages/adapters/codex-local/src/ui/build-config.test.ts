@@ -36,6 +36,20 @@ function makeValues(overrides: Partial<CreateConfigValues> = {}): CreateConfigVa
 }
 
 describe("buildCodexLocalConfig", () => {
+  it("refuses pending Antigravity selection before saving Runner config", () => {
+    expect(() => buildAndrecompRunnerConfig(makeValues({ model: "exact-antigravity-model",
+      adapterSchemaValues: { provider: "acpx", acpxAgent: "antigravity" } })))
+      .toThrow("Google Antigravity is not enabled for production");
+  });
+  it("builds only the exact candidate model from non-persisted UI context", () => {
+    const values = makeValues({ model: "exact-antigravity-model", adapterSchemaValues: { provider: "acpx", acpxAgent: "antigravity" } });
+    const context = { candidateHarnesses: [{ agent: "antigravity" as const, model: "exact-antigravity-model" }] };
+    expect(buildAndrecompRunnerConfig(values, context)).toMatchObject({ provider: "acpx", acpxAgent: "antigravity", model: values.model });
+    expect(buildAndrecompRunnerConfig(values, context)).not.toHaveProperty("candidateHarnesses");
+    expect(() => buildAndrecompRunnerConfig({ ...values, model: "another-model" }, context)).toThrow();
+    expect(() => buildAndrecompRunnerConfig(values)).toThrow();
+  });
+
   it("preserves explicitly disabled hosted search in native Codex configuration", () => {
     expect(buildAndrecompRunnerConfig(makeValues({ search: false }))).toHaveProperty("search", false);
     expect(buildAndrecompRunnerConfig(makeValues({ search: true }))).not.toHaveProperty("search");

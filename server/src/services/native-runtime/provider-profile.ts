@@ -18,7 +18,7 @@ import {
   AGENTCORE_QUALIFIED_MODEL,
   CLAUDE_MANAGED_QUALIFIED_MODEL,
 } from "../provider-profile-qualification.js";
-import { resolveAcpxQualification, type AcpxQualificationCandidate } from "./acpx-qualification.js";
+import { resolveAcpxQualification, resolveAntigravityCandidateAdmission, type AcpxQualificationCandidate } from "./acpx-qualification.js";
 import { compatibleCodexModel } from "./codex-model-fallback.js";
 
 export const QUALIFIED_OPENCODE_RUNNER_VERSION = "1.18.34" as const;
@@ -38,7 +38,7 @@ export const DEFAULT_ACPX_RUNNER_MODELS = {
 
 export type QualifiedAndrecompRunnerAcpxAgent =
   keyof typeof DEFAULT_ACPX_RUNNER_MODELS;
-type AdmittedAndrecompRunnerAcpxAgent = QualifiedAndrecompRunnerAcpxAgent | AcpxQualificationCandidate;
+type AdmittedAndrecompRunnerAcpxAgent = QualifiedAndrecompRunnerAcpxAgent | AcpxQualificationCandidate | "antigravity";
 
 export type AndrecompRunnerProviderProfile =
   | { provider: "muse"; backend: "muse_external"; model: null; museBindingId: string }
@@ -411,6 +411,7 @@ export function claudeRunnerUnsupportedSettings(config: Record<string, unknown>)
  */
 export function resolveAndrecompRunnerProviderProfile(
   adapterConfig: unknown,
+  context: { companyId?: string } = {},
 ): AndrecompRunnerProviderProfile {
   const config = asRecord(adapterConfig);
   const candidate = config.provider ?? "codex";
@@ -554,6 +555,15 @@ export function resolveAndrecompRunnerProviderProfile(
   const pendingAcpxProfile = ANDRECOMP_RUNNER_ACPX_PROFILES.find(profile => profile.value === acpxAgent && !profile.qualified);
   if (pendingAcpxProfile) {
     if (!model) throw new AndrecompRunnerProviderProfileError("andrecomp_runner_acpx_model_required", `${pendingAcpxProfile.label} requires an explicit model ID; there is no default model.`);
+    if (pendingAcpxProfile.value === "antigravity") {
+      try {
+        if (resolveAntigravityCandidateAdmission({ companyId: context.companyId, model }, process.env)) {
+          return { provider: "acpx", backend: "acpx_runtime", model, acpxAgent: "antigravity" };
+        }
+      } catch {
+        throw new AndrecompRunnerProviderProfileError("andrecomp_runner_acpx_qualification_invalid", "Antigravity candidate admission requires the authorized company, exact model and runtime identity.");
+      }
+    }
     // Qualification authority belongs to the isolated server operator. Never
     // read this allowlist from adapter config, credential refs, or run env.
     let qualification: AcpxQualificationCandidate | undefined;
@@ -565,7 +575,7 @@ export function resolveAndrecompRunnerProviderProfile(
     if (qualification) {
       return { provider: "acpx", backend: "acpx_runtime", model, acpxAgent: qualification };
     }
-    throw new AndrecompRunnerProviderProfileError("andrecomp_runner_acpx_agent_unavailable", `${pendingAcpxProfile.label} is awaiting local and Daytona qualification. Its profile is not enabled for production runs.`);
+    throw new AndrecompRunnerProviderProfileError("andrecomp_runner_acpx_agent_unavailable", `${pendingAcpxProfile.label} is awaiting native Runner acceptance. Its profile is not enabled for production runs.`);
   }
   if ((acpxAgent === "cursor" || acpxAgent === "pi") && !model) {
     throw new AndrecompRunnerProviderProfileError("andrecomp_runner_acpx_model_required", "This ACPX agent requires an explicit model ID; there is no default model.");
@@ -602,6 +612,7 @@ export function resolveAndrecompRunnerProviderProfile(
  * profile's immutable remote resource identity.
  */
 export function resolveAndrecompRunnerNativeProviderInput(input: {
+  companyId?: string;
   backend: AndrecompRunnerProviderProfile["backend"];
   adapterConfig: unknown;
   /** Verified image CLI version for a fresh remote Codex run only. */
@@ -625,7 +636,7 @@ export function resolveAndrecompRunnerNativeProviderInput(input: {
   } | null;
 }): AndrecompRunnerNativeProviderInput {
   const config = asRecord(input.adapterConfig);
-  const profile = resolveAndrecompRunnerProviderProfile(config);
+  const profile = resolveAndrecompRunnerProviderProfile(config, { companyId: input.companyId });
   if (config.homeMode !== undefined && config.homeMode !== "isolated" && config.homeMode !== "preconfigured") {
     throw new AndrecompRunnerProviderProfileError("andrecomp_runner_home_mode_invalid", "homeMode must be isolated or preconfigured");
   }

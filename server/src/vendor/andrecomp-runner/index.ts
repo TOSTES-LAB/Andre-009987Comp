@@ -10,6 +10,7 @@
 type RunnerModule = typeof import("@andrecomp/andrecomp-runner");
 
 export type {
+  AcpxCandidateAdmission,
   DotHarnessDriver,
   DotAssignment,
   AndrecompJsonValue,
@@ -99,6 +100,7 @@ export const NativeSessionCleanupQuarantinedError =
   runner.NativeSessionCleanupQuarantinedError;
 export const NativeSessionProtocolIntegrityError =
   runner.NativeSessionProtocolIntegrityError;
+export const NativeEnvironmentProbeCleanupError = runner.NativeEnvironmentProbeCleanupError;
 export const SemanticToolOutcomeUnknownError = runner.SemanticToolOutcomeUnknownError;
 export const AndrecompSemanticDispatcher = runner.AndrecompSemanticDispatcher;
 export const CAPABILITY_SEMANTIC_TOOL_CATALOG =
@@ -112,6 +114,7 @@ export const ANDRECOMP_EXECUTION_PROMPT_REVISION =
   runner.ANDRECOMP_EXECUTION_PROMPT_REVISION;
 export const acpxRuntimeSessionDirectoryName =
   runner.acpxRuntimeSessionDirectoryName;
+export const resolveAcpxRuntimeRoot = runner.resolveAcpxRuntimeRoot;
 export const OPENCODE_ISOLATED_HOMES_DIRECTORY =
   runner.OPENCODE_ISOLATED_HOMES_DIRECTORY;
 export const opencodeRuntimeSessionDirectoryName =
@@ -151,6 +154,7 @@ export const parseAndrecompQuestionSet = runner.parseAndrecompQuestionSet;
 export const parseAndrecompQuestionResponse =
   runner.parseAndrecompQuestionResponse;
 export const resolveQualifiedAcpxProfile = runner.resolveQualifiedAcpxProfile;
+export const parseAcpxCandidateAdmission = runner.parseAcpxCandidateAdmission;
 export const resolveClaudeEffort = runner.resolveClaudeEffort;
 export const resolveGrokEffort = runner.resolveGrokEffort;
 export const QUALIFIED_ACPX_PROFILES = runner.QUALIFIED_ACPX_PROFILES;
@@ -173,6 +177,11 @@ export const completeTerminatedLocalNativeSessionCleanup = runner.completeTermin
 export const probeAcpxClaudeInstallation = runner.probeAcpxClaudeInstallation;
 export const probeAcpxGrokInstallation = runner.probeAcpxGrokInstallation;
 export const probeAcpxPiInstallation = runner.probeAcpxPiInstallation;
+export const startAntigravityBrowserLogin = runner.startAntigravityBrowserLogin;
+export const verifyAntigravityCredential = runner.verifyAntigravityCredential;
+export const sanitizeAntigravityCredential = runner.sanitizeAntigravityCredential;
+export const discoverAntigravityModels = runner.discoverAntigravityModels;
+export const AntigravityModelDiscoveryCleanupError = runner.AntigravityModelDiscoveryCleanupError;
 export const PROVIDER_PACK_COMPATIBILITY = runner.PROVIDER_PACK_COMPATIBILITY;
 export const bundledRemoteProviderPackManifestPath = runner.bundledRemoteProviderPackManifestPath;
 export const bundledRemoteRunnerBinary = runner.bundledRemoteRunnerBinary;

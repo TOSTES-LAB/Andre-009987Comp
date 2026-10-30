@@ -51,6 +51,14 @@ the existing credential checks. The [launcher controls](../../packages/adapter-u
 and [real-shell staging controls](../../packages/adapter-utils/src/github-launcher-environment.test.ts)
 cover this local behavior, separately from live cloud execution and GitHub writes.
 
+Native Runner agents wait for task-bound work. A generic heartbeat interval does
+not create a taskless run or put an otherwise ready agent into an error state.
+Assigned tasks, task monitors, routines and task-bound timer wakes keep their
+existing admission paths; Legacy adapter intervals remain supported. The
+[scheduler](../../server/src/services/heartbeat/scheduling.test.ts) and
+[queue](../../server/src/services/heartbeat/queue.test.ts) regressions exercise
+this boundary with PostgreSQL and synthetic execution, separately from live task acceptance.
+
 For latency diagnosis with an operator OTLP endpoint, search the hashed run ID
 without restricting the root span name. Compare workspace preparation with its
 `workspace_<step>` intervals. Measure controller readiness separately through
@@ -169,6 +177,16 @@ version. Local, SSH and explicit custom commands retain operator management.
 Cloud onboarding must not offer shell commands the customer cannot run.
 
 Manual: Select the intended adapter and account, refresh model choices, and run its environment test. Save, reload, then execute a small task. Repeat with a deliberately unavailable account and verify the failure remains visible.
+
+The explicit-only [Antigravity agent journey](../../tests/runner-e2e/ANTIGRAVITY-AGENT-JOURNEY.md)
+checks a saved personal subscription, prompt-free native Test and exact low model,
+then independently correlates two actual downloaded outputs, accepted/committed
+Done lineage, native conversation continuity and owned runtime retirement. Its
+first settlement is captured before follow-up reopening; a later coordinator
+assessment cannot erase that historical Done decision. A failed finish must not
+mark prior completed file operations failed. The current local macOS ARM64
+candidate scope leaves fresh authorization, remote targets and release
+qualification unproven.
 
 For Legacy Codex, assign a service secret such as `SLACK_BOT_TOKEN` through agent
 configuration and run a task that checks its presence without printing its value.

@@ -2549,6 +2549,12 @@ a.andrecomp-mention-chip[data-mention-kind="agent"]::before {
   text-decoration: none;
 }
 
+/* Document cards underline only their label span; the card itself must not
+   inherit the markdown link underline, or the label shows two lines. */
+.andrecomp-markdown a[data-sidebar-document-link] {
+  text-decoration: none;
+}
+
 .andrecomp-markdown a.andrecomp-mention-chip[data-mention-kind="issue"] {
   border-color: color-mix(in oklab, var(--foreground) 14%, var(--border) 86%);
   background: color-mix(in oklab, var(--accent) 42%, transparent);

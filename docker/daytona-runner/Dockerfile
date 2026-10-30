@@ -9,6 +9,7 @@ WORKDIR /workspace/packages/andrecomp-runner/runner
 COPY packages/andrecomp-runner/runner/Cargo.toml packages/andrecomp-runner/runner/Cargo.lock ./
 COPY packages/andrecomp-runner/runner/crates ./crates
 COPY packages/andrecomp-runner/protocol ../protocol
+COPY packages/andrecomp-runner/acpx-profiles.json packages/andrecomp-runner/antigravity-distributions.json ../
 RUN cargo build --locked --release -j 2 -p andrecomp-runner-core --bin andrecomp-runnerd \
     && strip /workspace/packages/andrecomp-runner/runner/target/release/andrecomp-runnerd
 

@@ -1,3 +1,4 @@
+import { ANDRECOMP_RUNNER_ACPX_PROFILES } from "@andrecomp/adapter-utils";
 const CLOUD_ADAPTERS = new Set([
   "claude_local",
   "codex_local",
@@ -14,12 +15,16 @@ export function isNewAgentAdapterAllowed(
     openAiDotEnabled = false,
     museEnabled = false,
     runnerProvider,
-  }: { cloud: boolean; nativeRunnerEnabled: boolean; openAiDotEnabled?: boolean; museEnabled?: boolean; runnerProvider?: string },
+    candidateHarnesses,
+  }: { cloud: boolean; nativeRunnerEnabled: boolean; openAiDotEnabled?: boolean; museEnabled?: boolean; runnerProvider?: string;
+    candidateHarnesses?: readonly { agent: "antigravity"; model: string }[] },
 ) {
   if (type === "openai_dot" || (type === "andrecomp_runner" && runnerProvider === "openai_dot")) {
     return openAiDotEnabled;
   }
   if (type === "muse" || (type === "andrecomp_runner" && runnerProvider === "muse")) return museEnabled && nativeRunnerEnabled;
+  if (type === "andrecomp_runner" && runnerProvider === "antigravity") return ANDRECOMP_RUNNER_ACPX_PROFILES.some(profile => profile.value === "antigravity" && profile.qualified)
+    || Boolean(candidateHarnesses?.some(candidate => candidate.agent === "antigravity" && candidate.model));
   if (type === "andrecomp_runner") return runnerProvider === "copilot" || nativeRunnerEnabled;
   if (cloud) return CLOUD_ADAPTERS.has(type);
   return true;

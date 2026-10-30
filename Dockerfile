@@ -122,10 +122,11 @@ WORKDIR /app/packages/andrecomp-runner
 COPY packages/andrecomp-runner/rust-toolchain.toml ./
 COPY packages/andrecomp-runner/runner ./runner
 COPY packages/andrecomp-runner/protocol ./protocol
+COPY packages/andrecomp-runner/acpx-profiles.json packages/andrecomp-runner/antigravity-distributions.json ./
 # Cargo fingerprints source mtimes. Normalize them here and after the full
 # source copy below so a fresh checkout cannot invalidate unchanged inputs.
 RUN find runner protocol -type f -exec touch -d @0 {} + \
-  && touch -d @0 rust-toolchain.toml \
+  && touch -d @0 rust-toolchain.toml acpx-profiles.json antigravity-distributions.json \
   && cargo build --release --manifest-path runner/Cargo.toml --locked -p andrecomp-runner-core --bin andrecomp-runnerd
 
 FROM runner-build AS build
@@ -133,7 +134,7 @@ WORKDIR /app
 COPY --from=deps /app /app
 COPY . .
 RUN find packages/andrecomp-runner/runner packages/andrecomp-runner/protocol -type f -exec touch -d @0 {} + \
-  && touch -d @0 packages/andrecomp-runner/rust-toolchain.toml
+  && touch -d @0 packages/andrecomp-runner/rust-toolchain.toml packages/andrecomp-runner/acpx-profiles.json packages/andrecomp-runner/antigravity-distributions.json
 # Both the browser bundle and server stamp need the source commit. Declare it
 # after the stable dependency layers, before either application build.
 ARG ANDRECOMP_BUILD_COMMIT=""

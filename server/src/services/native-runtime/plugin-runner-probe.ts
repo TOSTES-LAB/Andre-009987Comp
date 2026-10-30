@@ -6,7 +6,7 @@ import { join } from "node:path";
 import type { AdapterEnvironmentTestContext, AdapterEnvironmentTestResult } from "@andrecomp/adapter-utils";
 import { resolveAndrecompRunnerPiThinkingLevel } from "@andrecomp/adapter-utils";
 import { environmentTaskResultSchema } from "@andrecomp/plugin-sdk";
-import { probeNativeRunnerEnvironment, resolveClaudeEffort, resolveGrokEffort } from "../../vendor/andrecomp-runner/index.js";
+import { NativeEnvironmentProbeCleanupError, probeNativeRunnerEnvironment, resolveClaudeEffort, resolveGrokEffort } from "../../vendor/andrecomp-runner/index.js";
 import { preparePluginRunnerCredentials } from "./plugin-runner-credentials.js";
 import { createPluginRunnerTaskOwner } from "./plugin-runner-task.js";
 import { resolveAndrecompRunnerProviderProfile } from "./provider-profile.js";
@@ -64,11 +64,12 @@ export async function probePluginRunnerEnvironment(context: AdapterEnvironmentTe
         prpIdentity: { runnerInstanceId: runnerId, environmentLeaseId: target.leaseId, runId: binding.runId,
           normalizedSessionId: binding.sessionId, turnId: `turn-${binding.runId}`, itemId: `item-${binding.runId}` },
       },
-      onCleanupConfirmed: async () => { cleanupConfirmed = true; },
+      onCleanupConfirmed: async () => { rmSync(root, { recursive: true, force: true }); cleanupConfirmed = true; },
     });
     return { adapterType: "andrecomp_runner", status: "pass", testedAt,
       checks: [{ code: "runner_hello_probe_passed", level: "info", message: `Runner verified ${result.providerDriver} with model ${result.effectiveModel}.` }] };
-  } catch {
+  } catch (error) {
+    if (error instanceof NativeEnvironmentProbeCleanupError) throw error;
     // Provider failures may contain credentials or private addressing.
     return { adapterType: "andrecomp_runner", status: "fail", testedAt,
       checks: [{ code: "runner_hello_probe_failed", level: "error", message: "The selected plugin environment did not complete the Runner hello probe and confirmed cleanup. Check its runtime, account, and model access." }] };

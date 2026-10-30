@@ -34,6 +34,8 @@ export interface AcpTargetDescriptor {
 }
 
 export interface AdapterInfo {
+  /** Exact operator-authorized candidates for the requested company and target. */
+  candidateHarnesses?: Array<{ agent: "antigravity"; model: string }>;
   supportedRunners?: import("@andrecomp/shared").AgentRunner[];
   defaultRunner?: import("@andrecomp/shared").AgentRunner;
   type: string;
