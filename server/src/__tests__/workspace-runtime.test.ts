@@ -169,7 +169,7 @@ async function writeRegisteredSourceConfig(baseCwd: string, instanceId = "source
 
 async function createTempRepo(defaultBranch = "main") {
   const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), "andrecomp-worktree-repo-"));
-  await runGit(repoRoot, ["init"]);
+  await runGit(repoRoot, ["init", "--initial-branch", defaultBranch]);
   await runGit(repoRoot, ["config", "user.email", "andrecomp@example.com"]);
   await runGit(repoRoot, ["config", "user.name", "Andrecomp Test"]);
   await fs.writeFile(path.join(repoRoot, "README.md"), "hello\n", "utf8");

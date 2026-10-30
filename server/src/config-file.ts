@@ -8,6 +8,8 @@ import {
 } from "@andrecomp/shared";
 import { ZodError } from "zod";
 import { resolveAndrecompConfigPath } from "./paths.js";
+import { isCloudManagedInstance } from "./services/cloud-instance.js";
+import { getCloudRuntimeConfigSnapshot, toAndrecompConfig } from "./services/cloud-runtime-config-snapshot.js";
 
 function formatConfigValidationError(error: ZodError): string {
   return error.issues
@@ -19,6 +21,7 @@ function formatConfigValidationError(error: ZodError): string {
 }
 
 export function readConfigFile(): AndrecompConfig | null {
+  if (isCloudManagedInstance()) return toAndrecompConfig(getCloudRuntimeConfigSnapshot().config);
   const configPath = resolveAndrecompConfigPath();
 
   if (!fs.existsSync(configPath)) return null;

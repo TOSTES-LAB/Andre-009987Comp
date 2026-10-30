@@ -1,4 +1,7 @@
 import { readConfigFile, resolveDeploymentMode } from "./config-file.js";
+import { isCloudManagedInstance } from "./services/cloud-instance.js";
+import { StartupRefusalError } from "./startup-refusals.js";
+import type { AndrecompConfig } from "@andrecomp/shared";
 import { parseChatWebhookPublicBaseUrl } from "./chat-webhook-public-url.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
@@ -32,27 +35,29 @@ import {
   resolveHomeAwarePath,
 } from "./home-paths.js";
 
-const ANDRECOMP_ENV_FILE_PATH = resolveAndrecompEnvPath();
-if (existsSync(ANDRECOMP_ENV_FILE_PATH)) {
-  loadDotenv({ path: ANDRECOMP_ENV_FILE_PATH, override: false, quiet: true });
-}
+if (!isCloudManagedInstance()) {
+  const ANDRECOMP_ENV_FILE_PATH = resolveAndrecompEnvPath();
+  if (existsSync(ANDRECOMP_ENV_FILE_PATH)) {
+    loadDotenv({ path: ANDRECOMP_ENV_FILE_PATH, override: false, quiet: true });
+  }
 
-const CWD_ENV_PATH = resolve(process.cwd(), ".env");
-const cwdEnvExists = existsSync(CWD_ENV_PATH);
-const isSameFile = cwdEnvExists && existsSync(ANDRECOMP_ENV_FILE_PATH)
-  ? realpathSync(CWD_ENV_PATH) === realpathSync(ANDRECOMP_ENV_FILE_PATH)
-  : CWD_ENV_PATH === ANDRECOMP_ENV_FILE_PATH;
-if (shouldLoadWorkingDirectoryEnv({
-  cwdEnvExists,
-  isAndrecompEnvFile: isSameFile,
-})) {
-  loadDotenv({ path: CWD_ENV_PATH, override: false, quiet: true });
-}
+  const CWD_ENV_PATH = resolve(process.cwd(), ".env");
+  const cwdEnvExists = existsSync(CWD_ENV_PATH);
+  const isSameFile = cwdEnvExists && existsSync(ANDRECOMP_ENV_FILE_PATH)
+    ? realpathSync(CWD_ENV_PATH) === realpathSync(ANDRECOMP_ENV_FILE_PATH)
+    : CWD_ENV_PATH === ANDRECOMP_ENV_FILE_PATH;
+  if (shouldLoadWorkingDirectoryEnv({
+    cwdEnvExists,
+    isAndrecompEnvFile: isSameFile,
+  })) {
+    loadDotenv({ path: CWD_ENV_PATH, override: false, quiet: true });
+  }
 
-if (basename(dirname(ANDRECOMP_ENV_FILE_PATH)) === ".andrecomp") {
-  applyEmptyWorktreeSigningSecrets(dirname(dirname(ANDRECOMP_ENV_FILE_PATH)));
+  if (basename(dirname(ANDRECOMP_ENV_FILE_PATH)) === ".andrecomp") {
+    applyEmptyWorktreeSigningSecrets(dirname(dirname(ANDRECOMP_ENV_FILE_PATH)));
+  }
+  maybeRepairLegacyWorktreeConfigAndEnvFiles();
 }
-maybeRepairLegacyWorktreeConfigAndEnvFiles();
 
 const TAILSCALE_DETECT_TIMEOUT_MS = 3000;
 
@@ -147,13 +152,12 @@ function detectTailnetBindHost(): string | undefined {
   }
 }
 
-export function loadConfig(): Config {
-  const fileConfig = readConfigFile();
+export function loadConfig(fileConfig: AndrecompConfig | null = readConfigFile()): Config {
   const fileDatabaseMode =
-    (fileConfig?.database.mode === "postgres" ? "postgres" : "embedded-postgres") as DatabaseMode;
+    (isCloudManagedInstance() || fileConfig?.database.mode === "postgres" ? "postgres" : "embedded-postgres") as DatabaseMode;
 
   const fileDbUrl =
-    fileDatabaseMode === "postgres"
+    !isCloudManagedInstance() && fileDatabaseMode === "postgres"
       ? fileConfig?.database.connectionString
       : undefined;
   const fileDatabaseBackup = fileConfig?.database.backup;
@@ -459,4 +463,24 @@ export function loadConfig(): Config {
     announcementsEnabled: process.env.ANDRECOMP_ANNOUNCEMENTS_ENABLED !== "false",
     announcementsFeedUrl: process.env.ANDRECOMP_ANNOUNCEMENTS_FEED_URL?.trim() || "https://pages.andrecomp.ing/announcements/v1/current.json",
   };
+}
+
+export type CloudBootstrapConfig = {
+  databaseMode: "postgres";
+  databaseUrl: string;
+  databaseMigrationUrl: string | undefined;
+};
+
+export function loadCloudBootstrapConfig(): CloudBootstrapConfig {
+  if (!isCloudManagedInstance()) throw new Error("Cloud bootstrap configuration requires a managed instance");
+  const url = process.env.DATABASE_URL?.trim();
+  if (!url) throw new StartupRefusalError("database-contract-unmet", "Cloud bootstrap requires DATABASE_URL from the environment");
+  const migrationUrl = process.env.DATABASE_MIGRATION_URL?.trim() || undefined;
+  for (const [name, value] of [["DATABASE_URL", url], ["DATABASE_MIGRATION_URL", migrationUrl]]) {
+    if (!value) continue;
+    let parsed: URL;
+    try { parsed = new URL(value); } catch { throw new Error(`Cloud bootstrap ${name} must use PostgreSQL`); }
+    if (!["postgres:", "postgresql:"].includes(parsed.protocol)) throw new Error(`Cloud bootstrap ${name} must use PostgreSQL`);
+  }
+  return { databaseMode: "postgres", databaseUrl: url, databaseMigrationUrl: migrationUrl };
 }

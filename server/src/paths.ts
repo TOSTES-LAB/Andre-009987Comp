@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveDefaultConfigPath } from "./home-paths.js";
+import { isCloudManagedInstance } from "./services/cloud-instance.js";
 
 const ANDRECOMP_CONFIG_BASENAME = "config.json";
 const ANDRECOMP_ENV_FILENAME = ".env";
@@ -26,6 +27,7 @@ function findConfigFileFromAncestors(startDir: string): string | null {
 export function resolveAndrecompConfigPath(overridePath?: string): string {
   if (overridePath) return path.resolve(overridePath);
   if (process.env.ANDRECOMP_CONFIG) return path.resolve(process.env.ANDRECOMP_CONFIG);
+  if (isCloudManagedInstance()) return resolveDefaultConfigPath();
   return findConfigFileFromAncestors(process.cwd()) ?? resolveDefaultConfigPath();
 }
 

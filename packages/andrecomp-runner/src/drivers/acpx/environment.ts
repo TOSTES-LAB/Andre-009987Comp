@@ -138,7 +138,10 @@ export function createSanitizedAcpxSpawnInput(
     ...(environment === undefined ? [] : ["ANDRECOMP_AGENT_KEY_ID", "ANDRECOMP_AGENT_PUBLIC_KEY", "ANDRECOMP_AGENT_PRIVATE_KEY"]),
     ...credentialNames,
     ...(agent === "claude" ? CLAUDE_ROUTING_ENV_KEYS : []),
+    // The environment owner supplies helper paths, not a replacement provider executable.
     ...(agent === "claude" && environment !== undefined ? ["MCP_TOOL_TIMEOUT"] : []),
+    ...(agent === "claude" && environment?.ANDRECOMP_GITHUB_LAUNCHER_DIR?.trim()
+      ? ["BASH_ENV", "ZDOTDIR", "GH_CONFIG_DIR", "ANDRECOMP_GITHUB_LAUNCHER_DIR"] : []),
     ...(usesPreconfiguredHome(source) ? [...PRECONFIGURED_HOME_KEYS, "ANDRECOMP_RUNNER_HOME_MODE", "ACPX_CLAUDE_INCLUDE_USER_SETTINGS"] : []),
     ...(agent === "claude" && environment?.ANDRECOMP_RUNNER_PREPARED_HARNESS_HOME
       ? [...PRECONFIGURED_HOME_KEYS, "ANDRECOMP_RUNNER_PREPARED_HARNESS_HOME"] : []),

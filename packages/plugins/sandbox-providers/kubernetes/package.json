@@ -1,6 +1,6 @@
 {
   "name": "@andrecomp/plugin-kubernetes",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "description": "Kubernetes sandbox provider plugin for Andrecomp environments",
   "license": "MIT",
   "homepage": "https://github.com/TOSTES-LAB/Andre-009987Comp",

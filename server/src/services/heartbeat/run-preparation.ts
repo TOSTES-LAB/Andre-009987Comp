@@ -227,6 +227,7 @@ const LOW_TRUST_SENSITIVE_ENV_KEY_RE =
 // 3. Any other ANDRECOMP_*-named binding is user data and flows through to
 //    the run env like any non-prefixed binding.
 const FORBIDDEN_ENV_BINDING_KEYS = new Set([
+  "BASH_ENV", "ZDOTDIR", "GH_CONFIG_DIR",
   CONFIGURED_ENVIRONMENT_KEYS,
   "ANDRECOMP_AGENT_KEY_ID", "ANDRECOMP_AGENT_PUBLIC_KEY", "ANDRECOMP_AGENT_PRIVATE_KEY",
   "ANDRECOMP_RUNNER_NETWORK_ACCESS",

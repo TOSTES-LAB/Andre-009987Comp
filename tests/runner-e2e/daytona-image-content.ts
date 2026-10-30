@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { lstat, readdir, readFile, readlink } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import acpxProfiles from "../../packages/andrecomp-runner/acpx-profiles.json" with { type: "json" };
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 
@@ -27,7 +26,6 @@ export const DAYTONA_IMAGE_INPUT_PATHS = [...new Set([
   "packages/andrecomp-runner/scripts/provision-grok.mjs",
   "packages/andrecomp-runner/package.json",
   "packages/andrecomp-runner/acpx-profiles.json",
-  `packages/andrecomp-runner/test/fixtures/copilot-profile-v${acpxProfiles.profiles.copilot.agentProfileVersion}-identity.json`,
   "packages/andrecomp-runner/cursor-distributions.json",
   "packages/andrecomp-runner/cursor-contract.json",
   // The pack's contract digest fingerprints these generated contracts.
@@ -44,36 +42,11 @@ export const DAYTONA_IMAGE_INPUT_PATHS = [...new Set([
   "packages/andrecomp-runner/scripts/candidate-provider-pack.mjs",
   "packages/andrecomp-runner/scripts/build-copilot-distribution.mjs",
   "packages/andrecomp-runner/scripts/copilot-inner-distribution.mjs",
-  "packages/andrecomp-runner/scripts/copilot-profile-identity.mjs",
+  // ACPX generation recomputes the Copilot, Grok and Pi release attestations.
+  "packages/andrecomp-runner/scripts/acpx-release-attestations.mjs",
+  "packages/andrecomp-runner/scripts/generate-acpx-profiles.mjs",
   "packages/andrecomp-runner/scripts/materialize-copilot-binary.mjs",
   "packages/andrecomp-runner/scripts/install-copilot-assets.mjs",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v12-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v14-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v21-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v24-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v25-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v26-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v35-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v40-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v42-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v46-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v47-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v48-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v49-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v50-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v51-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v52-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v54-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v55-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v56-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v57-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v58-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v59-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v61-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v65-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v66-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v67-identity.json",
-  "packages/andrecomp-runner/test/fixtures/copilot-profile-v68-identity.json",
   "packages/andrecomp-runner/scripts/materialize-cursor-distribution.mjs",
   "packages/andrecomp-runner/scripts/cursor-runtime-patch.mjs",
   "packages/andrecomp-runner/scripts/build-verified-provider-entrypoints.mjs",

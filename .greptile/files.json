@@ -71,6 +71,22 @@
         "packages/andrecomp-runner/src/**",
         "packages/andrecomp-runner/runner/**"
       ]
+    },
+    {
+      "path": "rules/acpx-profile-identity.mdc",
+      "description": "ACPX provider identity model: provider digests attest upstream releases, the pack contract digest covers Runner source and the shared ACPX layer, and profile versions change only for deliberate resets.",
+      "scope": [
+        "packages/andrecomp-runner/acpx-profiles.json",
+        "packages/andrecomp-runner/cursor-contract.json",
+        "packages/andrecomp-runner/cursor-distributions.json",
+        "packages/andrecomp-runner/antigravity-distributions.json",
+        "packages/andrecomp-runner/scripts/acpx-release-attestations.mjs",
+        "packages/andrecomp-runner/scripts/generate-acpx-profiles.mjs",
+        "packages/andrecomp-runner/scripts/contracts/**",
+        "packages/andrecomp-runner/src/drivers/acpx/**",
+        "packages/andrecomp-runner/src/providers/**",
+        "packages/andrecomp-runner/protocol/**"
+      ]
     }
   ]
 }
