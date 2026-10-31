@@ -10,6 +10,7 @@ import { CREDENTIAL_NAMES } from "./types.js";
 import { EVAL_OBSERVABILITY_SECRET_NAMES } from "./braintrust.js";
 import { usesInstalledCli, verifyInstalledCli } from "./installed-cli.js";
 import { runnerMatrix } from "./catalog.js";
+import { remoteWorkspaceStorageServerEnvironment } from "./remote-workspace-storage.js";
 import { createRunnerE2EServerStopper, runnerE2EServerDetached } from "./server-stop.js";
 import { runnerE2ETypeScriptProcessArgs } from "./web-server-command.js";
 import { qualifyLegacyClaudeCli } from "./legacy-claude-cli.js";
@@ -57,6 +58,10 @@ const restartTimeoutMs = 180_000;
 const gracefulStopTimeoutMs = 30_000;
 const initialCli = upgradeArtifacts?.artifacts.A.pins.ANDRECOMP_RUNNER_E2E_INSTALLED_CLI ?? process.env.ANDRECOMP_RUNNER_E2E_INSTALLED_CLI;
 const installedRelease = initialCli ? installedReleaseLaunch(initialCli) : null;
+const workspaceStorage = remoteWorkspaceStorageServerEnvironment({
+  executions: executionIds.map(id => runnerMatrix.find(execution => execution.id === id)).filter((execution): execution is typeof runnerMatrix[number] => Boolean(execution)),
+  env: process.env, instanceId: required("ANDRECOMP_INSTANCE_ID"),
+});
 const servingArtifacts = new WeakMap<ChildProcess, ServingArtifact>();
 const serverEnvironment = buildAndrecompServerEnvironment(installedRelease
   ? installedReleaseEnvironment(process.env, repositoryRoot, path.join(temporaryRoot, "provider-bin"))
@@ -100,11 +105,13 @@ const serverEnvironment = buildAndrecompServerEnvironment(installedRelease
   // Onboarding normally opens the app after listen. Browser ownership belongs
   // to Playwright in this harness, so never create a developer desktop tab.
   ANDRECOMP_OPEN_ON_LISTEN: "false",
+  ...workspaceStorage,
 });
 assertIsolatedServerEnvironment(serverEnvironment, {
   temporaryRoot,
   andrecompHome,
   configPath,
+  workspaceStorage,
 });
 const definedServerEnvironment = Object.fromEntries(
   Object.entries(serverEnvironment).filter(

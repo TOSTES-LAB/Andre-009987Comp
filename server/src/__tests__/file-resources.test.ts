@@ -29,7 +29,8 @@ import {
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
 
-const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
+const externalDatabase = process.env.ANDRECOMP_TEST_DATABASE_URL?.trim();
+const embeddedPostgresSupport = externalDatabase ? { supported: true } : await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
 const execFileAsync = promisify(execFile);
 let seedGraphSequence = 0;
@@ -205,11 +206,15 @@ describeEmbeddedPostgres("workspace file resources", () => {
 
   beforeAll(async () => {
     vi.stubEnv("ANDRECOMP_ISSUE_PRIVACY_MODE", "enforce");
-    tempDb = await startEmbeddedPostgresTestDatabase("andrecomp-file-resources-");
-    db = createDb(tempDb.connectionString);
+    if (externalDatabase) db = createDb(externalDatabase);
+    else {
+      tempDb = await startEmbeddedPostgresTestDatabase("andrecomp-file-resources-");
+      db = createDb(tempDb.connectionString);
+    }
   }, 60_000);
 
   afterAll(async () => {
+    await db?.$client.end();
     await tempDb?.cleanup();
     vi.unstubAllEnvs();
   });
@@ -1952,11 +1957,15 @@ describeEmbeddedPostgres("file resource route guards", () => {
   let db: Db;
 
   beforeAll(async () => {
-    tempDb = await startEmbeddedPostgresTestDatabase("andrecomp-file-resource-guards-");
-    db = createDb(tempDb.connectionString);
+    if (externalDatabase) db = createDb(externalDatabase);
+    else {
+      tempDb = await startEmbeddedPostgresTestDatabase("andrecomp-file-resource-guards-");
+      db = createDb(tempDb.connectionString);
+    }
   }, 60_000);
 
   afterAll(async () => {
+    await db?.$client.end();
     await tempDb?.cleanup();
   });
 

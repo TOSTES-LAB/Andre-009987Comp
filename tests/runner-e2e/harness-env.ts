@@ -7,7 +7,7 @@ import { chatNeedsApiTools, isManagedHiringCase } from "./chat-cases.js";
 import { CREDENTIAL_NAMES } from "./types.js";
 import type { MatrixExecution } from "./types.js";
 
-const DATABASE_KEYS = ["DATABASE_URL", "DATABASE_MIGRATION_URL"] as const;
+const DATABASE_KEYS = ["DATABASE_URL", "DATABASE_MIGRATION_URL", "ANDRECOMP_RUNNER_E2E_POSTGRES_ADMIN_URL"] as const;
 const AMBIENT_ANDRECOMP_CREDENTIAL_KEYS = [
   "ANDRECOMP_API_KEY",
   "ANDRECOMP_ACPX_CANDIDATE_ADMISSION",
@@ -233,6 +233,7 @@ export function assertIsolatedServerEnvironment(
     temporaryRoot: string;
     andrecompHome: string;
     configPath: string;
+    workspaceStorage?: NodeJS.ProcessEnv;
   },
 ) {
   const home = env.ANDRECOMP_HOME;
@@ -261,10 +262,14 @@ export function assertIsolatedServerEnvironment(
     ...AMBIENT_ANDRECOMP_CREDENTIAL_KEYS,
     ...AMBIENT_EXTERNAL_STATE_KEYS,
   ]) {
-    if (env[key])
+    if (env[key] && !(AMBIENT_EXTERNAL_STATE_KEYS.includes(key as typeof AMBIENT_EXTERNAL_STATE_KEYS[number])
+      && expected.workspaceStorage?.[key] === env[key] && expected.workspaceStorage?.ANDRECOMP_STORAGE_PROVIDER === "s3"))
       throw new Error(
         `Andrecomp server environment unexpectedly contains ${key}`,
       );
+  }
+  if (expected.workspaceStorage && Object.entries(expected.workspaceStorage).some(([key, value]) => env[key] !== value)) {
+    throw new Error("Andrecomp server storage does not match its explicit synthetic workspace qualification");
   }
   for (const key of GENERATED_SERVER_SECRET_KEYS) {
     if (!env[key])
