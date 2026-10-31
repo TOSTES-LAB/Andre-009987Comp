@@ -41,7 +41,7 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
   beforeAll(async () => {
     if (externalUrl) {
       await applyPendingMigrations(externalUrl);
-      db = createDb(externalUrl);
+      db = createDb(externalUrl, { maxConnections: 6 });
       return;
     }
     tempDb = await startEmbeddedPostgresTestDatabase("andrecomp-issue-tree-control-");

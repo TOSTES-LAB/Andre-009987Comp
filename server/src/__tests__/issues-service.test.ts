@@ -4151,7 +4151,7 @@ const dependencyTestDatabaseUrl = resolveExternalTestDatabaseUrl("ANDRECOMP_ISSU
 
   beforeAll(async () => {
     if (!dependencyTestDatabaseUrl) tempDb = await startEmbeddedPostgresTestDatabase("andrecomp-issues-blockers-");
-    db = createDb(dependencyTestDatabaseUrl ?? tempDb!.connectionString);
+    db = createDb(dependencyTestDatabaseUrl ?? tempDb!.connectionString, { maxConnections: 6 });
     svc = issueService(db);
     await ensureIssueRelationsTable(db);
   }, 20_000);
