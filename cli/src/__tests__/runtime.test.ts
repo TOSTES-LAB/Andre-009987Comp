@@ -28,7 +28,7 @@ it("rejects foreign package identity and a setup entrypoint outside that package
 });
 it("rejects unsupported runtime setup providers before resolution", async () => {
   const program = new Command(); registerRuntimeCommands(program);
-  await expect(program.parseAsync(["node", "andrecomp", "runtime", "setup", "untrusted"])).rejects.toThrow("Supported runtime setup: andrecomp runtime setup pi, cursor, or antigravity");
+  await expect(program.parseAsync(["node", "andrecomp", "runtime", "setup", "untrusted"])).rejects.toThrow("Supported runtime setup: andrecomp runtime setup pi, cursor, kimi, or antigravity");
 });
 
 it("resolves the companion importer only inside the actual public server tar layout", async () => {

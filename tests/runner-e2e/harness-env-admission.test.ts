@@ -25,3 +25,13 @@ it("retains exact, explicit admission when a future profile is pending", async (
   expect(() => buildRunnerE2EProcessEnvironment({}, [{ ...copilot, suite: { ...copilot.suite, id: "unrelated-suite" } }])).toThrow("explicit");
   expect(() => buildRunnerE2EProcessEnvironment({}, [copilot, { ...copilot, profile: { ...copilot.profile, model: "conflicting-model" } }])).toThrow("Conflicting");
 });
+
+it("strips ambient candidate startup records and never authorizes pending Kimi through the old model allowlist", async () => {
+  const { buildRunnerE2EProcessEnvironment, buildAndrecompServerEnvironment } = await import("./harness-env.js");
+  const kimi = runnerMatrix.find(row => row.suite.id === "kimi-qualification")!;
+  const ambient = { ANDRECOMP_ACPX_CANDIDATE_ADMISSION: "forged", ANDRECOMP_RUNNER_ACPX_QUALIFICATION: "forged" };
+  const env = buildRunnerE2EProcessEnvironment(ambient, [kimi]);
+  expect(env.ANDRECOMP_ACPX_CANDIDATE_ADMISSION).toBeUndefined();
+  expect(env.ANDRECOMP_RUNNER_ACPX_QUALIFICATION).toBeUndefined();
+  expect(buildAndrecompServerEnvironment(ambient).ANDRECOMP_ACPX_CANDIDATE_ADMISSION).toBeUndefined();
+});

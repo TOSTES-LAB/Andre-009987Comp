@@ -4299,7 +4299,9 @@ export function normalizeAndrecompRunnerAdapterConfig(
   }
   if (next.provider === "acpx") {
     next.acpxAgent ??= "claude";
-    if (next.acpxAgent !== "pi") next.model = resolveAndrecompRunnerModel("acpx", config.model);
+    if (next.acpxAgent !== "pi" && next.acpxAgent !== "kimi") {
+      next.model = resolveAndrecompRunnerModel("acpx", config.model);
+    }
   }
   return normalizeAndrecompOperationalSkillPreference(adapterType, next);
 }

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { ACPX_QUALIFICATION_ENV, resolveAcpxQualification } from "./acpx-qualification.js";
+import { ACPX_QUALIFICATION_ENV, ANTIGRAVITY_CANDIDATE_ADMISSION_ENV, resolveAcpxQualification, resolveKimiCandidateAdmission } from "./acpx-qualification.js";
+import { QUALIFIED_ACPX_PROFILES, KIMI_DISTRIBUTION_CLOSURE_SHA256 } from "../../vendor/andrecomp-runner/index.js";
 import type { NativeExecutionInput } from "../../vendor/andrecomp-runner/index.js";
 import { resolveAndrecompRunnerProviderProfile, resolveAndrecompRunnerNativeProviderInput } from "./provider-profile.js";
 
@@ -8,6 +9,20 @@ const provider = { kind: "acpx", agent: "copilot", model: "exact-model", permiss
 const authorize = (value: unknown) => ({ [ACPX_QUALIFICATION_ENV]: JSON.stringify(value) });
 describe("host ACPX qualification admission", () => {
   afterEach(() => vi.unstubAllEnvs());
+
+  it.each([undefined, "malformed", JSON.stringify(kimiAdmission("linux", "x64"))])("admits released Kimi without candidate authority (%s)", authority => {
+    vi.stubEnv(ANTIGRAVITY_CANDIDATE_ADMISSION_ENV, authority);
+    vi.stubEnv(ACPX_QUALIFICATION_ENV, "malformed-unrelated-authority");
+    const config = { provider: "acpx", acpxAgent: "kimi", model: "kimi-for-coding" };
+    expect(QUALIFIED_ACPX_PROFILES.kimi.agentProfileVersion).toBe(17);
+    expect(QUALIFIED_ACPX_PROFILES.kimi.qualificationStatus).not.toBe("pending");
+    expect(resolveKimiCandidateAdmission({ companyId: "candidate-company", model: config.model })).toBeUndefined();
+    expect(resolveAndrecompRunnerProviderProfile(config, { companyId: "candidate-company" })).toMatchObject(config);
+    expect(resolveAndrecompRunnerNativeProviderInput({ companyId: "candidate-company", backend: "acpx_runtime", adapterConfig: config }))
+      .toMatchObject({ ...config, acpxPermissionMode: "approve-all" });
+    expect(() => resolveAndrecompRunnerProviderProfile({ ...config, model: "" }))
+      .toThrow(expect.objectContaining({ code: "andrecomp_runner_acpx_model_required" }));
+  });
 
   it.each([undefined, "malformed", JSON.stringify([{ agent: "antigravity", model: "exact-model" }])])(
     "keeps pending Antigravity closed despite host authorization (%s)", host => {
@@ -97,3 +112,9 @@ it.each([undefined, "off", "low", "high", "max"] as const)("validates saved Pi t
   expect(resolveAndrecompRunnerNativeProviderInput({ backend: "acpx_runtime", adapterConfig })).toMatchObject({ piThinkingLevel: piThinkingLevel ?? "low" });
   for (const alias of ["medium", "minimal", "xhigh"]) expect(() => resolveAndrecompRunnerProviderProfile({ ...adapterConfig, piThinkingLevel: alias })).toThrow(expect.objectContaining({ code: "andrecomp_runner_pi_thinking_invalid" }));
 });
+
+function kimiAdmission(platform: "darwin" | "linux", architecture: "arm64" | "x64") {
+  return { schema: "andrecomp.acpx-candidate-admission.v1", companyId: "candidate-company", agent: "kimi", model: "kimi-for-coding",
+    platform, architecture, expiresAt: Date.now() + 60_000, profileDigest: QUALIFIED_ACPX_PROFILES.kimi.commandDigest,
+    nativeClosureDigest: `sha256:${KIMI_DISTRIBUTION_CLOSURE_SHA256[`${platform}-${architecture}` as "darwin-arm64" | "linux-x64"]}` };
+}

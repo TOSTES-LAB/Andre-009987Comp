@@ -64,6 +64,7 @@ export interface AdapterDisplayInfo {
 const adapterDisplayMap: Record<string, AdapterDisplayInfo> = {
   antigravity_runtime: { label: "Google Antigravity", description: "Antigravity through Andrecomp Runner", icon: Gem, hideFromVisualSelection: true },
   copilot_runtime: { label: "GitHub Copilot", description: "Copilot through Andrecomp Runner", icon: Code, hideFromVisualSelection: true },
+  kimi_runtime: { label: "Kimi Code (Runner)", description: "Kimi Code through Andrecomp Runner", icon: Moon, hideFromVisualSelection: true },
   acpx_local: {
     label: "ACPX (retired)",
     description: "Retired standalone ACPX adapter",

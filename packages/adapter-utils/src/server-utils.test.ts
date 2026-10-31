@@ -50,6 +50,21 @@ it("keeps Pi draft models empty and preserves saved native Pi settings", () => {
   expect(normalizeAndrecompRunnerAdapterConfig("andrecomp_runner", saved)).toMatchObject(saved);
 });
 
+it.each([undefined, "", "kimi-for-coding"])("keeps Kimi draft model selection explicit: %s", model => {
+  const config = { provider: "acpx", acpxAgent: "kimi", ...(model === undefined ? {} : { model }),
+    acpxPermissionMode: "approve-reads", lifecycleMode: "warm" };
+  const normalized = normalizeAndrecompRunnerAdapterConfig("andrecomp_runner", config);
+  expect(normalized).toMatchObject(config);
+  expect(normalized.model).toBe(model);
+});
+
+it("keeps Claude draft defaults and explicit model selection", () => {
+  expect(normalizeAndrecompRunnerAdapterConfig("andrecomp_runner", { provider: "acpx", acpxAgent: "claude" }))
+    .toMatchObject({ model: "claude-opus-5-5" });
+  expect(normalizeAndrecompRunnerAdapterConfig("andrecomp_runner", { provider: "acpx", acpxAgent: "claude", model: "claude-sonnet-5" }))
+    .toMatchObject({ model: "claude-sonnet-5" });
+});
+
 it("reserves identity credentials even for mixed-case inherited or configured keys", () => {
   const keys = ["ANDRECOMP_AGENT_KEY_ID", "Andrecomp_Agent_Public_Key", "andrecomp_agent_private_key"];
   const inherited = Object.fromEntries(keys.map(key => [key, "host-override"]));
