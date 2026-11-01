@@ -1,3 +1,4 @@
+import { nativeCancellationHasUnsettledOwner, notifyNativeCancellation, waitForNativeCancellation } from "./native-cancellation-delivery.js";
 import { publishNativeHarnessBackup } from "./native-harness-backup-publication.js";
 import { rehydratePinnedSkillAssets } from "./runtime-context.js";
 import { createNativeUsageDelivery } from "./native-usage-delivery.js";
@@ -78,7 +79,7 @@ import { selectRemotePiCompanion } from "./remote-pi-companion.js";
 import { readNativeLocalProcessStop, PROCESS_START_REQUESTED, withReleasedNativeRunProcess } from "../native-local-process-stop.js";
 import { remoteLeaseCleanupScope } from "../remote-execution-termination.js";
 import { connectorToolDefinitionsForSkills } from "../connector-runtime.js";
-import { activeNativeExecutionRunIds } from "./native-active-runs.js";
+import { setNativeExecutionActive } from "./native-active-runs.js";
 import { preserveNativeFailedWorkspace } from "./native-failed-workspace-recovery.js";
 import {
   boundedExecutionCleanup,
@@ -144,6 +145,7 @@ import {
   executeNativeSession,
   applyNativeSessionGoalControl,
   inspectStagedRunAttachment,
+  inspectRetainedRunInstructions,
   inspectWarmRunTransition,
   parseNativeExecutionInput,
   parseAndrecompQuestionSet,
@@ -7360,6 +7362,8 @@ export async function steerNativeSession(input: {
   }
 }
 
+const nativeCancellationsInFlight = new Map<string, Promise<unknown>>();
+
 export function cancelNativeSession(
   runId: string,
   reason: string,
@@ -7397,6 +7401,23 @@ export async function cancelNativeSession(
       auditId: string | null;
     }
 > {
+  // HTTP and the overlap command worker can observe the same durable intent.
+  // Join the entire cleanup/ACK lifetime before re-reading that intent, rather
+  // than treating cancelRequested as proof that provider cleanup has finished.
+  while (nativeCancellationsInFlight.has(runId)) {
+    await nativeCancellationsInFlight.get(runId)!.catch(() => undefined);
+  }
+  const pending = performNativeCancellation(runId, reason, options);
+  nativeCancellationsInFlight.set(runId, pending);
+  try { return await pending; }
+  finally { nativeCancellationsInFlight.delete(runId); }
+}
+
+async function performNativeCancellation(
+  runId: string,
+  reason: string,
+  options?: { db: Db; scope?: "turn" | "run" | "issue"; replacementAccepted?: boolean; cancellationRequestId?: string },
+) {
   const runStop = (options?.scope ?? "run") === "run";
   let decision: NativeStatusDecision | null = null;
   let decisionContext: {
@@ -7486,6 +7507,7 @@ export async function cancelNativeSession(
     const effects = cancellationDecision.effects.map((effect) => effect.kind);
     let intentPublication: Parameters<typeof publishActivity>[0] | null = null;
     const intent = await options.db.transaction(async (tx) => {
+      await notifyNativeCancellation(tx);
       const lockedRun = await tx
         .select({
           agentId: heartbeatRuns.agentId,
@@ -7688,6 +7710,13 @@ export async function cancelNativeSession(
     decisionId = intent.decisionId;
     recoveringCancellationIntent = intent.existing;
     priorCoordinatorDecisionIdAtIntent = intent.priorCoordinatorDecisionId;
+    if (!activeNativeSessions.has(runId) && !nativeSessionStartups.has(runId)
+      && await nativeCancellationHasUnsettledOwner(options.db, runId)) {
+      const acknowledged = await waitForNativeCancellation(options.db, {
+        companyId: cancellationContext.companyId, runId, intentId: intent.intentId,
+      });
+      return { ...acknowledged, decision };
+    }
     if (intent.acknowledged && (!runStop || intent.dispatched ||
         (!nativeSessionStartups.has(runId) && !activeNativeSessions.has(runId)))) {
       return {
@@ -7784,6 +7813,7 @@ export async function cancelNativeSession(
         decisionId = committed.decision.id;
       }
       const acknowledgement = await options.db.transaction(async (tx) => {
+        await notifyNativeCancellation(tx);
         const lockedRun = await tx
           .select({
             agentId: heartbeatRuns.agentId,
@@ -8088,7 +8118,7 @@ export async function executeAndrecompNativeSession(input: {
     resolve: session => resolveStartup(session),
   };
   nativeSessionStartups.set(runId, startup);
-  activeNativeExecutionRunIds.add(runId);
+  setNativeExecutionActive(runId, true);
   let preparedInput: typeof input = input;
   let cleanupStagedAttachments: () => Promise<void> = async () => undefined;
   let sessionScopeId: string | null = null;
@@ -8215,7 +8245,7 @@ export async function executeAndrecompNativeSession(input: {
     startup.settle();
     if (nativeSessionStartups.get(runId) === startup) {
       nativeSessionStartups.delete(runId);
-      activeNativeExecutionRunIds.delete(runId);
+      setNativeExecutionActive(runId, false);
     }
     if (
       ownsSessionScope &&
@@ -8522,9 +8552,15 @@ async function executeAndrecompNativeSessionWithinScope(
               cancellationIntent.issueId === input.execution.binding.issueId;
             if (!intentMatchesBinding)
               throw new Error("native_cancellation_intent_conflict");
-            // Run cancellation remains a claim fence after dispatch ack until
-            // the heartbeat cancellation path terminalizes the run.
-            throw new NativeCancellationPendingRecoveryError();
+            // A pending Stop must be able to reattach its already-admitted
+            // remote execution for cleanup. The recovery claim is fenced below;
+            // onSession dispatches this durable Stop before any turn submission.
+            // Fresh execution, dead-runner resume and acknowledged Stops remain
+            // fenced: none authorize launching another provider turn.
+            if (input.restartRecovery?.kind !== "reattach_remote_runner"
+              || cancellationIntent.dispatchState !== "pending") {
+              throw new NativeCancellationPendingRecoveryError();
+            }
           }
           if (["committed", "applied"].includes(coordinator.phase))
             throw new Error("native_run_already_committed");
@@ -12510,6 +12546,19 @@ async function createRunnerdBackendWithinSessionClaim(
       : null;
   const stagedRecovery = input.restartRecovery?.kind === "reattach_remote_runner"
     ? await verifyStagedAttachmentRestart(input) : null;
+  const retainedSystemInstructions = input.restartRecovery?.kind === "reattach_remote_runner"
+    && "runtimeContext" in input.execution
+    && input.execution.schema !== "andrecomp.native-execution-input.v6"
+    && input.execution.schema !== "andrecomp.native-execution-input.v8"
+    ? inspectRetainedRunInstructions(JSON.parse(readBoundedNativeFile(
+        resolve(root, "control-plane", "control-plane-state.json"), NATIVE_CONTROL_PLANE_STATE_MAX_BYTES,
+        "native_runner_recovery_instructions_unavailable").toString("utf8")), {
+        runId: input.execution.binding.runId,
+        normalizedSessionId: nativeSessionKey(input.execution),
+        runtimeContextDigest: input.execution.runtimeContext.aggregateDigest,
+      })
+    : undefined;
+  if (retainedSystemInstructions === null) throw new Error("native_runner_recovery_instructions_unavailable");
   let stagedRecoveryPending = stagedRecovery !== null;
   const recoveryUsageIdentity = stagedRecovery?.sourceIdentity ?? input.remoteWarmRecovery?.identity ?? durableIdentity;
   const recoveryUsage = input.onAccountingEvent && recoveryUsageIdentity
@@ -12612,6 +12661,7 @@ async function createRunnerdBackendWithinSessionClaim(
       return current.execute(call);
     };
     const backend = createNativeSessionBackend(input.execution, {
+      retainedSystemInstructions,
       // The plugin resolves the VM directory while preparing the launch. Core keeps
       // its host environment out of the plugin and records the prepared directory.
       runnerInstanceId: prior?.runnerInstanceId ?? effectiveRunnerInstanceId, environment: {},
@@ -13946,6 +13996,7 @@ async function createRunnerdBackendWithinSessionClaim(
       runId: input.execution.binding.runId, prepareRemote: prepareRemoteRunner });
   }
   const backend = createNativeSessionBackend(runnerExecution, {
+    retainedSystemInstructions,
     runnerInstanceId:
       retainedTransition?.runnerInstanceId ?? input.runnerInstanceId,
     environment: effectiveRunnerEnvironment,
