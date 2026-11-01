@@ -79,6 +79,13 @@ another agent still require the outgoing execution to stop before ownership chan
 
 Andrecomp issue statuses are not just UI labels. They imply different expectations about ownership and execution.
 
+A running native owner reports its own task status through `andrecomp_finish` or
+`andrecomp_block`. Both ordinary task updates and recovery-action resolution reject
+direct self-status changes before they can release that run's task-tool access.
+Recovery resolution can still record an outcome without changing the status.
+Board recovery, legacy agents, and the existing conversation and handoff paths
+retain their normal permission and lifecycle checks.
+
 ### `backlog`
 
 The issue is not ready for active work.
@@ -1638,6 +1645,18 @@ and obtains a fresh stop receipt. An interrupted legacy run does not need an
 accepted native result. A successful `workspace_recovery` operation and matching
 recovery record prove persistence; adapter output or a user repair note cannot.
 The failed run and unknown external effects remain historical facts.
+Cancelled native work can owe files after an audited run-only Stop from the
+agent lifecycle, without a board actor. The preservation worker admits that
+exact acknowledged receipt only when the coordinator is terminal, has no
+accepted result or owner, and the run's controller lease is not live. While a
+controller is live, the worker waits for its actual lease expiry, including a
+renewal observed when preservation rechecks the locked run. Once eligible, it
+records the bound prepared workspace and allocation as file recovery work. An existing
+resolved execution watchdog does not discharge that file obligation. This does
+not grant board Stop or continuation authority, change the cancelled result,
+or prove physical termination. Normal recovery stops and retains the same
+allocation, saves its files, and obtains a fresh stop receipt before cleanup
+can apply the original destroy disposition. It starts no provider turn.
 A reusable lease can also owe native copyback: the export-repair action must
 select its exact immutable descriptor and the finalizer's accepted successful
 result under the same company, task, run and completion contract. Lease reuse
