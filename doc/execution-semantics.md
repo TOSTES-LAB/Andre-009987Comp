@@ -273,6 +273,24 @@ The cancellation records the board user's identity. Its acknowledged operator
 Stop receipt keeps recovery from promoting old queued input or creating a retry
 while the task closure commits.
 
+A persisted run-only Stop can survive a controller restart before dispatch is
+acknowledged. Recovery can claim an interrupted run only for its unfinished,
+audited Stop and an authenticated existing remote session. A cleared task lock
+does not authorize new task work or replacement of another task owner. Cleanup
+reuses the run's original held budget reservation, including during a budget
+pause. It cannot create a reservation, bootstrap a runner, or submit a provider
+turn. The recovered session sends the existing Stop through the audited
+cancellation producer. Only its acknowledgement closes the execution owner.
+Cleanup skips attachment staging and warm-owner retirement. Its transport
+retains authenticated pending semantic inputs without dispatch, recovery, or a
+semantic reply. The server derives this purpose from current audited Stop,
+lease, and held-reservation authority. Closing with unanswered input requires a
+new exact provider-stop receipt confirming process exit, the durable event drain,
+and identity-checked runner suspension. The input stays unanswered; the cleanup
+purpose alone cannot certify termination. Ordinary execution retains its existing
+semantic dispatcher requirement. Missing usage remains pending accounting debt;
+a complete receipt settles the original reservation and charge once.
+
 ## 4. Agent-Owned vs User-Owned Execution
 
 The execution model differs depending on assignee type.
@@ -2056,6 +2074,22 @@ ownership holds retain their separate behavior. The startup budget does not boun
 the duration of remote cleanup. Existing Stop receipts and process cleanup still gate
 destructive lifecycle or binding changes. Operator plugin restarts and external
 machine changes can still interrupt startup.
+
+A contextual replacement task can retain creation recovery when its selected
+worker supports inspection and its driver declares `creationOperationVersion: 1`.
+Core saves that opt-in and the prior opaque binding in the existing creation
+journal before acquisition, and sends acquisition to that selected worker.
+An ambiguous failure makes existing recovery work due. The inspection result's
+optional `creationLease` recovers identity and binding for the requested
+`creationOperation`; it is not termination evidence. Contextual task recovery
+requires this field; a generic sandbox cleanup envelope is not a substitute.
+The existing exact-task Stop, status and completion receipts still gate ownership release. Older journal
+entries without the recorded opt-in do not infer a resource identity from the
+creation operation ID. Once recovered identity is durably queued for cleanup,
+Core can discharge that acquisition's missing-response placeholder. Accepted
+host handlers and received result observations still drain before verified
+retirement; a late reply re-enters observation tracking without restoring the
+worker's expired invocation authority.
 
 Cancellation records a preparation fence while holding the run row lock. Native
 runtime selection checks that fence, the running status, and the current startup

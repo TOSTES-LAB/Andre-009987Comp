@@ -1732,8 +1732,11 @@ Files reads use the current committed saved version when remote authority is
 clean and has no active writer, even while its old allocation remains recorded.
 The saved loader verifies the company, workspace, snapshot, and archive before
 reading. Dirty or writer-owned authority uses the live allocation and cannot
-substitute an older save if that allocation is unavailable. Reads retain their
-authority-change fence and remove private saved-file copies after use.
+substitute an older save if that allocation is unavailable. A saved read permits
+cleanup to clear its recorded allocation while the epoch, snapshot, source,
+clean state, and absent writer stay identical. A new or reintroduced allocation
+still invalidates that read. Live reads retain the full allocation fence, and
+private saved-file copies are removed after use.
 Embedders that omit the optional saved-file loader keep valid live reads. They
 still report unavailability when neither a live location nor a loader exists.
 
@@ -1772,6 +1775,13 @@ The original `sourceIssueId` remains provenance; it does not prevent authorized
 bound tasks from continuing saved work. Explicitly selected roots follow the
 same binding contract and the filesystem access boundary below. Task-assignment
 grants are not filesystem permissions. The single-writer fence still applies.
+If reservation finds a current running writer, the bound task uses the existing
+workspace wait and scheduled retry path, including for isolated workspaces and
+operator branches. Reservation does not acquire another allocation or change
+the writer's saved files. A stale writer or a stopped writer with unfinished
+saves still requires reconciliation; contention retries cannot clear that fence.
+The wait retains the run's admitted assignment role so reassignment during
+preparation cannot resume the former assignee through the guest-run path.
 
 Use the focused `remote-workspace-*` and `remote-workspaces.integration` suites
 for storage, import, retention, and lifecycle regression checks. These checks do
@@ -4023,6 +4033,11 @@ before any subsequent upload. An interrupted account-bound request stays pending
 under its original key; it is never relabelled as a provider refusal. Legacy
 unowned form drafts remain in browser storage but are not restored into another
 account. Storybook fixtures seed the same account-specific keys.
+
+New-task staged file bytes are stored in IndexedDB for the account and company.
+Writes merge the selected files with the current saved list in one read/write
+transaction. Removal and successful creation delete only the files that the
+mounted draft removed. Other open tabs keep their saved files across reloads.
 
 Successful pending-record writes have the same readable size range as browser
 storage. In particular, a large task description cannot silently drop its
