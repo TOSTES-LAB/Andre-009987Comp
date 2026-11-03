@@ -642,6 +642,13 @@ See [Supabase pricing](https://supabase.com/pricing) for current details.
 
 ## Connection loss and retries
 
+HTTP access logs distinguish a completed response from a connection that closes
+before or during the response. An aborted request has no success status in the
+log message. The structured response status is null when headers were not sent;
+after headers, it retains the status sent before the abort. These logs describe
+HTTP delivery, not database settlement. A disconnected issue PATCH may continue
+running, so an aborted response does not prove that its writes rolled back.
+
 The database client does not replay arbitrary statements after a disconnect.
 PostgreSQL may have committed a statement before the connection loses its
 response. The postgres.js message `write CONNECTION_CLOSED` does not prove
@@ -738,6 +745,43 @@ identity state, not parent keys. The lock still serializes identity writers and
 blocks concurrent task or run updates. It allows audit inserts to retain their
 foreign-key `KEY SHARE` locks without waiting on identity acquisition. The audit
 foreign keys and their deletion behavior remain enforced.
+
+## Execution admission accounting
+
+The execution-admission module (`server/src/modules/execution-admission/`) owns
+three tables. Nothing writes admissions or caps in production yet, and no claim
+path enforces a project maximum.
+
+- `project_task_execution_policies` stores a project's maximum concurrent tasks
+  apart from `projects`, so project readers never return an unenforced cap. No
+  row means never configured. A row with a null maximum means an explicit "no
+  limit", which a later legacy migration must not overwrite. Maximums are
+  positive. The row is deleted with its project.
+- `execution_admissions` stores one admission attempt of a run. A run can be
+  released before dispatch and admitted again, so `(run_id, attempt)` is unique
+  and a partial unique index allows one unsettled attempt per run. The row keeps
+  the context revision, the nullable primary project as provenance (no foreign
+  key) and the settlement identity, which is set together with `settled_at`.
+- `execution_admission_project_charges` stores one row per distinct admitted
+  project, including unlimited projects. An admission without projects has no
+  rows. Composite `(company_id, …)` foreign keys keep admissions and projects in
+  one company. Rows exist only while the admission is unsettled: settlement
+  deletes the whole set in one transaction, and `(company_id, project_id)` is
+  indexed for active counts, so lookups scale with active work, not history.
+
+Archiving a project changes no charge. Deleting a project with a charge returns
+`409 project_execution_admission_pending`; the foreign key is the backstop.
+Deleting an agent refuses unsettled admissions on its runs and removes settled
+ones. Company deletion removes the company's admissions before its runs and
+projects.
+
+The proposed global lock order for the admission transaction is: company row
+(`FOR NO KEY UPDATE`), native finalization recovery owner, the whole project set
+in ascending ID order (`FOR NO KEY UPDATE`, one statement), issues, wake
+requests, the run, the external-admission advisory lock, the admission row and
+its charges, then budget reservations. Policy updates take the same project
+lock. Settlement takes no project lock. Only the project-set step is implemented
+so far; claim paths keep their current locks until they are integrated.
 
 ## Switching between modes
 
@@ -1016,6 +1060,13 @@ objects can be reclaimed. Object existence alone is not a committed save.
 remote allocation/path, writer run, and dirty flag. Paths in this record belong
 to the remote allocation. Save publication checks the current writer/epoch and
 atomically commits the ledger row, authority pointer, and operation receipt.
+`execution_workspaces.metadata.remoteWorkspaceSnapshotRepositories` records the
+committed snapshot ID and the repository descriptors covered by that archive.
+Reservation retains this coverage when it adds requested repositories to the
+current source. Successful save publication advances coverage and the snapshot
+pointer together. Older saved workspaces capture their previous source inventory
+at the next reservation. Newly attached repositories use normal acquisition;
+they cannot claim coverage from an older archive. No schema migration is needed.
 `workspace_operations` journals preparation, save, restore, and local import;
 large file bodies stay outside the database. Ledger identities deliberately
 survive source-record deletion so object cleanup can finish.

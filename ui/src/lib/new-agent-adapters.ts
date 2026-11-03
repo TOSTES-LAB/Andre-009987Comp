@@ -26,6 +26,7 @@ export function isNewAgentAdapterAllowed(
   if (type === "andrecomp_runner" && runnerProvider === "antigravity") return ANDRECOMP_RUNNER_ACPX_PROFILES.some(profile => profile.value === "antigravity" && profile.qualified)
     || Boolean(candidateHarnesses?.some(candidate => candidate.agent === "antigravity" && candidate.model));
   if (type === "andrecomp_runner") return runnerProvider === "copilot" || nativeRunnerEnabled;
+  if (cloud && type === "cursor_cloud") return nativeRunnerEnabled;
   if (cloud) return CLOUD_ADAPTERS.has(type);
   return true;
 }

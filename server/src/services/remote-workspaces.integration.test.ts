@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import net from "node:net";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -11,7 +12,7 @@ import { activityLog, agents, agentWakeupRequests, applyPendingMigrations, close
   executionWorkspaces, executionWorkspaceSnapshots, heartbeatRunEvents, heartbeatRuns, issueRecoveryActions, issues, livenessDb, nativeRunFinalizations, projects, projectWorkspaces, workspaceOperations } from "@andrecomp/db";
 import type { AdapterExecutionTarget } from "@andrecomp/adapter-utils/execution-target";
 import type { CommandManagedRuntimeRunner } from "@andrecomp/adapter-utils/command-managed-runtime";
-import type { Environment, EnvironmentLease } from "@andrecomp/shared";
+import { buildProjectMentionHref, type Environment, type EnvironmentLease } from "@andrecomp/shared";
 import { createStorageService } from "../storage/service.js";
 import { createLocalDiskStorageProvider } from "../storage/local-disk-provider.js";
 import { createS3StorageProvider } from "../storage/s3-provider.js";
@@ -35,6 +36,8 @@ import { registerRemoteWorkspaceSnapshotRetentionWork, remoteWorkspaceSnapshotRe
 import { createDeliveryWorkCoordinator } from "./delivery-work-coordinator.js";
 import { issueService } from "./issues.js";
 import { instanceSettingsService } from "./instance-settings.js";
+import { resolveRemoteWorkspaceSource } from "./heartbeat/remote-workspace-source.js";
+import { toExecutionWorkspace } from "./execution-workspaces.js";
 
 const exec = promisify(execFile);
 const databaseUrl = process.env.ANDRECOMP_REMOTE_WORKSPACE_TEST_DATABASE_URL;
@@ -122,6 +125,113 @@ suite("remote workspace lifecycle with real Postgres and independent filesystem 
   const reserve = (source: Parameters<typeof reserveRemoteWorkspace>[0]["source"]) => reserveRemoteWorkspace({ db, storage,
     companyId: ids.company, issueId: ids.issue, runId: ids.run, agentId: ids.agent, environmentId: ids.environment,
     projectId: null, projectWorkspaceId: null, existingWorkspaceId: null, source });
+
+  it.each(["initial", "follow-up"] as const)("edits and cold-restores both an anchor and a referenced project's task copy (%s attachment)", async attachment => {
+    vi.stubEnv("ANDRECOMP_MULTI_PROJECT_WORKSPACE_SYNC", "true");
+    vi.stubEnv("ANDRECOMP_MULTI_PROJECT_WORKSPACE_SYNC_REMOTE", "true");
+    const origins = path.join(root, "origins"); await fs.mkdir(origins);
+    const git = (cwd: string, ...args: string[]) => exec("git", ["-C", cwd,
+      "-c", "user.name=Task copies", "-c", "user.email=copies@example.invalid", ...args]);
+    for (const name of ["main", "skills"]) {
+      const directory = path.join(origins, name); await fs.mkdir(directory);
+      await git(directory, "init", "--initial-branch=main");
+      await fs.writeFile(path.join(directory, "README.md"), `${name} source\n`);
+      await git(directory, "add", "."); await git(directory, "commit", "-m", "Source");
+      if (name === "skills") {
+        await git(directory, "checkout", "-b", "release");
+        await fs.writeFile(path.join(directory, "README.md"), "skills release\n");
+        await git(directory, "add", "."); await git(directory, "commit", "-m", "Release");
+        await git(directory, "checkout", "main");
+      }
+    }
+    const port = await new Promise<number>((resolve, reject) => {
+      const listener = net.createServer(); listener.on("error", reject);
+      listener.listen(0, "127.0.0.1", () => {
+        const port = (listener.address() as net.AddressInfo).port;
+        listener.close(error => error ? reject(error) : resolve(port));
+      });
+    });
+    const daemon = spawn("git", ["daemon", "--reuseaddr", "--export-all", `--base-path=${origins}`,
+      "--listen=127.0.0.1", `--port=${port}`, "--verbose", origins], { stdio: ["ignore", "ignore", "pipe"] });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        daemon.once("error", reject); daemon.once("exit", code => reject(new Error(`Git source exited: ${code}`)));
+        daemon.stderr.on("data", bytes => { if (String(bytes).includes("Ready to rumble")) resolve(); });
+      });
+      const [anchor, reference] = await db.insert(projects).values(["Main", "Skills"].map(name => ({ companyId: ids.company, name }))).returning();
+      const [anchorSource] = await db.insert(projectWorkspaces).values([
+        { companyId: ids.company, projectId: anchor.id, name: "Main", repoUrl: `git://127.0.0.1:${port}/main`, sourceType: "git_repo" },
+        { companyId: ids.company, projectId: reference.id, name: "Skills", repoUrl: `git://127.0.0.1:${port}/skills`, defaultRef: "release", sourceType: "git_repo" },
+      ]).returning();
+      await db.update(issues).set({ projectId: anchor.id, projectWorkspaceId: anchorSource.id,
+        description: attachment === "initial" ? `Edit both projects, including [@Skills](${buildProjectMentionHref(reference.id)}).`
+          : "Start in the main project." }).where(eq(issues.id, ids.issue));
+      const input = { companyId: ids.company, issueId: ids.issue, agentId: ids.agent, runId: ids.run,
+        responsibleUserId: null, projectId: anchor.id, projectWorkspaceId: anchorSource.id };
+      const resolved = await resolveRemoteWorkspaceSource(db, input);
+      if (resolved.authority !== "remote") throw new Error("Expected remote task copies");
+      const reserved = await reserveRemoteWorkspace({ db, storage, ...input, environmentId: ids.environment,
+        existingWorkspaceId: null, source: resolved.source });
+      const first = await target("project-copies-A");
+      const prepared = await prepareRemoteWorkspace({ db, storage, workspace: reserved, runId: ids.run, lease: await lease(), target: first });
+      const initialCopy = resolved.source.repositories?.[0];
+      if (attachment === "initial") {
+        expect(initialCopy?.projectId).toBe(reference.id); expect(initialCopy?.readOnly).not.toBe(true);
+        expect(await fs.readFile(path.join(prepared.remoteRoot, initialCopy!.relativePath, "README.md"), "utf8")).toBe("skills release\n");
+      }
+      for (const relative of ["", ...(initialCopy ? [initialCopy.relativePath] : [])]) {
+        await fs.writeFile(path.join(prepared.remoteRoot, relative, "result.md"), "saved edits\n");
+      }
+      for (const name of ["main", "skills"]) {
+        await expect(fs.access(path.join(origins, name, "result.md"))).rejects.toMatchObject({ code: "ENOENT" });
+      }
+      await saveRemoteWorkspace({ db, storage, workspace: prepared.workspace, runId: ids.run,
+        lease: prepared.lease, target: first, assertOwned: async () => undefined });
+      await db.update(heartbeatRuns).set({ status: "succeeded", finishedAt: new Date() }).where(eq(heartbeatRuns.id, ids.run));
+      await fs.rm(path.dirname(prepared.remoteRoot), { recursive: true });
+      await fs.rm(path.join(origins, "main"), { recursive: true });
+      if (attachment === "initial") await fs.rm(path.join(origins, "skills"), { recursive: true });
+      else await db.update(issues).set({ description: `Now edit [@Skills](${buildProjectMentionHref(reference.id)}).` }).where(eq(issues.id, ids.issue));
+      const nextRun = randomUUID(), nextLeaseId = randomUUID();
+      await db.insert(heartbeatRuns).values({ id: nextRun, companyId: ids.company, agentId: ids.agent,
+        nativeIssueId: ids.issue, runtimeMode: "native", status: "running" });
+      const [nextLease] = await db.insert(environmentLeases).values({ id: nextLeaseId, companyId: ids.company,
+        environmentId: ids.environment, heartbeatRunId: nextRun, issueId: ids.issue,
+        provider: "daytona", providerLeaseId: `allocation-${nextLeaseId}`, status: "active" }).returning();
+      const resumed = await resolveRemoteWorkspaceSource(db, { ...input, runId: nextRun,
+        existingWorkspace: toExecutionWorkspace(await workspace(reserved.id)) });
+      if (resumed.authority !== "remote") throw new Error("Expected retained remote task copies");
+      if (attachment === "initial") expect(resumed.source).toEqual(resolved.source);
+      const copy = resumed.source.repositories![0]!;
+      expect(copy.projectId).toBe(reference.id);
+      const reservedAgain = await reserveRemoteWorkspace({ db, storage, ...input, runId: nextRun,
+        environmentId: ids.environment, existingWorkspaceId: reserved.id, source: resumed.source });
+      const second = await target("project-copies-B");
+      const restored = await prepareRemoteWorkspace({ db, storage, workspace: reservedAgain, runId: nextRun,
+        lease: nextLease as EnvironmentLease, target: second });
+      for (const relative of ["", copy.relativePath]) {
+        if (!relative || attachment === "initial") expect(await fs.readFile(path.join(restored.remoteRoot, relative, "result.md"), "utf8")).toBe("saved edits\n");
+        await fs.writeFile(path.join(restored.remoteRoot, relative, "follow-up.md"), "continued edits\n");
+      }
+      expect(await fs.readFile(path.join(restored.remoteRoot, copy.relativePath, "README.md"), "utf8")).toBe("skills release\n");
+      await saveRemoteWorkspace({ db, storage, workspace: restored.workspace, runId: nextRun,
+        lease: restored.lease, target: second, assertOwned: async () => undefined });
+      const final = await workspace(reserved.id), authority = readRemoteWorkspaceAuthority(final.metadata)!;
+      expect(authority).toMatchObject({ dirty: false, writerRunId: null });
+      expect(final.metadata?.remoteWorkspaceSnapshotRepositories).toEqual({ snapshotId: authority.snapshotId, repositories: resumed.source.repositories });
+      await fs.rm(origins, { recursive: true, force: true });
+      const saved = await createSavedWorkspaceLoader(db, storage)({ companyId: ids.company, workspaceId: reserved.id, snapshotId: authority.snapshotId! });
+      try {
+        for (const relative of ["", copy.relativePath]) expect(await fs.readFile(path.join(saved.root, relative, "follow-up.md"), "utf8")).toBe("continued edits\n");
+        expect(await fs.readFile(path.join(saved.root, copy.relativePath, "README.md"), "utf8")).toBe("skills release\n");
+      } finally { await saved.cleanup(); }
+    } finally {
+      if (daemon.exitCode === null) {
+        const stopped = new Promise<void>(resolve => daemon.once("exit", () => resolve()));
+        daemon.kill("SIGTERM"); await stopped;
+      }
+    }
+  }, 60_000);
 
   it("prepares, saves and restores task files without a controller checkout or original allocation", async () => {
     const reserved = await reserve({ kind: "empty" }), first = await target("sandbox-A");
@@ -809,17 +919,28 @@ suite("remote workspace lifecycle with real Postgres and independent filesystem 
     expect(await preserveRemoteWorkspacePreparationFailure(db, prepared.lease)).toBeNull();
   }, 60_000);
 
-  it("records and retries export cleanup after a lost reply without another upload", async () => {
+  it.each([
+    ["a lost reply", "remote_workspace_export_cleanup_failed"],
+    ["a timeout", "remote_workspace_operation_timed_out: cleanup (configured timeout 10000ms)"],
+    ["an untrusted error", "remote_workspace_export_cleanup_failed"],
+  ] as const)("records and retries export cleanup after %s without another upload", async (failure, diagnostic) => {
     const reserved = await reserve({ kind: "empty" }), first = await target("cleanup-sandbox");
     const prepared = await prepareRemoteWorkspace({ db, storage, workspace: reserved, runId: ids.run, lease: await lease(), target: first });
     await fs.writeFile(path.join(prepared.remoteRoot, "saved.txt"), "keep working files\n");
     const sandbox = first as Extract<AdapterExecutionTarget, { transport: "sandbox" }>;
     const execute = sandbox.runner!.execute.bind(sandbox.runner!);
-    let lost = false;
+    let lost = false, cleanupAttempts = 0;
     sandbox.runner!.execute = async input => {
       const result = await execute(input);
-      if (!lost && input.args?.[1]?.includes("remote_workspace_export_cleanup_failed") && result.exitCode === 0) {
-        lost = true; throw new Error("lost cleanup reply");
+      if (input.args?.[1]?.includes("remote_workspace_export_cleanup_failed") && result.exitCode === 0) {
+        cleanupAttempts++;
+        if (lost) return result;
+        lost = true;
+        if (failure === "a timeout") return { ...result, timedOut: true,
+          stdout: "SYNTHETIC_PRIVATE_STDOUT", stderr: "SYNTHETIC_PRIVATE_STDERR" };
+        throw new Error(failure === "an untrusted error"
+          ? "remote_workspace_operation_timed_out: cleanup (configured timeout 10000ms)\nSYNTHETIC_PRIVATE_STDERR"
+          : "lost cleanup reply");
       }
       return result;
     };
@@ -830,11 +951,13 @@ suite("remote workspace lifecycle with real Postgres and independent filesystem 
     const [before] = await db.select().from(workspaceOperations).where(and(eq(workspaceOperations.heartbeatRunId, ids.run),
       eq(workspaceOperations.phase, "remote_workspace_snapshot"), eq(workspaceOperations.status, "succeeded"),
       eq(workspaceOperations.id, (await db.select().from(executionWorkspaceSnapshots).where(eq(executionWorkspaceSnapshots.id, saved.snapshotId)))[0]!.sourceOperationId)));
-    expect(before?.metadata?.exportCleanup).toMatchObject({ state: "pending", lastError: "remote_workspace_export_cleanup_failed" });
+    expect(before?.metadata?.exportCleanup).toMatchObject({ state: "pending", lastError: diagnostic });
+    expect(cleanupAttempts).toBe(1);
     expect(await saveRemoteWorkspace(input)).toMatchObject({ snapshotId: saved.snapshotId, generation: saved.generation });
     expect(upload).toHaveBeenCalledOnce();
     const [after] = await db.select().from(workspaceOperations).where(eq(workspaceOperations.id, before!.id));
     expect(after?.metadata?.exportCleanup).toMatchObject({ state: "cleaned", lastError: null });
+    expect(cleanupAttempts).toBe(2);
     expect(await fs.readFile(path.join(prepared.remoteRoot, "saved.txt"), "utf8")).toBe("keep working files\n");
   }, 60_000);
 

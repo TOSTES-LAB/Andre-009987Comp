@@ -232,8 +232,11 @@ async function importServerEntry(): Promise<StartedServer> {
 
   // Production mode: import the published @andrecomp/server package
   try {
-    const mod = await import("@andrecomp/server");
-    return await startServerFromModule(mod, "@andrecomp/server");
+    // A literal specifier would pull the whole server program into the CLI
+    // typecheck. This import is untyped either way, like the dev import above.
+    const serverPackage = "@andrecomp/server";
+    const mod = await import(serverPackage);
+    return await startServerFromModule(mod, serverPackage);
   } catch (err) {
     const missingSpecifier = getMissingModuleSpecifier(err);
     const missingServerEntrypoint = !missingSpecifier || missingSpecifier === "@andrecomp/server";

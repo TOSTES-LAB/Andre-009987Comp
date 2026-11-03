@@ -24,5 +24,5 @@ type TaskWorkspaceExecution = Exclude<NativeExecutionInput, {
 
 export function nativeExecutionUsesTaskWorkspace(execution: NativeExecutionInput | null): execution is TaskWorkspaceExecution {
   return execution !== null && execution.schema !== "andrecomp.native-execution-input.v6"
-    && execution.schema !== "andrecomp.native-execution-input.v8";
+    && execution.schema !== "andrecomp.native-execution-input.v8" && execution.provider.kind !== "cursor_cloud";
 }

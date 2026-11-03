@@ -308,7 +308,7 @@ describe("remote workspace transport safety with real sandbox commands", () => {
       .rejects.toThrow(/^remote_workspace_operation_failed$/);
     execute.mockResolvedValueOnce({ ...failure, timedOut: true, stderr: gitOperation });
     await expect(captureRemoteWorkspaceArchive({ target: remote, remoteCwd: workspace, operationId: randomUUID() }))
-      .rejects.toThrow(/^remote_workspace_operation_failed$/);
+      .rejects.toThrow(/^remote_workspace_operation_timed_out: archive_helper \(configured timeout 300000ms\)$/);
   });
 
   it.each([
@@ -345,6 +345,35 @@ describe("remote workspace transport safety with real sandbox commands", () => {
       stderr: "remote_workspace_sandbox_disk_full: the sandbox disk is full; free space in the sandbox before saving the workspace\nSYNTHETIC_PRIVATE_PATH" });
     await expect(captureRemoteWorkspaceArchive({ target: remote, remoteCwd: workspace, operationId: randomUUID() }))
       .rejects.toThrow(/^remote_workspace_operation_failed$/);
+  });
+
+  it("identifies a timed-out preparation without exposing transport output or retrying it", async () => {
+    const { remote, execute } = target();
+    const resolveGitAuth = vi.fn(async () => null);
+    execute.mockResolvedValueOnce({ exitCode: 0, stdout: '{"cloneRequired":true}', stderr: "",
+      timedOut: false, signal: null, pid: process.pid, startedAt: new Date().toISOString() });
+    execute.mockResolvedValueOnce({ exitCode: null, stdout: "SYNTHETIC_PRIVATE_STDOUT", stderr: "SYNTHETIC_PRIVATE_STDERR",
+      timedOut: true, signal: null, pid: process.pid, startedAt: new Date().toISOString() });
+
+    await expect(prepareRemoteWorkspaceDirectory({ target: remote, remoteCwd: path.join(workspace, "clone"),
+      source: { kind: "git", repoUrl: "https://example.invalid/source.git", ref: null },
+      preparationIdentity: "a".repeat(64), resolveGitAuth }))
+      .rejects.toThrow(/^remote_workspace_operation_timed_out: prepare \(configured timeout 300000ms\)$/);
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(resolveGitAuth).toHaveBeenCalledTimes(1);
+    expect(await fs.readdir(workspace)).toEqual([]);
+  });
+
+  it("reports the cleanup deadline without treating a timeout as a completed operation", async () => {
+    await fs.writeFile(path.join(workspace, "saved.txt"), "preserve the workspace\n");
+    const { remote, execute } = target();
+    execute.mockResolvedValueOnce({ exitCode: 0, stdout: "SYNTHETIC_PRIVATE_STDOUT", stderr: "SYNTHETIC_PRIVATE_STDERR",
+      timedOut: true, signal: null, pid: process.pid, startedAt: new Date().toISOString() });
+
+    await expect(cleanupRemoteWorkspaceArchive({ target: remote, remoteCwd: workspace, operationId: randomUUID() }))
+      .rejects.toThrow(/^remote_workspace_operation_timed_out: cleanup \(configured timeout 10000ms\)$/);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(await fs.readFile(path.join(workspace, "saved.txt"), "utf8")).toBe("preserve the workspace\n");
   });
 
   it("never follows a preexisting snapshot receipt temporary symlink", async () => {
@@ -438,6 +467,29 @@ describe("remote workspace transport safety with real sandbox commands", () => {
     await expect(prepareRemoteRepository({ ...input, repoUrl: `${origin}-foreign` })).rejects.toThrow("remote_workspace_operation_failed");
     expect(resolveGitAuth).not.toHaveBeenCalled();
     expect(await fs.readFile(path.join(root, "unsaved.txt"), "utf8")).toBe("preserve local work\n");
+  });
+
+  it.each(["root", "secondary"] as const)("checks out a non-default remote ref in the %s repository", async kind => {
+    const origin = await repository(), { remote } = target(), root = path.join(workspace, `release-${kind}`);
+    await git(origin, "checkout", "-b", "release");
+    await fs.writeFile(path.join(origin, "release.txt"), "release branch\n");
+    await git(origin, "add", "."); await git(origin, "commit", "-m", "Release");
+    const release = (await git(origin, "rev-parse", "HEAD")).stdout.trim();
+    await git(origin, "checkout", "main");
+    if (kind === "root") await prepareRemoteWorkspaceDirectory({ target: remote, remoteCwd: root,
+      preparationIdentity: "b".repeat(64), source: { kind: "git", repoUrl: origin, ref: "release" }, resolveGitAuth: async () => null });
+    else await prepareRemoteRepository({ target: remote, remoteCwd: root, repoUrl: origin, ref: "release", resolveGitAuth: async () => null });
+    expect((await git(root, "rev-parse", "HEAD")).stdout.trim()).toBe(release);
+    expect(await fs.readFile(path.join(root, "release.txt"), "utf8")).toBe("release branch\n");
+  });
+
+  it("does not publish a secondary checkout after its configured ref fails", async () => {
+    const origin = await repository(), { remote } = target(), root = path.join(workspace, "missing-secondary-ref");
+    await expect(prepareRemoteRepository({ target: remote, remoteCwd: root, repoUrl: origin,
+      ref: "missing-ref", resolveGitAuth: async () => null })).rejects.toThrow("remote_workspace_operation_failed");
+    await expect(fs.access(root)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(prepareRemoteRepository({ target: remote, remoteCwd: root, repoUrl: origin,
+      ref: "HEAD", resolveGitAuth: async () => null })).resolves.toMatchObject({ cwd: root });
   });
 
   it.each(["path", "file-url"] as const)("verifies an archived secondary %s repository after its local origin disappears", async sourceKind => {
