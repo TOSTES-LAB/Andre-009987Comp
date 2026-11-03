@@ -68,6 +68,7 @@ describe("Andrecomp Runner permission defaults", () => {
   });
 
   it("recognizes only exact provider identifiers", () => {
+    expect(isAndrecompRunnerProvider("cursor_cloud")).toBe(true);
     expect(isAndrecompRunnerProvider("codex")).toBe(true);
     expect(isAndrecompRunnerProvider("opencode")).toBe(true);
     expect(isAndrecompRunnerProvider("claude_managed")).toBe(true);
@@ -78,10 +79,16 @@ describe("Andrecomp Runner permission defaults", () => {
   });
 
   it("keeps managed provider permissions under the qualified profile", () => {
+    expect(resolveAndrecompRunnerPermissionMode("cursor_cloud", "never")).toBe("provider-managed");
     expect(resolveAndrecompRunnerPermissionMode("claude_managed", "never"))
       .toBe("provider-managed");
     expect(resolveAndrecompRunnerPermissionMode("aws_agentcore", "approve-all"))
       .toBe("provider-managed");
+  });
+
+  it("converts Cursor Cloud without substituting an implicit model or adding command permission controls", () => {
+    expect(andrecompRunnerTransitionConfig("cursor_cloud", "custom-model")).toEqual({ provider: "cursor_cloud", model: "custom-model", lifecycleMode: "per_turn" });
+    expect(andrecompRunnerTransitionConfig("cursor_cloud", undefined)).toEqual({ provider: "cursor_cloud", model: "", lifecycleMode: "per_turn" });
   });
 
   it("uses the Codex default for missing or blank models", () => {

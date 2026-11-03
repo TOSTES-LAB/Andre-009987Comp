@@ -1600,6 +1600,41 @@ it("preserves an explicit OpenCode permission mode at the runner spawn boundary"
   expect(launches[0]!.environment.ANDRECOMP_OPENCODE_COMMAND).toBeUndefined();
 });
 
+it.each([undefined, {}, {
+  CURSOR_API_KEY: "explicit-cloud-key",
+  ANDRECOMP_CURSOR_CLOUD_CONFIG_PATH: "/private/cloud/config.json",
+  ANDRECOMP_CURSOR_CLOUD_ARTIFACT_ROOT: "/private/cloud/artifacts",
+  ANDRECOMP_CURSOR_CLOUD_RELAY_SOCKET_PATH: "/private/cloud/mcp.sock",
+  ANDRECOMP_CURSOR_CLOUD_RELAY_TOKEN: "explicit-cloud-relay",
+  ANDRECOMP_CURSOR_CLOUD_RELAY_URL: "https://relay.example.test/mcp/native-runs/run",
+  ANDRECOMP_CURSOR_CLOUD_RELAY_EXPIRES_AT: "2000000000000",
+  ANDRECOMP_CURSOR_CLOUD_UNRELATED: "must-not-cross",
+}])("forwards only explicitly supplied Cloud launch bindings at the runner boundary (%j)", (environment: NodeJS.ProcessEnv | undefined) => {
+  const names = [
+    "CURSOR_API_KEY", "ANDRECOMP_CURSOR_CLOUD_CONFIG_PATH", "ANDRECOMP_CURSOR_CLOUD_ARTIFACT_ROOT",
+    "ANDRECOMP_CURSOR_CLOUD_RELAY_SOCKET_PATH", "ANDRECOMP_CURSOR_CLOUD_RELAY_TOKEN",
+    "ANDRECOMP_CURSOR_CLOUD_RELAY_URL", "ANDRECOMP_CURSOR_CLOUD_RELAY_EXPIRES_AT",
+  ] as const;
+  for (const name of names) vi.stubEnv(name, "ambient-must-not-cross");
+  const launches: RunnerProcessLaunchSpec[] = [];
+  try {
+    spawnRunner({
+      connection: { mode: "connect", connectUrl: "ws://127.0.0.1:43127" },
+      stateDirectory: "/tmp/andrecomp-runner-test", identity, ticket: "bootstrap-ticket",
+      maxOutboxBytes: 256 * 1024, p0ReserveBytes: 64 * 1024,
+      runnerVersion: expectedRunnerVersion, runnerDigest: expectedRunnerDigest, environment,
+      processLauncher: spec => {
+        launches.push(spec);
+        return { child: { pid: 42, exitCode: null, signalCode: null, kill: () => true },
+          completion: Promise.resolve({ code: 0, signal: null, stdout: "", stderr: "" }) };
+      },
+    });
+    expect(launches).toHaveLength(1);
+    for (const name of names) expect(launches[0]!.environment[name]).toBe(environment?.[name]);
+    expect(launches[0]!.environment.ANDRECOMP_CURSOR_CLOUD_UNRELATED).toBeUndefined();
+  } finally { vi.unstubAllEnvs(); }
+});
+
 it("preserves only bounded GitHub credential projection at the runner spawn boundary", () => {
   const launches: RunnerProcessLaunchSpec[] = [];
   spawnRunner({

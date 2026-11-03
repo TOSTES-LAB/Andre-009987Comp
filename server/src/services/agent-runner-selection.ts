@@ -51,6 +51,11 @@ function runnerAdaptersAvailable(harness: string, driver: string, disabledTypes:
 }
 
 export function agentRunnerAvailability(harness: string, target: RunnerTarget = localAgentRunnerTarget(), disabledTypes: string[] = localDisabledTypes()): AgentRunnerAvailability {
+  if (harness === "cursor_cloud") {
+    const supported = target.driver === "local" && runnerAdaptersAvailable(harness, target.driver, disabledTypes)
+      && (!target.platform || andrecompRunnerSupportsPlatform(harness, target.platform, target.architecture ?? "", target.libc, target.glibcVersion));
+    return { supportedRunners: supported ? ["andrecomp", "legacy"] : ["legacy"], defaultRunner: "legacy" };
+  }
   if (target.runnerTasks || target.managedCloudImage) {
     return runnerAdaptersAvailable(harness, target.driver, disabledTypes)
       ? { supportedRunners: target.runnerTasks ? ["andrecomp"] : ["andrecomp", "legacy"], defaultRunner: "andrecomp" }
@@ -184,6 +189,17 @@ function resolveAgentRunner(input: AgentRunnerSelection): { adapterType: string;
   const choice = input.runner ?? "auto";
   const useNative = choice === "andrecomp" || (choice === "auto" && availability.defaultRunner === "andrecomp");
   if (!useNative) {
+    if (harness === "cursor_cloud") {
+      if (!native) return { adapterType, adapterConfig: config };
+      if (config.lifecycleMode !== undefined && config.lifecycleMode !== "per_turn") incompatible(["lifecycleMode"]);
+      for (const [current, legacy] of [["cloudEnvType", "runtimeEnvType"], ["cloudEnvName", "runtimeEnvName"], ["repoRef", "repoStartingRef"], ["prUrl", "repoPullRequestUrl"]]) {
+        if (config[current] !== undefined) config[legacy] = config[current];
+        delete config[current];
+      }
+      if (config.cursorCloudTimeoutMs !== undefined) incompatible(["cursorCloudTimeoutMs"]);
+      for (const key of ["provider", "lifecycleMode", "idleTimeoutMs"]) delete config[key];
+      return { adapterType: "cursor_cloud", adapterConfig: config };
+    }
     if (harness === "grok_local") {
       if (!native) return { adapterType, adapterConfig: config };
       if (config.acpxPermissionMode !== undefined && config.acpxPermissionMode !== "approve-all") incompatible(["acpxPermissionMode"]);
@@ -234,6 +250,25 @@ function resolveAgentRunner(input: AgentRunnerSelection): { adapterType: string;
     ? "Andrecomp Runner is unavailable for this sandbox. Choose an immutable OCI image digest and run its environment connection probe to qualify the OS, architecture and libc, or select Legacy runner in Advanced."
     : "Andrecomp Runner is unavailable for this harness and environment. Select Legacy runner in Advanced.", { code: "agent_runner_unavailable" });
   if (native) return { adapterType, adapterConfig: normalizeLegacyRunnerProvider(config) };
+  if (harness === "cursor_cloud") {
+    const unsupported = ["promptTemplate", "bootstrapPromptTemplate"].filter(key => typeof config[key] === "string" && config[key].trim());
+    if (unsupported.length) incompatible(unsupported);
+    for (const [legacy, current] of [["runtimeEnvType", "cloudEnvType"], ["runtimeEnvName", "cloudEnvName"], ["repoStartingRef", "repoRef"], ["repoPullRequestUrl", "prUrl"]]) {
+      if (config[legacy] !== undefined) {
+        if (config[current] !== undefined && config[current] !== config[legacy]) incompatible([legacy, current]);
+        config[current] = config[legacy];
+      }
+      delete config[legacy];
+    }
+    config = { ...config, provider: "cursor_cloud", lifecycleMode: "per_turn" };
+    if (input.setupOnly && !config.model) return { adapterType: "andrecomp_runner", adapterConfig: config };
+    try { resolveAndrecompRunnerNativeProviderInput({ backend: "cursor_cloud_api", adapterConfig: config }); }
+    catch (error) {
+      if (error instanceof AndrecompRunnerProviderProfileError) throw unprocessable(error.message, { code: error.code });
+      throw error;
+    }
+    return { adapterType: "andrecomp_runner", adapterConfig: config };
+  }
   if (harness === "grok_local") {
     config = resolveGrokRunnerConfig(config);
     try { resolveAndrecompRunnerNativeProviderInput({ backend: "acpx_runtime", adapterConfig: config }); }

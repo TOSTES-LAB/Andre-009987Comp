@@ -1,5 +1,5 @@
 export type AndrecompRunnerProvider =
-  "codex" | "opencode" | "claude_managed" | "aws_agentcore" | "acpx" | "openai_dot" | "grok_bot" | "muse";
+  "codex" | "opencode" | "claude_managed" | "aws_agentcore" | "acpx" | "openai_dot" | "grok_bot" | "muse" | "cursor_cloud";
 
 export type CodexPermissionMode = "never" | "on-request" | "untrusted";
 export type OpenCodePermissionMode = "allow" | "ask" | "deny";
@@ -106,6 +106,7 @@ export const ANDRECOMP_RUNNER_PERMISSION_CAPABILITIES = {
   grok_bot: { configurable: false, defaultMode: "provider-managed", options: [], description: "Grok Bot uses first-party Andrecomp tools and retains its native apps. Grok manages its model; spending, live steering, provider transcript streaming and remote interruption are unavailable." },
   muse: { configurable: false, defaultMode: "provider-managed", options: [], description: "Muse uses the admitted Andrecomp tool catalog and its own approved tools. Provider usage is unavailable and remote stop is best effort." },
   openai_dot: { configurable: false, defaultMode: "provider-managed", options: [], description: "Dot uses the admitted Andrecomp tool catalog. OpenAI manages its model and other tools; provider usage and global interruption are unavailable." },
+  cursor_cloud: { configurable: false, defaultMode: "provider-managed", options: [], description: "Cursor manages commands and files in its cloud environment. Assigned Andrecomp tools retain company permissions. Provider command approvals and verified model identity are unavailable." },
   acpx: {
     configurable: true,
     configKey: "acpxPermissionMode",
@@ -150,7 +151,7 @@ export function isAndrecompRunnerProvider(
     value === "opencode" ||
     value === "claude_managed" ||
     value === "aws_agentcore" ||
-    value === "acpx" || value === "openai_dot" || value === "grok_bot" || value === "muse"
+    value === "acpx" || value === "openai_dot" || value === "grok_bot" || value === "muse" || value === "cursor_cloud"
   );
 }
 
@@ -204,6 +205,9 @@ export function andrecompRunnerTransitionConfig(
   previousModel: unknown,
   providerOverride?: unknown,
 ): Record<string, unknown> {
+  if (previousAdapterType === "cursor_cloud" && (providerOverride === undefined || providerOverride === "cursor_cloud")) {
+    return { provider: "cursor_cloud", model: typeof previousModel === "string" ? previousModel.trim() : "", lifecycleMode: "per_turn" };
+  }
   const previousProvider =
     (["claude_local", "pi_local", "grok_local"].includes(previousAdapterType))
       ? "acpx"

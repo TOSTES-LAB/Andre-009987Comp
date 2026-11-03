@@ -144,6 +144,7 @@ fn eligible_key(key: &str) -> bool {
             "GIT_CONFIG_",
             "ANDRECOMP_RUNNER_",
             "ANDRECOMP_NATIVE_",
+            "ANDRECOMP_CURSOR_CLOUD_",
             "ANDRECOMP_GITHUB_",
             "ANDRECOMP_ACPX_",
             "ANDRECOMP_VERIFIED_",

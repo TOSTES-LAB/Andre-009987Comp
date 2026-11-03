@@ -160,6 +160,12 @@ Andrecomp doesn't prescribe how an agent defines its identity or behavior. It pr
 
 Each agent has an **adapter type** and an **adapter-specific configuration blob**. The adapter defines what config fields exist.
 
+Configuration reads and changes have separate authority. `agents:read` permits
+redacted configuration and instruction reads; `agents:configure` includes reads
+and direct changes. Standard agents have read access by default. Company scope,
+explicit grant scopes, responsible-user authority and trust restrictions apply.
+See [agent permission defaults](agent-permission-defaults.md).
+
 #### Andrecomp Protocol (What Andrecomp Knows)
 
 At the protocol level, Andrecomp tracks:

@@ -4151,6 +4151,12 @@ const runnerExplicitProviderEnvironmentKeys = [
   "ANDRECOMP_OPENCODE_PERMISSION_MODE",
   "ANDRECOMP_OPENCODE_RUNTIME_DIR",
   "ANDRECOMP_OPENCODE_PERFORMANCE_DIAGNOSTICS",
+  "ANDRECOMP_CURSOR_CLOUD_CONFIG_PATH",
+  "ANDRECOMP_CURSOR_CLOUD_ARTIFACT_ROOT",
+  "ANDRECOMP_CURSOR_CLOUD_RELAY_SOCKET_PATH",
+  "ANDRECOMP_CURSOR_CLOUD_RELAY_TOKEN",
+  "ANDRECOMP_CURSOR_CLOUD_RELAY_URL",
+  "ANDRECOMP_CURSOR_CLOUD_RELAY_EXPIRES_AT",
   "ANDRECOMP_RUNNER_INSTANCE_ID",
   "ANDRECOMP_RUN_ID",
   "ANDRECOMP_NORMALIZED_SESSION_ID",
@@ -4248,6 +4254,9 @@ export function spawnRunner(options: {
     sidecarScript: string;
     sidecarScriptSha256: string;
   };
+  cursorCloudLaunchProfile?: {
+    command: string; commandSha256: string; proxyScript: string; proxyScriptSha256: string;
+  };
   opencodeLaunchProfile?: {
     command: string;
     commandSha256: string;
@@ -4337,6 +4346,12 @@ export function spawnRunner(options: {
           ...(options.acpxLaunchProfile.candidateAdmission ? ["--acpx-candidate-admission-json", JSON.stringify(options.acpxLaunchProfile.candidateAdmission)] : []),
         ]
       : []),
+    ...(options.cursorCloudLaunchProfile ? [
+      "--cursor-cloud-proxy-command", options.cursorCloudLaunchProfile.command,
+      "--cursor-cloud-proxy-command-sha256", options.cursorCloudLaunchProfile.commandSha256,
+      "--cursor-cloud-proxy-script", options.cursorCloudLaunchProfile.proxyScript,
+      "--cursor-cloud-proxy-script-sha256", options.cursorCloudLaunchProfile.proxyScriptSha256,
+    ] : []),
     ...(options.opencodeLaunchProfile
       ? [
           "--opencode-proxy-command",
@@ -4407,7 +4422,7 @@ export function spawnRunner(options: {
           maxOutboxBytes: options.maxOutboxBytes, p0ReserveBytes: options.p0ReserveBytes,
           maxRuntimeMs, maxLifetimeMs: lifetimeDeadline === undefined ? options.maxLifetimeMs : maxRuntimeMs,
           reconnectGraceMs: options.reconnectGraceMs, lifecyclePolicy: options.lifecyclePolicy,
-          acpxLaunchProfile: options.acpxLaunchProfile, opencodeLaunchProfile: options.opencodeLaunchProfile,
+          acpxLaunchProfile: options.acpxLaunchProfile, opencodeLaunchProfile: options.opencodeLaunchProfile, cursorCloudLaunchProfile: options.cursorCloudLaunchProfile,
           diagnosticsDirectory: options.diagnosticsDirectory,
         },
       }),

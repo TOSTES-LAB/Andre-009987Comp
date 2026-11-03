@@ -19,6 +19,7 @@ export const HTTP_LOG_REDACT_PATHS = [
   'req.headers["x-andrecomp-cloud-inspection"]',
   // Runtime GitHub capabilities authorize credential acquisition for a live run.
   'req.headers["x-andrecomp-github-capability"]',
+  'req.headers["x-andrecomp-runner-scope-token"]',
   // Telegram's optional webhook verification header is a reusable bearer
   // secret sent on every provider callback.
   'req.headers["x-telegram-bot-api-secret-token"]',
