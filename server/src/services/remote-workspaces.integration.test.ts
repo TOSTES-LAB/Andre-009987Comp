@@ -38,19 +38,30 @@ import { issueService } from "./issues.js";
 import { instanceSettingsService } from "./instance-settings.js";
 import { resolveRemoteWorkspaceSource } from "./heartbeat/remote-workspace-source.js";
 import { toExecutionWorkspace } from "./execution-workspaces.js";
+import { recoveryPostgresSupport, startRecoveryPostgres } from "../__tests__/helpers/recovery-postgres.js";
 
 const exec = promisify(execFile);
-const databaseUrl = process.env.ANDRECOMP_REMOTE_WORKSPACE_TEST_DATABASE_URL;
+let databaseUrl = process.env.ANDRECOMP_REMOTE_WORKSPACE_TEST_DATABASE_URL;
 if (databaseUrl && !/^remote_workspace_[a-z_]*test$/.test(new URL(databaseUrl).pathname.slice(1))) throw new Error("Disposable workspace database required");
-const suite = databaseUrl ? describe : describe.skip;
+const suite = databaseUrl || recoveryPostgresSupport.supported ? describe : describe.skip;
 const s3Bucket = process.env.ANDRECOMP_REMOTE_WORKSPACE_TEST_S3_BUCKET;
 if (s3Bucket && !s3Bucket.startsWith("andrecomp-workspace-")) throw new Error("Disposable workspace S3 bucket required");
 
 suite("remote workspace lifecycle with real Postgres and independent filesystem execution", () => {
   let db: ReturnType<typeof createDb>, root: string, storage: StorageService;
+  let temporary: Awaited<ReturnType<typeof startRecoveryPostgres>> | undefined;
   let ids: { company: string; agent: string; issue: string; run: string; environment: string; lease: string };
-  beforeAll(async () => { await applyPendingMigrations(databaseUrl!); db = createDb(databaseUrl!); }, 120_000);
-  afterAll(async () => { await closeRegisteredClients(databaseUrl!); });
+  beforeAll(async () => {
+    if (!databaseUrl) {
+      temporary = await startRecoveryPostgres("remote-workspace-lifecycle-");
+      databaseUrl = temporary.connectionString;
+    }
+    await applyPendingMigrations(databaseUrl); db = createDb(databaseUrl);
+  }, 120_000);
+  afterAll(async () => {
+    try { if (databaseUrl) await closeRegisteredClients(databaseUrl); }
+    finally { await temporary?.cleanup(); }
+  });
   beforeEach(async () => {
     vi.stubEnv("DATABASE_URL", databaseUrl!); vi.stubEnv("ANDRECOMP_SECRETS_MASTER_KEY", "62".repeat(32));
     root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "pc-remote-workspace-lifecycle-")));
@@ -173,40 +184,51 @@ suite("remote workspace lifecycle with real Postgres and independent filesystem 
     expect(Boolean((await lease()).metadata?.remoteExecutionTermination)).toBe(receipt);
   }
 
-  it.each(["receipt", "void"] as const)("recovers a lost preparation reply after %s cleanup and retains the resulting work", async cleanup => {
+  it.each([["receipt", "fresh"], ["void", "fresh"], ["receipt", "reused"]] as const)(
+    "continues unpublished preparation after %s cleanup on a %s allocation and retains the resulting work", async (cleanup, allocation) => {
     await db.update(heartbeatRuns).set({ runtimeMode: "legacy", nativeIssueId: null, issueId: ids.issue })
       .where(eq(heartbeatRuns.id, ids.run));
     const reserved = await reserve({ kind: "empty" }), first = await target("lost-bootstrap-reply");
+    const interrupted = allocation === "reused";
     const actual = first.runner!.execute.bind(first.runner!);
     const execute = vi.spyOn(first.runner!, "execute").mockImplementationOnce(async input => {
       const result = await actual(input);
       expect(result.exitCode).toBe(0);
-      return { ...result, timedOut: true };
+      return { ...result, timedOut: !interrupted };
     });
-    await expect(prepareRemoteWorkspace({ db, storage, workspace: reserved, runId: ids.run, lease: await lease(), target: first }))
-      .rejects.toMatchObject({ code: "remote_workspace_prepare_timeout" });
-    const oldRoot = path.join(first.remoteCwd, ".andrecomp-workspaces", reserved.id);
+    let ownershipChecks = 0;
+    const preparation = prepareRemoteWorkspace({ db, storage, workspace: reserved, runId: ids.run, lease: await lease(), target: first,
+      assertOwned: async () => { if (interrupted && ++ownershipChecks === 2) throw new Error("lease_released_before_terminal"); } });
+    if (interrupted) await expect(preparation).rejects.toThrow("lease_released_before_terminal");
+    else await expect(preparation).rejects.toMatchObject({ code: "remote_workspace_prepare_timeout" });
+    const oldRoot = execute.mock.calls[0][0].args?.[2];
+    if (!oldRoot) throw new Error("Preparation did not record its directory");
     const oldReceipt = await fs.readFile(path.join(oldRoot, ".andrecomp-runtime", "workspace-ready.json"), "utf8");
     const [failed] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, ids.run));
-    await terminalizeLegacyExecution({ db, run: failed!, status: "failed", patch: {
-      errorCode: "remote_workspace_prepare_timeout", resultJson: { executionRecovery: { kind: "bootstrap", providerWorkStarted: false } },
+    await terminalizeLegacyExecution({ db, run: failed!, status: interrupted ? "interrupted" : "failed", patch: {
+      errorCode: interrupted ? "lease_released_before_terminal" : "remote_workspace_prepare_timeout",
+      resultJson: { executionRecovery: { kind: "bootstrap", providerWorkStarted: false } },
     } });
     await releaseBootstrapLease(cleanup === "receipt");
     const continueOn = async (name: string) => {
       const runId = randomUUID(), leaseId = randomUUID();
+      const reused = allocation === "reused" && name === "fresh-bootstrap-retry";
+      const providerLeaseId = reused ? `allocation-${ids.lease}` : `allocation-${leaseId}`;
       await db.insert(heartbeatRuns).values({ id: runId, companyId: ids.company, agentId: ids.agent,
         nativeIssueId: ids.issue, runtimeMode: "native", status: "running" });
       const [nextLease] = await db.insert(environmentLeases).values({ id: leaseId, companyId: ids.company,
         environmentId: ids.environment, heartbeatRunId: runId, issueId: ids.issue, provider: "daytona",
-        providerLeaseId: `allocation-${leaseId}`, status: "active" }).returning();
+        providerLeaseId, status: "active" }).returning();
       const next = await reserveRemoteWorkspace({ db, storage, companyId: ids.company, issueId: ids.issue,
         runId, agentId: ids.agent, environmentId: ids.environment, projectId: null, projectWorkspaceId: null,
         existingWorkspaceId: reserved.id, source: { kind: "empty" } });
-      const remote = await target(name);
+      const remote = reused ? { ...first, leaseId, sandboxId: providerLeaseId,
+        runner: { ...first.runner!, execute: actual } } : await target(name);
       return prepareRemoteWorkspace({ db, storage, workspace: next, runId, lease: nextLease as EnvironmentLease,
         target: remote }).then(prepared => ({ runId, prepared, remote }));
     };
     const { runId, prepared, remote } = await continueOn("fresh-bootstrap-retry");
+    expect(prepared.remoteRoot).not.toBe(oldRoot);
     await fs.writeFile(path.join(prepared.remoteRoot, "report.md"), "useful recovered result\n");
     const { snapshotId } = await saveRemoteWorkspace({ db, storage, workspace: prepared.workspace, runId,
       lease: prepared.lease, target: remote, assertOwned: async () => undefined });
@@ -365,7 +387,8 @@ suite("remote workspace lifecycle with real Postgres and independent filesystem 
     }
   }, 60_000);
 
-  it("prepares, saves and restores task files without a controller checkout or original allocation", async () => {
+  it.each(["same root", "different root", "destroyed allocation", "occupied root"] as const)(
+    "preserves the published workspace path and files on a cold restore (%s)", async mode => {
     const reserved = await reserve({ kind: "empty" }), first = await target("sandbox-A");
     const prepared = await prepareRemoteWorkspace({ db, storage, workspace: reserved, runId: ids.run, lease: await lease(), target: first });
     expect(readRemoteWorkspaceAuthority(prepared.workspace.metadata)?.snapshotId).toBeTruthy();
@@ -377,8 +400,16 @@ suite("remote workspace lifecycle with real Postgres and independent filesystem 
       lease: prepared.lease, target: first, assertOwned: async () => undefined });
     const current = await workspace(reserved.id);
     expect(readRemoteWorkspaceAuthority(current.metadata)).toMatchObject({ dirty: false, writerRunId: null, snapshotId: saved.snapshotId });
-    await fs.rm(path.dirname(prepared.remoteRoot), { recursive: true, force: true });
-    const second = await target("sandbox-B");
+    if (mode === "destroyed allocation") {
+      const destroyed: EnvironmentLease = { ...prepared.lease, status: "released", releasedAt: new Date(), cleanupStatus: "success",
+        metadata: { ...prepared.lease.metadata, remoteExecutionTermination: remoteTerminationReceipt(prepared.lease,
+          { providerLeaseId: prepared.lease.providerLeaseId, state: "destroyed" }) } };
+      await db.transaction(tx => clearRemoteWorkspaceLocationForReleasedLease({ db: tx, lease: destroyed }));
+      expect(readRemoteWorkspaceAuthority((await workspace(reserved.id)).metadata)?.location).toBeNull();
+    }
+    await fs.rm(path.join(root, "sandbox-A"), { recursive: true, force: true });
+    const second = await target(mode === "different root" ? "sandbox-B" : "sandbox-A");
+    const expectedRemoteRoot = path.join(second.remoteCwd, ".andrecomp-workspaces", path.basename(prepared.remoteRoot));
     const nextRun = randomUUID(), nextLease = randomUUID();
     await db.insert(heartbeatRuns).values({ id: nextRun, companyId: ids.company, agentId: ids.agent, nativeIssueId: ids.issue, runtimeMode: "native", status: "running" });
     await db.insert(environmentLeases).values({ id: nextLease, companyId: ids.company, environmentId: ids.environment,
@@ -386,7 +417,19 @@ suite("remote workspace lifecycle with real Postgres and independent filesystem 
     const reservedAgain = await reserveRemoteWorkspace({ db, storage, companyId: ids.company, issueId: ids.issue, runId: nextRun,
       agentId: ids.agent, environmentId: ids.environment, projectId: null, projectWorkspaceId: null, existingWorkspaceId: reserved.id, source: { kind: "empty" } });
     const newLease = (await db.select().from(environmentLeases).where(eq(environmentLeases.id, nextLease)))[0]! as EnvironmentLease;
+    if (mode === "occupied root") {
+      await fs.mkdir(expectedRemoteRoot, { recursive: true });
+      await fs.writeFile(path.join(expectedRemoteRoot, "unpublished.txt"), "preserve unknown preparation\n");
+      await expect(prepareRemoteWorkspace({ db, storage, workspace: reservedAgain, runId: nextRun, lease: newLease, target: second }))
+        .rejects.toThrow("remote_workspace_operation_failed");
+      expect(await fs.readFile(path.join(expectedRemoteRoot, "unpublished.txt"), "utf8")).toBe("preserve unknown preparation\n");
+      expect(readRemoteWorkspaceAuthority((await workspace(reserved.id)).metadata))
+        .toEqual(readRemoteWorkspaceAuthority(reservedAgain.metadata));
+      await fs.rename(expectedRemoteRoot, path.join(root, "retained-unknown-preparation"));
+    }
     const restored = await prepareRemoteWorkspace({ db, storage, workspace: reservedAgain, runId: nextRun, lease: newLease, target: second });
+    expect(restored.remoteRoot).toBe(expectedRemoteRoot);
+    if (mode !== "different root") expect(restored.remoteRoot).toBe(prepared.remoteRoot);
     expect(await fs.readFile(path.join(restored.remoteRoot, "report.md"), "utf8")).toBe("useful saved result\n");
     expect(await fs.readFile(path.join(restored.remoteRoot, "binary.bin"))).toEqual(Buffer.from([0, 1, 255]));
     expect((await fs.stat(path.join(restored.remoteRoot, "empty-folder"))).isDirectory()).toBe(true);
@@ -597,7 +640,7 @@ suite("remote workspace lifecycle with real Postgres and independent filesystem 
       existingWorkspaceId: reserved.id, source: { kind: "empty" } });
     const nextTarget = await target("restore-cleanup-destination");
     const sandbox = nextTarget as Extract<AdapterExecutionTarget, { transport: "sandbox" }>;
-    const expectedRemoteRoot = path.join(sandbox.remoteCwd, ".andrecomp-workspaces", reserved.id);
+    const expectedRemoteRoot = path.join(sandbox.remoteCwd, ".andrecomp-workspaces", path.basename(prepared.remoteRoot));
     const execute = sandbox.runner!.execute.bind(sandbox.runner!);
     let failCleanup = true, cleanupAttempts = 0;
     sandbox.runner!.execute = async input => {

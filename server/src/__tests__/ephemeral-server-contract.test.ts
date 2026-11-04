@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { assertEphemeralServerConfig } from "../services/ephemeral-server-contract.js";
-import { assertEphemeralWorkspaceExecution, assertEphemeralNativeLifecycle } from "../services/remote-workspaces.js";
+import { assertEphemeralWorkspaceExecution, assertEphemeralNativeRuntime } from "../services/remote-workspaces.js";
 import { assertEphemeralAgentInstructions } from "../services/agent-instructions.js";
 
 const config = { databaseUrl: "postgresql://runtime:fixture@ep-example-pooler.neon.test/tenant", storageProvider: "s3" as const };
@@ -24,20 +24,20 @@ it("never connects the listener with migration privileges, another tenant, or th
     expect(() => assertEphemeralServerConfig(config, { ...env, ANDRECOMP_DATABASE_LISTEN_URL: url })).toThrow("runtime role");
   }
 });
-it("rejects disk-dependent execution and instructions while retaining remote warm execution", () => {
+it("requires remote workspace authority and native execution independently of provider lifecycle", () => {
   vi.stubEnv("ANDRECOMP_EPHEMERAL_SERVER", "true");
   const remote = { externalConversation: false, adapterType: "andrecomp_runner", pluginTaskWorkspace: false, remoteAuthority: true };
   expect(() => assertEphemeralWorkspaceExecution(remote)).not.toThrow();
   expect(() => assertEphemeralWorkspaceExecution({ ...remote, remoteAuthority: false, pluginTaskWorkspace: true })).not.toThrow();
   for (const patch of [{ remoteAuthority: false }, { adapterType: "process" }]) {
-    expect(() => assertEphemeralWorkspaceExecution({ ...remote, ...patch })).toThrow("warm Andrecomp Runner");
+    expect(() => assertEphemeralWorkspaceExecution({ ...remote, ...patch })).toThrow("native Andrecomp Runner");
   }
-  expect(() => assertEphemeralNativeLifecycle("warm")).not.toThrow();
-  expect(() => assertEphemeralNativeLifecycle("per_turn")).toThrow("warm Andrecomp Runner");
-  expect(() => assertEphemeralNativeLifecycle(undefined)).toThrow("warm Andrecomp Runner");
+  expect(() => assertEphemeralNativeRuntime(true)).not.toThrow();
+  expect(() => assertEphemeralNativeRuntime(false)).toThrow("native Andrecomp Runner");
   const agent = { id: "agent", companyId: "company", name: "Agent", adapterConfig: {} };
   expect(() => assertEphemeralAgentInstructions(agent)).not.toThrow();
   expect(() => assertEphemeralAgentInstructions({ ...agent, adapterConfig: { instructionsBundleMode: "external", instructionsRootPath: "/old-volume" } })).toThrow("managed agent instructions");
   vi.stubEnv("ANDRECOMP_EPHEMERAL_SERVER", "false");
   expect(() => assertEphemeralWorkspaceExecution({ ...remote, remoteAuthority: false })).not.toThrow();
+  expect(() => assertEphemeralNativeRuntime(false)).not.toThrow();
 });

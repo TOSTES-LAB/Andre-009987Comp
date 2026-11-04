@@ -4,6 +4,7 @@ import { providerFailureFromError } from "../../vendor/andrecomp-runner/index.js
 import { nativeCancellationHasUnsettledOwner, notifyNativeCancellation, waitForNativeCancellation } from "./native-cancellation-delivery.js";
 import { readClaimedNativeStopRecovery } from "./native-cancellation-request.js";
 import { publishNativeHarnessBackup } from "./native-harness-backup-publication.js";
+import { durableNativeHarnessStorage, nativeHarnessBackupOwner, persistNativeHarnessBackup, restoreDurableNativeHarnessBackup } from "./native-harness-backup-storage.js";
 import { rehydratePinnedSkillAssets } from "./runtime-context.js";
 import { createNativeUsageDelivery } from "./native-usage-delivery.js";
 import { createNativeRecoveryUsageDelivery } from "./native-recovery-usage-delivery.js";
@@ -229,6 +230,7 @@ import {
 } from "./remote-runner-recovery-diagnostics.js";
 import { readRemoteRunnerRecoveryProbe, REMOTE_RUNNER_RECOVERY_PROBE_BUDGET_MS } from "./remote-runner-recovery-probe.js";
 import { inspectRemoteWarmSessionRecovery, isSettledRemoteWarmControlState, type RemoteWarmSessionRecovery } from "./remote-warm-session-recovery.js";
+import { assertNativeWarmIngressRetirement, nativeWarmIngressAllocation, nativeWarmIngressIdentity, type NativeWarmIngressClaim, type NativeWarmIngressOwner } from "./native-warm-ingress-ownership.js";
 import { resolveNativeStagedAttachmentRecovery, type NativeStagedAttachmentRecovery } from "./native-staged-attachment-recovery.js";
 import { emitStartupReuse, environmentStartupReuse } from "@andrecomp/adapter-utils/startup-reuse";
 import { persistActivity, publishActivity } from "../activity-log.js";
@@ -582,6 +584,7 @@ export type NativeInstructionWorkingCopy = {
 };
 
 type WarmNativeSession = {
+  ingressOwner?: NativeWarmIngressOwner;
   onReleased: () => void;
   sessionCheckpointPersisted?: (snapshot: PersistedNativeSession) => void;
   pluginTaskId?: string;
@@ -1858,6 +1861,7 @@ const sessionToolAuthorityEpochs = new Map<string, SessionAuthorityEpoch>();
 const initializingSessionToolAuthorities = new Set<string>();
 const executingRunnerdSessionScopes = new Map<string, string>();
 const executingNativeOwnerScopes = new Map<string, symbol>();
+const executingNativeIngressAllocations = new Map<string, symbol>();
 
 export function nativeSessionScopeDigestIsBusy(digest: string): boolean {
   const scopes = [
@@ -1964,21 +1968,32 @@ async function retireSupersededWarmNativeSessions(
   ownerScope: string,
   nextSessionScope: string,
   nextSessionId: string,
+  ingress?: { db: Db; claim: NativeWarmIngressClaim },
 ): Promise<void> {
   for (const [scope, entry] of warmNativeSessions) {
-    if (scope === nextSessionScope || entry.ownerScope !== ownerScope) continue;
-    if (entry.busy || executingRunnerdSessionScopes.has(scope)) {
+    if (scope === nextSessionScope) continue;
+    const logicalOwner = entry.ownerScope === ownerScope;
+    const priorIngress = entry.ingressOwner;
+    const physicalOwner = ingress && priorIngress && nativeWarmIngressAllocation(priorIngress.ingress) === nativeWarmIngressAllocation(ingress.claim.ingress);
+    if (!logicalOwner && !physicalOwner) continue;
+    if (entry.busy || entry.preparingRunId || executingRunnerdSessionScopes.has(scope)) {
       throw new Error("native_session_supervisor_busy");
+    }
+    if (!logicalOwner) {
+      await assertNativeWarmIngressRetirement(ingress!.db, ingress!.claim, priorIngress!);
+      if (warmNativeSessions.get(scope) !== entry || entry.ingressOwner !== priorIngress
+        || entry.busy || entry.preparingRunId || executingRunnerdSessionScopes.has(scope)) throw new Error("native_session_supervisor_busy");
     }
     if (entry.idleTimer !== null) clearTimeout(entry.idleTimer);
     entry.idleTimer = null;
     entry.busy = true;
-    entry.closeOnReleaseReason = "warm native session identity changed";
+    entry.closeOnReleaseReason = logicalOwner ? "warm native session identity changed" : "warm native ingress requires another session";
     try {
       await closeWarmNativeSession(entry, entry.closeOnReleaseReason, {
-        discardUnsettledSession: entry.normalizedSessionId !== nextSessionId,
+        discardUnsettledSession: logicalOwner && entry.normalizedSessionId !== nextSessionId,
       });
       forgetWarmNativeSession(scope, entry);
+      if (!logicalOwner) await assertNativeWarmIngressRetirement(ingress!.db, ingress!.claim, priorIngress!);
     } finally {
       // A failed close retains the owner and prevents launch. A later attempt
       // must retry retirement, never adopt this partially closed transport.
@@ -5950,6 +5965,7 @@ function nativeSessionConfigDigest(
   execution: NativeExecutionInput,
   executionTargetKind: "local" | "remote" = "local",
   legacyProjectlessRunId?: string,
+  recordedToolContractFingerprint?: string,
 ): string {
   const executionLocation = {
     executionKind: "local_process",
@@ -5985,11 +6001,23 @@ function nativeSessionConfigDigest(
         // changes so an older thread is rotated instead of falsely resuming
         // without newly required tools.
         nativeToolContractFingerprint:
-          nativeToolContractFingerprintForTarget(executionTargetKind, execution.provider.kind),
+          recordedToolContractFingerprint ?? nativeToolContractFingerprintForTarget(executionTargetKind, execution.provider.kind),
         runtimeContract: nativeRuntimeContractForProvider(execution.provider),
       }),
     )
     .digest("hex")}`;
+}
+
+export function nativeControllerMigrationDescriptor(execution: NativeExecutionInput, recordedToolContractFingerprint: unknown) {
+  if (typeof recordedToolContractFingerprint !== "string" || !/^sha256:[a-f0-9]{64}$/.test(recordedToolContractFingerprint)) {
+    throw new Error("native_controller_migration_tool_contract_missing");
+  }
+  return {
+    root: scopedRunnerdStateRoot(execution),
+    supervisorPath: resolve(resolveAndrecompInstanceRoot(), "runtime", "andrecomp-runner", "sessions",
+      `${createHash("sha256").update(nativeSessionScopeKey(execution)).digest("hex")}.json`),
+    configDigest: nativeSessionConfigDigest(execution, "remote", undefined, recordedToolContractFingerprint),
+  };
 }
 
 function idleWarmNativeSessionOwnerRunId(input: {
@@ -6013,6 +6041,7 @@ async function restorePerTurnRunnerdController(input: {
   if (input.restartRecovery || input.runnerExecutionTarget?.kind !== "remote" ||
       input.execution.session.lifecyclePolicy.mode !== "per_turn") return;
   const root = scopedRunnerdStateRoot(input.execution);
+  await restoreDurableHarnessForExecution(input.db, input.execution, root);
   const identity = readRunnerdDurableIdentity(root);
   const reference = identity ?? readRunnerdDurableIdentity(root, true);
   if (!reference) {
@@ -6077,6 +6106,7 @@ async function restoreWarmRunnerdController(input: {
   if (input.restartRecovery || input.runnerExecutionTarget?.kind !== "remote" ||
       input.execution.session.lifecyclePolicy.mode !== "warm") return;
   const root = scopedRunnerdStateRoot(input.execution);
+  await restoreDurableHarnessForExecution(input.db, input.execution, root);
   const identity = readRunnerdDurableIdentity(root);
   const reference = identity ?? readRunnerdDurableIdentity(root, true);
   if (!idleWarmNativeSessionOwnerRunId(input) && (!reference || !existsSync(nativeSessionCheckpointPath(input.execution)))) {
@@ -6583,6 +6613,14 @@ function digestBackupDirectory(directory: string): {
 
 function harnessBackupRoot(root: string): string {
   return resolve(root, "failover-backups");
+}
+
+async function restoreDurableHarnessForExecution(db: Db, execution: NativeExecutionInput, root: string) {
+  const storage = durableNativeHarnessStorage();
+  if (!storage) return;
+  await restoreDurableNativeHarnessBackup({ db, storage, companyId: execution.binding.companyId,
+    scopeDigest: createHash("sha256").update(nativeSessionScopeKey(execution)).digest("hex"),
+    backupRoot: harnessBackupRoot(root), signal: AbortSignal.timeout(300_000) });
 }
 
 function harnessBackupCandidates(root: string): string[] {
@@ -8310,7 +8348,17 @@ export async function executeAndrecompNativeSession(input: {
     input.runnerExecutionTarget?.environmentId ?? null,
   );
   const ownerToken = Symbol("native execution owner");
+  const physicalIngress = input.useRunnerd ? nativeWarmIngressIdentity(input.execution, input.runnerExecutionTarget) : undefined;
+  const physicalIngressKey = physicalIngress ? nativeWarmIngressAllocation(physicalIngress) : undefined;
+  let ownsPhysicalIngress = false;
   try {
+    if (physicalIngressKey) {
+      const retained = warmNativeSessions.get(nativeSessionScopeKey(input.execution));
+      if (retained && retained.issueId !== input.execution.binding.issueId) throw new Error("native_session_supervisor_busy");
+      if (executingNativeIngressAllocations.has(physicalIngressKey)) throw new Error("native_session_supervisor_busy");
+      executingNativeIngressAllocations.set(physicalIngressKey, ownerToken);
+      ownsPhysicalIngress = true;
+    }
     // Reserve across session identities before retiring or staging anything.
     if (executingNativeOwnerScopes.has(ownerScope)) {
       throw new Error("native_session_supervisor_busy");
@@ -8361,7 +8409,8 @@ export async function executeAndrecompNativeSession(input: {
     const workspaceRoot = input.execution.workspace.cwd;
     if (workspaceRoot === null) throw new Error("native_workspace_required");
     const needsWarmRetirement = [...warmNativeSessions].some(([scope, entry]) =>
-      scope !== sessionScopeId && entry.ownerScope === ownerScope);
+      scope !== sessionScopeId && (entry.ownerScope === ownerScope || physicalIngress && entry.ingressOwner
+        && nativeWarmIngressAllocation(entry.ingressOwner.ingress) === nativeWarmIngressAllocation(physicalIngress)));
     const prepareAttachments = async () => {
       const admissionSha256 = nativeSha256(input.execution);
       const targetKind = input.runnerExecutionTarget?.kind ?? "local";
@@ -8439,6 +8488,9 @@ export async function executeAndrecompNativeSession(input: {
       if (startup.executionContext.active) startup.executionContext.abort(new Error("native_execution_startup_completed"));
       startupUnsettled = !(await startup.executionContext.drain());
       startup.executionContext.finish();
+    }
+    if (ownsPhysicalIngress && physicalIngressKey && executingNativeIngressAllocations.get(physicalIngressKey) === ownerToken) {
+      executingNativeIngressAllocations.delete(physicalIngressKey);
     }
     if (executingNativeOwnerScopes.get(ownerScope) === ownerToken) {
       executingNativeOwnerScopes.delete(ownerScope);
@@ -8936,9 +8988,12 @@ async function executeAndrecompNativeSessionWithinScope(
     // Claim current native authority before the old warm checkpoint writer
     // must prove its same-controller successor. Shared staging stays after
     // strict predecessor suspension; it cannot run on a failed claim/Stop.
+    const ingress = nativeWarmIngressIdentity(input.execution, input.runnerExecutionTarget);
     if (input.useRunnerd && !claimedStopCleanup) await retireSupersededWarmNativeSessions(
       nativeSessionOwnerScope(input.execution, input.runnerExecutionTarget?.environmentId ?? null),
       nativeSessionScopeKey(input.execution), nativeSessionKey(input.execution),
+      ingress ? { db: input.db, claim: { ...input.execution.binding, ingress, leaseOwner,
+        controllerBootId: controller.bootId, controllerGeneration } } : undefined,
     );
     claimedStartupContext?.assertOpen();
     if (prepareAfterClaim) input = await prepareAfterClaim();
@@ -10030,11 +10085,18 @@ async function executeAndrecompNativeSessionWithinScope(
                   if (existing.session !== session) {
                     existing.sessionCheckpointPersisted = runnerdBackend?.sessionCheckpointPersisted;
                   }
+                  const ingress = input.useRunnerd ? nativeWarmIngressIdentity(input.execution, input.runnerExecutionTarget) : undefined;
+                  existing.ingressOwner = ingress ? { ...input.execution.binding, ingress,
+                    controllerBootId: controller.bootId, controllerGeneration } : undefined;
                   existing.session = session;
                   existing.runId = input.execution.binding.runId;
                   existing.issueId = input.execution.binding.issueId;
                 } else
                   warmNativeSessions.set(warmSessionId, {
+                    ingressOwner: (() => {
+                      const ingress = input.useRunnerd ? nativeWarmIngressIdentity(input.execution, input.runnerExecutionTarget) : undefined;
+                      return ingress ? { ...input.execution.binding, ingress, controllerBootId: controller.bootId, controllerGeneration } : undefined;
+                    })(),
                     sessionCheckpointPersisted: runnerdBackend?.sessionCheckpointPersisted,
                     onReleased: () => releaseRetainedNativeSessionCleanup(input.db, {
                       companyId: input.execution.binding.companyId, agentId: input.execution.binding.agentId,
@@ -10948,6 +11010,9 @@ export function resolveNativeBilling(provider: NativeExecutionInput["provider"],
   if (provider.kind === "acpx" && ["cursor", "copilot"].includes(provider.agent)) {
     const biller = nativeUsageBiller(provider);
     return { provider: biller, biller, billingType: "unknown" };
+  }
+  if (provider.kind === "acpx" && provider.agent === "grok") {
+    return { provider: "xai", biller: "xai", billingType: env.XAI_API_KEY ? "metered_api" : "unknown" };
   }
   if (provider.kind === "acpx" && provider.agent === "claude") {
     if (env.CLAUDE_CODE_USE_BEDROCK === "1") return { provider: "anthropic", biller: "aws_bedrock", billingType: "metered_api" };
@@ -14031,6 +14096,11 @@ async function createRunnerdBackendWithinSessionClaim(
       !remoteRunnerFilesystemRoot
     )
       return;
+    const durableStorage = durableNativeHarnessStorage();
+    if (durableStorage && !input.controllerPersistence) throw new Error("native_harness_storage_owner_missing");
+    const backupOwner = durableStorage ? await nativeHarnessBackupOwner(input.db, { ...input.execution.binding,
+      runId: sessionToolAuthorityEpochs.get(sessionScopeId)?.runId ?? input.execution.binding.runId,
+      bootId: input.controllerPersistence!.bootId }) : null;
     // Transport release also runs when provider bootstrap failed. In that case
     // runnerd has no durable provider identity (and may not have created the
     // provider persistence directory at all), so attempting a failover backup
@@ -14136,6 +14206,11 @@ async function createRunnerdBackendWithinSessionClaim(
                 });
                 renameSync(temporaryManifest, manifestPath);
 
+                if (durableStorage && backupOwner) {
+                  await persistNativeHarnessBackup({ db: input.db, storage: durableStorage, owner: backupOwner,
+                    scopeDigest: createHash("sha256").update(sessionScopeId).digest("hex"), root: pendingRoot,
+                    signal: AbortSignal.timeout(300_000) });
+                }
                 await publishNativeHarnessBackup({
                   db: input.db, companyId: input.execution.binding.companyId,
                   scopeDigest: createHash("sha256").update(sessionScopeId).digest("hex"), backupRoot, pendingRoot,
