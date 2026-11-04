@@ -31,6 +31,7 @@ describe("service definition generation", () => {
     const unit = renderSystemdUnit({ instanceId: "team-a", shimPath: "/home/alice/.local/bin/andrecomp", homeDir: "/home/alice/.andrecomp" });
     expect(unit).toContain("Type=notify");
     expect(unit).toContain("NotifyAccess=all");
+    expect(unit).toContain("KillMode=mixed");
     expect(unit).toContain('ExecStart="/home/alice/.local/bin/andrecomp" run --instance "team-a"');
     expect(unit).toContain("Restart=always");
     expect(unit).toContain("TimeoutStopSec=300");

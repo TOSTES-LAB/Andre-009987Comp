@@ -143,6 +143,7 @@ export const ANDRECOMP_PUBLIC_SCHEMA_IDS = new Set([
   "andrecomp.runner.conformance.fixture.v1",
   "andrecomp.runner.conformance.output.v1",
   "andrecomp.runner.durable.control-plane-state.v1",
+  "andrecomp.runner.durable.control-plane-state.v2",
   "andrecomp.runner.durable.diagnostics.v1",
   "andrecomp.runner.durable.state.v1",
   "andrecomp.runner.durable.trace.v1",

@@ -127,7 +127,7 @@
   {
     "dir": "packages/plugins/sandbox-providers/boxd",
     "name": "@andrecomp/plugin-boxd",
-    "publishFromCi": false
+    "publishFromCi": true
   },
   {
     "dir": "packages/plugins/sandbox-providers/cloudflare",
