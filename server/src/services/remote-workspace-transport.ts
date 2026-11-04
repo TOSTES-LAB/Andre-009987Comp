@@ -30,9 +30,21 @@ const DISK_FULL_CHECK = String.raw`const diskFull=e=>['ENOSPC','EDQUOT'].include
 type RemoteWorkspaceOperation = "prepare" | "repository" | "archive_helper" | "capture" | "restore" | "cleanup";
 
 export class RemoteWorkspaceOperationTimeoutError extends Error {
-  constructor(operation: RemoteWorkspaceOperation, timeoutMs: number) {
+  constructor(readonly operation: RemoteWorkspaceOperation, readonly timeoutMs: number) {
     super(`remote_workspace_operation_timed_out: ${operation} (configured timeout ${timeoutMs}ms)`);
     this.name = "RemoteWorkspaceOperationTimeoutError";
+  }
+}
+
+export const REMOTE_WORKSPACE_PREPARATION_TIMEOUT_CODE = "remote_workspace_prepare_timeout";
+
+export class RemoteWorkspacePreparationTimeoutError extends RemoteWorkspaceOperationTimeoutError {
+  readonly code = REMOTE_WORKSPACE_PREPARATION_TIMEOUT_CODE;
+
+  constructor(error: RemoteWorkspaceOperationTimeoutError) {
+    super("prepare", error.timeoutMs);
+    this.name = "RemoteWorkspacePreparationTimeoutError";
+    this.cause = error;
   }
 }
 
@@ -43,8 +55,11 @@ async function command(target: RemoteWorkspaceTarget, operation: RemoteWorkspace
   if (result.timedOut) throw new RemoteWorkspaceOperationTimeoutError(operation, timeoutMs);
   if (result.exitCode !== 0) {
     const gitOperation = "remote_workspace_archive_git_operation_in_progress: finish or abort the Git operation before saving the workspace";
-    const reported = result.stderr.trim();
-    throw new Error([gitOperation, REMOTE_WORKSPACE_SANDBOX_DISK_FULL].includes(reported) ? reported : "remote_workspace_operation_failed");
+    // One-shot providers can return combined output in stdout. Keep the same
+    // exact safe diagnostics; never forward arbitrary output from either stream.
+    const reported = [result.stderr.trim(), result.stdout.trim()]
+      .find(value => [gitOperation, REMOTE_WORKSPACE_SANDBOX_DISK_FULL].includes(value));
+    throw new Error(reported ?? "remote_workspace_operation_failed");
   }
   return result.stdout;
 }

@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { AdapterSandboxExecutionTarget } from "@andrecomp/adapter-utils";
+import type { AdapterSandboxExecutionTarget } from "@andrecomp/adapter-utils/execution-target";
 import type { CommandManagedRuntimeRunner } from "@andrecomp/adapter-utils/command-managed-runtime";
 import { shellQuote } from "@andrecomp/adapter-utils/ssh";
 

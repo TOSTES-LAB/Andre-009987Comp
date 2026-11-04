@@ -164,6 +164,9 @@ history, changed PR heads and unverifiable ancestry still deny AWS execution.
 Missing or malformed settings
 and unverifiable authorization use GitHub-hosted runners. A maintainer rerunning
 an outside contributor's PR does not grant it AWS access.
+Both `full-ci` and `profile-ci` label events use this same authorization path.
+The labels request CI scope; they do not grant AWS access or move an authorized
+CODEOWNER run to GitHub-hosted capacity. Other label events do not request CI.
 Authorized test jobs and the final `verify` and `e2e` aggregates use the selected
 AWS fleet. A stale admission roster can allocate only the short metadata gate;
 the fresh CODEOWNERS check still denies PR execution for a removed owner.
@@ -1183,7 +1186,8 @@ process per layer. Each layer reads the earlier layers as declarations:
 | `below` | Files the largest import cycle depends on, and unrelated files |
 | `cycle` | The largest import cycle |
 | `above` | Files that depend on the cycle |
-| `tests` | Test files |
+| `tests` | Test files outside `src/__tests__` |
+| `test-tree-0` to `test-tree-2` | `src/__tests__`, in shards |
 
 The generated configs and declarations go in
 `server/node_modules/.cache/andrecomp-typecheck`. You do not maintain a layer list.
@@ -1191,6 +1195,12 @@ The generated configs and declarations go in
 The server typecheck builds only the Runner's TypeScript output. Use
 `pnpm --filter @andrecomp/andrecomp-runner build` when a local check needs the
 Runner binary.
+
+`src/__tests__/tsconfig.json` holds the options for the test-tree layers, so an
+editor and the typecheck report the same errors. Server tests reach Daytona plugin
+source, but the root install does not install that plugin's dependencies. So this
+config maps `@daytonaio/sdk` to `server/scripts/typecheck-stubs/daytona-sdk.d.ts`.
+The plugin's own project checks that source against the real package.
 
 If the memory available to the task is limited, use this command:
 

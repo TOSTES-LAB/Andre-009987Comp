@@ -1,7 +1,7 @@
 import type { IssueExecutionPolicy, IssueExecutionStageParticipant, IssueExecutionStagePrincipal } from "@andrecomp/shared";
 import { issueExecutionPolicySchema } from "@andrecomp/shared";
-import { parseAssigneeValue } from "./assignees";
-import { createUuid as newId } from "./uuid";
+import { parseAssigneeValue } from "./assignees.js";
+import { createUuid as newId } from "./uuid.js";
 
 type StageType = "review" | "approval";
 const nullablePolicySchema = issueExecutionPolicySchema.nullable();

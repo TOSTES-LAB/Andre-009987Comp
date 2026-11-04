@@ -12,7 +12,7 @@ describe("forbidden token check", () => {
       { USER: "andrecomp", LOGNAME: "andrecomp", USERNAME: "pc" },
       {
         userInfo: () => ({ username: "andrecomp" }),
-      },
+      } as unknown as typeof import("node:os"),
     );
 
     expect(tokens).toEqual(["andrecomp", "pc"]);
@@ -25,7 +25,7 @@ describe("forbidden token check", () => {
         userInfo: () => {
           throw new Error("missing user");
         },
-      },
+      } as unknown as typeof import("node:os"),
     );
 
     expect(tokens).toEqual([]);
@@ -42,7 +42,7 @@ describe("forbidden token check", () => {
     try {
       const tokens = resolveForbiddenTokens(tokensFile, { USER: "andrecomp" }, {
         userInfo: () => ({ username: "andrecomp" }),
-      });
+      } as unknown as typeof import("node:os"));
 
       expect(tokens).toEqual(["andrecomp", "custom-token"]);
     } finally {

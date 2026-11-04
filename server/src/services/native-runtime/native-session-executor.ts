@@ -70,6 +70,7 @@ import { createAgentIdentityRedactor } from "../agent-identity-redaction.js";
 import { parseCodexCliVersion } from "./codex-runtime-compatibility.js";
 import { createNativeToolTrace, type NativeToolTrace } from "./native-tool-trace.js";
 import { createNativeProviderFailureObservation } from "./native-provider-failure.js";
+import { nativeStartupRetryExhaustedAction, nativeStartupRetryWait, planNativeStartupRetry } from "./native-startup-retry.js";
 import { createNativeDeliverableTextObservation } from "./native-deliverable-text.js";
 import { createNativeGitHubAccess, type NativeGitHubAccess } from "./native-github-access.js";
 import { resolveGitHubOperationCredentials } from "../github-operation-credentials.js";
@@ -139,6 +140,7 @@ import type {
   PrpStructuredRunResult,
 } from "../../vendor/andrecomp-runner/index.js";
 import {
+  NativeProviderStateIncompatibleError,
   NativeProviderTerminalFailure,
   NativeSessionCleanupQuarantinedError,
   NativeSessionCloseUnrecoverableError,
@@ -200,7 +202,7 @@ import {
   nativeRunResults,
 } from "@andrecomp/db";
 import { AndrecompControlPlanePort } from "./andrecomp-control-plane-port.js";
-import { assertNativeRetainedSandboxBinding, deferNativeControllerRecovery, NativeControllerRecoveryWaitingError, resolveNativeControllerRecovery } from "./native-controller-recovery.js";
+import { assertNativeRetainedSandboxBinding, deferNativeControllerRecovery, NativeControllerRecoveryWaitingError, readNativeControllerRecovery, resolveNativeControllerRecovery } from "./native-controller-recovery.js";
 import { redactRunnerApiPayloads } from "./runner-api-log-redaction.js";
 import { appendHeartbeatRunEvent } from "../heartbeat-run-events.js";
 import { appendNativeCredentialUpdate } from "./native-credential-updates.js";
@@ -217,7 +219,7 @@ import {
   renderNativeRunnerStagedAttachmentPrompt,
   stageNativeRunnerWakeAttachments,
 } from "./native-runner-file-handoff.js";
-import { nativeRuntimeContractForProvider, nativeToolContractFingerprintForTarget } from "./native-session-resume.js";
+import { NATIVE_PROVIDER_STATE_INCOMPATIBLE, nativeRuntimeContractForProvider, nativeToolContractFingerprintForTarget } from "./native-session-resume.js";
 import { verifyRetainedMaintenanceNoLaunch } from "./native-maintenance-no-launch.js";
 import { issueRecoveryActionService } from "../issue-recovery-actions.js";
 import { reportRunFailure } from "../run-failure-report.js";
@@ -226,7 +228,7 @@ import {
   RemoteRunnerRecoveryError, attachRemoteRunnerRecoveryDiagnostic, readRemoteRunnerRecoveryError, remoteRecoveryProbeReason,
 } from "./remote-runner-recovery-diagnostics.js";
 import { readRemoteRunnerRecoveryProbe, REMOTE_RUNNER_RECOVERY_PROBE_BUDGET_MS } from "./remote-runner-recovery-probe.js";
-import { inspectRemoteWarmSessionRecovery, type RemoteWarmSessionRecovery } from "./remote-warm-session-recovery.js";
+import { inspectRemoteWarmSessionRecovery, isSettledRemoteWarmControlState, type RemoteWarmSessionRecovery } from "./remote-warm-session-recovery.js";
 import { resolveNativeStagedAttachmentRecovery, type NativeStagedAttachmentRecovery } from "./native-staged-attachment-recovery.js";
 import { emitStartupReuse, environmentStartupReuse } from "@andrecomp/adapter-utils/startup-reuse";
 import { persistActivity, publishActivity } from "../activity-log.js";
@@ -266,6 +268,7 @@ import {
 } from "./native-runner-ownership.js";
 import {
   currentNativeControllerIdentity,
+  evaluateNativeControllerTakeover,
   nextNativeProviderAttempt,
   type NativeControllerIdentity,
   type NativeRestartRecoveryClaim,
@@ -5046,25 +5049,25 @@ async function recoverPluginRunnerCheckpoint(input: {
       target.sandboxLeaseAcquisition?.outcome === "resumed") return;
   let root = scoped;
   const quarantined = !existsSync(scoped);
-  const deny = (): never => { throw new Error("runner_state_identity_mismatch: plugin_checkpoint_recovery_unproven"); };
+  const deny = (reason: string): never => { throw new Error(`runner_state_identity_mismatch: plugin_checkpoint_recovery_unproven: ${reason}`); };
   if (quarantined) {
     const quarantine = resolve(runnerdStateBase(), "quarantine");
     if (!existsSync(quarantine)) return;
-    if (!isSafeNativeStateDirectory(quarantine)) return deny();
+    if (!isSafeNativeStateDirectory(quarantine)) return deny("quarantine_unsafe");
     const candidates = readdirSync(quarantine).filter(name => name.startsWith(`${basename(scoped)}.identity_indeterminate.`));
     if (candidates.length === 0) return;
-    if (candidates.length !== 1) return deny();
+    if (candidates.length !== 1) return deny("quarantine_ambiguous");
     root = resolve(quarantine, candidates[0]!);
   }
   if (!existsSync(root)) return;
-  if (!isSafeNativeStateDirectory(root)) return deny();
+  if (!isSafeNativeStateDirectory(root)) return deny("root_unsafe");
   if (hasRetainedWarmTransitionEvidence(root)) {
-    if (quarantined) return deny();
+    if (quarantined) return deny("quarantined_warm_transition");
     return;
   }
   const identity = readRunnerdDurableIdentity(root);
   if (!durableIdentityMatchesSession(identity, input.execution) || identity.runId === input.execution.binding.runId) {
-    if (quarantined) return deny();
+    if (quarantined) return deny("quarantined_identity_mismatch");
     return;
   }
   const direct = runnerdAuthorityLifecycle(root, identity);
@@ -5072,34 +5075,165 @@ async function recoverPluginRunnerCheckpoint(input: {
     !existsSync(resolve(root, "runner", "runner-state.json")) && pluginRunnerdAuthorityLifecycle(root, identity) === "suspended";
   // Never hide contradictory direct authority behind a remote checkpoint.
   if (direct !== "absent" && !(quarantined && direct === "suspended") && !verifiedPluginReceipt) {
-    if (quarantined) return deny();
+    if (quarantined) return deny("quarantined_authority_conflict");
     return;
   }
   await assertCleanupActivationCommitted(input.db, root, input.execution);
   const prior = await verifyPriorRunnerdStateForSessionScope({ ...input, root, identity, allowVerifiedBackup: true });
   if (prior !== "terminal_state_indeterminate" && !((quarantined || verifiedPluginReceipt) && prior === "verified")) {
-    if (quarantined) return deny();
+    if (quarantined) return deny("quarantined_prior_owner_unverified");
     return;
   }
   const control = record(JSON.parse(readBoundedNativeFile(resolve(root, "control-plane", "control-plane-state.json"),
     NATIVE_CONTROL_PLANE_STATE_MAX_BYTES, "runner_durable_identity_too_large").toString("utf8")));
-  const terminal = record(Array.isArray(control.committedEvents) ? control.committedEvents.at(-1) : null);
-  if (!Array.isArray(control.commands) || control.commands.some(command => record(command).status !== "completed") ||
-      terminal.eventType !== "run.terminal" || record(terminal.envelope).runId !== identity.runId ||
-      record(terminal.envelope).normalizedSessionId !== identity.normalizedSessionId) return deny();
+  if (!isSettledRemoteWarmControlState(control, identity)) return deny("journal_not_settled");
   const resumeFrom = await resolvePluginTaskResume(input.db, { companyId: input.execution.binding.companyId,
     leaseId: target.leaseId, priorIdentity: identity, inspectCheckpoint: true });
   const checkpoint = environmentTaskResultSchema.parse(await target.runnerTask({ kind: "read_state", identity, resumeFrom }));
   if (checkpoint.kind !== "state" || checkpoint.state.lifecycle !== "suspended" ||
       !Array.isArray(checkpoint.state.outbox) || checkpoint.state.outbox.length !== 0 ||
       checkpoint.state.pendingTerminalDelivery != null || checkpoint.state.pendingProviderCleanup != null ||
-      checkpoint.state.warmTransition != null) return deny();
+      checkpoint.state.warmTransition != null) return deny("checkpoint_not_settled");
   savePluginRunnerCheckpoint(root, checkpoint.state, identity);
-  if (await verifyPriorRunnerdStateForSessionScope({ ...input, root, identity, allowVerifiedBackup: true }) !== "verified") return deny();
+  if (await verifyPriorRunnerdStateForSessionScope({ ...input, root, identity, allowVerifiedBackup: true }) !== "verified") return deny("checkpoint_unverified");
   if (quarantined) {
-    if (existsSync(scoped)) return deny();
+    if (existsSync(scoped)) return deny("quarantine_destination_exists");
     renameSync(root, scoped);
   }
+}
+
+// Session-root entries owned by one provider session's authority. A continuity
+// break moves them aside together. Backups belong to the retired session too:
+// left active, they make a fresh replacement look like lost harness state.
+const NATIVE_CONTINUITY_STATE_ENTRIES: readonly string[] = [
+  "control-plane",
+  "runner",
+  "codex-home",
+  "opencode",
+  "acpx",
+  "failover-backups",
+  "provider-pack-authority.json",
+];
+
+function moveNativeContinuityState(root: string, archiveRoot: string): void {
+  for (const name of NATIVE_CONTINUITY_STATE_ENTRIES) {
+    const source = resolve(root, name);
+    if (existsSync(source)) renameSync(source, resolve(archiveRoot, name));
+  }
+}
+
+/**
+ * Returns the journal bytes when a root holds only a settled controller
+ * journal for this exact owner. The controller acknowledged its terminal,
+ * completed every command and answered every tool input, so the unreadable
+ * Runner outbox can hold only post-terminal telemetry. Local lifecycle
+ * evidence, even an unsuspended receipt, and unknown entries are owner
+ * claims that this proof never overrides.
+ */
+function readSettledRunnerdProjection(root: string, identity: Record<string, string>): string | null {
+  try {
+    if (!isSafeNativeStateDirectory(root) ||
+        runnerdAuthorityLifecycle(root, identity as RunnerdDurableIdentity) !== "absent" ||
+        readdirSync(root).some(name => name !== "continuity-breaks" && !NATIVE_CONTINUITY_STATE_ENTRIES.includes(name))) {
+      return null;
+    }
+    const bytes = readBoundedNativeFile(resolve(root, "control-plane", "control-plane-state.json"),
+      NATIVE_CONTROL_PLANE_STATE_MAX_BYTES, "runner_durable_identity_too_large").toString("utf8");
+    const control = record(JSON.parse(bytes));
+    const answered = new Set((Array.isArray(control.commands) ? control.commands : []).map(record)
+      .filter(command => command.type === "semantic_tool.result" && command.status === "completed")
+      .map(command => record(command.payload).sourceEventId));
+    if (control.schema !== RUNNERD_CONTROL_PLANE_STATE_SCHEMA || control.warmTransition != null ||
+        control.stagedRunAttachment != null || !isSettledRemoteWarmControlState(control, identity) ||
+        (control.committedEvents as unknown[]).map(record).some(event =>
+          (event.eventType === "semantic_tool.input" || event.eventType === "mcp_app.tool_input") &&
+          !answered.has(event.sourceEventId))) return null;
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A per-turn sandbox turn can finish through recovery after its post-turn
+ * checkpoint copy failed: the result is committed and the controller lease is
+ * released, but no suspended Runner receipt or failover backup ever reached
+ * this root. Its database projection can never prove that suspension, so
+ * quarantine only lets the next run rebuild and reject it again. When the
+ * owner is provably finished and this run uses a different sandbox, archive
+ * that authority as a continuity break instead. This run then bootstraps its
+ * own authority, and the provider session follows the ordinary
+ * resume-or-replace policy. Any missing proof keeps the original rejection.
+ */
+async function retireFinishedPerTurnRunnerdOwner(input: {
+  db: Db;
+  root: string;
+  identity: RunnerdDurableIdentity;
+  execution: NativeExecutionInput;
+  runnerExecutionTarget?: AdapterExecutionTarget | null;
+  onLog?: (stream: "stdout" | "stderr", chunk: string) => Promise<void>;
+}): Promise<boolean> {
+  const target = input.runnerExecutionTarget;
+  // A resumed sandbox still holds the prior Runner's own lifecycle, which its
+  // existing recovery path reads. Plugin tasks own a separate saved checkpoint.
+  if (input.execution.session.lifecyclePolicy.mode !== "per_turn" || target?.kind !== "remote" ||
+      target.transport !== "sandbox" || !target.runner || target.runnerTask ||
+      !["created", "replacement"].includes(target.sandboxLeaseAcquisition?.outcome ?? "")) return false;
+  const identity: Record<string, string> = {};
+  for (const key of ["runId", "normalizedSessionId", "runnerInstanceId", "environmentLeaseId", "turnId", "itemId"]) {
+    const value = input.identity[key];
+    if (typeof value !== "string" || !value) return false;
+    identity[key] = value;
+  }
+  const controlBytes = readSettledRunnerdProjection(input.root, identity);
+  if (controlBytes === null) return false;
+  const { binding } = input.execution;
+  let prior: { run: typeof heartbeatRuns.$inferSelect; owner: typeof nativeRunFinalizations.$inferSelect } | undefined;
+  try {
+    [prior] = await input.db.select({ run: heartbeatRuns, owner: nativeRunFinalizations }).from(heartbeatRuns)
+      .innerJoin(nativeRunFinalizations, and(eq(nativeRunFinalizations.runId, heartbeatRuns.id),
+        eq(nativeRunFinalizations.companyId, heartbeatRuns.companyId)))
+      .where(and(eq(heartbeatRuns.id, identity.runId), eq(heartbeatRuns.companyId, binding.companyId),
+        eq(heartbeatRuns.agentId, binding.agentId), eq(heartbeatRuns.nativeIssueId, binding.issueId),
+        eq(nativeRunFinalizations.issueId, binding.issueId)))
+      .limit(1);
+  } catch {
+    return false;
+  }
+  if (!prior || prior.run.runtimeMode !== "native" || !TERMINAL_HEARTBEAT_RUN_STATUSES.has(prior.run.status) ||
+      prior.owner.phase !== "committed" || !prior.owner.resultId || prior.owner.leaseOwner || prior.owner.recoveryState) {
+    return false;
+  }
+  // A durable controller is fenced by its released database lease; a legacy
+  // controller still needs process evidence, exactly as for warm recovery.
+  const profile = record(prior.run.runnerProfileJson);
+  const stopped = await evaluateNativeControllerTakeover({ owner: prior.owner, now: new Date(),
+    requireStoppedController: true,
+    remoteLeaseFenced: readNativeControllerRecovery(profile.nativeControllerRecovery, profile.sessionCheckpoint) !== null });
+  if (!stopped.allowed) return false;
+  // Earlier rejected admissions can quarantine the same projection. Each copy
+  // must pass the same proof: a rebuilt root never carries the local Runner
+  // evidence that held an earlier attempt, so that evidence stays decisive.
+  const quarantine = resolve(runnerdStateBase(), "quarantine");
+  if (existsSync(quarantine)) {
+    if (!isSafeNativeStateDirectory(quarantine)) return false;
+    for (const name of readdirSync(quarantine)) {
+      if (name.startsWith(`${basename(input.root)}.`) &&
+          readSettledRunnerdProjection(resolve(quarantine, name), identity) === null) return false;
+    }
+  }
+  // Database reads can await. Retire only the exact evidence proven above.
+  if (readSettledRunnerdProjection(input.root, identity) !== controlBytes) return false;
+  const archivedAt = Date.now();
+  const archiveRoot = resolve(input.root, "continuity-breaks", `${archivedAt}-${randomUUID()}`);
+  mkdirSync(archiveRoot, { recursive: true, mode: 0o700 });
+  noteNativeRunnerEvidence(archivedAt);
+  moveNativeContinuityState(input.root, archiveRoot);
+  await input.onLog?.(
+    "stdout",
+    `[andrecomp-runner] Run ${identity.runId} finished without a saved runner checkpoint; starting a new runner for this conversation.\n`,
+  );
+  return true;
 }
 
 async function migrateRunnerdStateRootForExecution(input: {
@@ -5231,6 +5365,14 @@ async function migrateRunnerdStateRootForExecution(input: {
         allowVerifiedBackup: input.allowVerifiedBackup,
         retainedWarmOwnerRunId: input.retainedWarmOwnerRunId,
       });
+      if (
+        verification === "terminal_state_indeterminate" &&
+        !input.restartRecovery &&
+        !input.retainedWarmOwnerRunId &&
+        (await retireFinishedPerTurnRunnerdOwner({ ...input, root: scoped, identity }))
+      ) {
+        return;
+      }
       if (
         verification !== "verified" &&
         verification !== "retained_warm_runner"
@@ -5372,11 +5514,7 @@ async function recoverQuiescentRunnerdState(input: {
       const runner = record(JSON.parse(runnerBytes));
       const control = record(JSON.parse(controlBytes));
       const provider = record(JSON.parse(providerBytes));
-      const commands = control.commands;
       const events = control.committedEvents;
-      const terminalEnvelope = record(
-        record(Array.isArray(events) ? events.at(-1) : null).envelope,
-      );
       if (
         runner.schema !== RUNNERD_STATE_SCHEMA ||
         !["ready", "suspended"].includes(String(runner.lifecycle)) ||
@@ -5392,12 +5530,8 @@ async function recoverQuiescentRunnerdState(input: {
         !Array.isArray(runner.outbox) ||
         runner.outbox.length !== 0 ||
         runner.pendingTerminalDelivery !== null ||
-        !Array.isArray(commands) ||
-        commands.some((command) => record(command).status !== "completed") ||
         !Array.isArray(events) ||
-        record(events.at(-1)).eventType !== "run.terminal" ||
-        terminalEnvelope.runId !== identity.runId ||
-        terminalEnvelope.normalizedSessionId !== identity.normalizedSessionId ||
+        !isSettledRemoteWarmControlState(control, identity) ||
         provider.completedTurnAuthoritative !== true
       )
         continue;
@@ -6845,6 +6979,7 @@ export function nativeSessionFailureDisposition(
     sourceFailureCode === "runner_remote_provider_artifact_incompatible" ||
     sourceFailureCode === "runner_remote_provider_verification_unavailable" ||
     sourceFailureCode === "native_provider_terminal_failed" ||
+    sourceFailureCode === NATIVE_PROVIDER_STATE_INCOMPATIBLE ||
     sourceFailureCode === "native_current_wake_comments_unread" ||
     sourceFailureCode === "native_current_wake_comments_changed_after_read" ||
     sourceFailureCode === "native_session_cleanup_quarantined" ||
@@ -6895,6 +7030,7 @@ export function nativeSessionFailureSourceCode(
 ):
   | "native_permission_declined"
   | "native_provider_terminal_failed"
+  | typeof NATIVE_PROVIDER_STATE_INCOMPATIBLE
   | "native_provider_approval_required"
   | "native_provider_usage_limit"
   | "native_session_cleanup_quarantined"
@@ -6918,8 +7054,10 @@ export function nativeSessionFailureSourceCode(
   | "native_provider_model_rejected"
   | "native_current_wake_comments_unread"
   | "native_current_wake_comments_changed_after_read"
+  | "provider_session_open_rejected"
   | "native_session_interrupted" {
   if (error instanceof NativePermissionDeclinedError) return "native_permission_declined";
+  if (error instanceof NativeProviderStateIncompatibleError) return NATIVE_PROVIDER_STATE_INCOMPATIBLE;
   if (error instanceof NativeProviderTerminalFailure) {
     if (error.providerCode === "approval_required") return "native_provider_approval_required";
     // Failed terminals retain their security meaning across the provider facade.
@@ -7001,8 +7139,17 @@ export function nativeSessionFailureSourceCode(
   if (/native_current_wake_comments_unread/i.test(message)) {
     return "native_current_wake_comments_unread";
   }
+  // The runner reported a definite session.open outcome. That command runs
+  // before any prompt, so provider work cannot have started. An indeterminate
+  // outcome stays generic.
+  if (/\bPRP command session\.open (?:failed|rejected): /.test(message)) {
+    return "provider_session_open_rejected";
+  }
   return "native_session_interrupted";
 }
+
+const NATIVE_PROVIDER_STATE_INCOMPATIBLE_ACTION =
+  "The current runner cannot restore this task's saved provider session, so retrying this run cannot succeed. Retry the task to continue in a fresh provider session with the same workspace. The earlier provider conversation is not carried over.";
 
 const NATIVE_CLEANUP_OPERATOR_RECOVERY_MESSAGE =
   "Send a new message to continue after Andrecomp verifies that the previous provider and its tools have stopped. If cleanup cannot be verified, inspect the run and its environment. Clearing a task session does not resolve this quarantine. Automatic retries are stopped.";
@@ -7083,6 +7230,7 @@ export async function nativeProviderRecoveryEvidence(input: {
     "provider_request_timeout",
     "provider_request_protocol_error",
     "native_runner_process_exited",
+    "provider_session_open_rejected",
   ]).has(input.sourceFailureCode);
   if (!checkpointExists && !providerEventsExist && definitelyPreSession) {
     return {
@@ -10239,10 +10387,31 @@ async function executeAndrecompNativeSessionWithinScope(
         recoveryEvidence.recoveryMode === "ambiguous_state"
           ? sourceFailureCode
           : disposition.failureCode;
+      const providerFailure = providerFailureFromError(error);
+      // Pre-provider startup retries back off and wait out a known provider
+      // limit; their exhaustion explains the startup failure.
+      const startupRetryExhausted =
+        recoveryEvidence.recoveryMode === "bootstrap_retry" &&
+        failureCode === "native_session_retry_exhausted";
+      const startupRetry =
+        recoveryEvidence.recoveryMode === "bootstrap_retry" &&
+        (phase === "retryable_failure" || startupRetryExhausted)
+          ? await planNativeStartupRetry({
+              db: input.db,
+              binding: input.execution.binding,
+              attempt,
+              retryable: phase === "retryable_failure",
+              failure: providerFailure,
+              now,
+            })
+          : null;
+      const providerCooldownAt = startupRetry?.providerCooldownAt ?? null;
       const nextAttemptAt =
         recoveryEvidence.recoveryMode === "ambiguous_state"
           ? null
-          : disposition.nextAttemptAt;
+          : startupRetry
+            ? startupRetry.nextAttemptAt
+            : disposition.nextAttemptAt;
       const recoveryProjection = nativeSessionRecoveryProjection({
         phase,
         failureCode,
@@ -10251,7 +10420,6 @@ async function executeAndrecompNativeSessionWithinScope(
       const { exhausted } = recoveryProjection;
       const integrityFailure =
         sourceFailureCode === "native_event_replay_conflict";
-      const providerFailure = providerFailureFromError(error);
       const message = redactIdentityText(
         error instanceof Error ? error.message : String(error),
       ).slice(0, 2_000);
@@ -10306,6 +10474,7 @@ async function executeAndrecompNativeSessionWithinScope(
                 recoveryEvidence.providerSessionEstablished,
               providerEventsExist: recoveryEvidence.providerEventsExist,
               checkpointExists: recoveryEvidence.checkpointExists,
+              ...(providerCooldownAt ? { providerCooldownAt: providerCooldownAt.toISOString() } : {}),
               recoveryOwner: recoveryProjection.recoveryOwner,
               nextAction:
                 sourceFailureCode === "native_permission_declined"
@@ -10318,6 +10487,8 @@ async function executeAndrecompNativeSessionWithinScope(
                     ? "Provider files could not be verified after two read attempts. Inspect the retained workspace and command transport before retrying the original run."
                   : sourceFailureCode === "native_provider_terminal_failed"
                     ? "The provider session is permanently unusable. Verify stopped execution, completed actions, and task context before starting a linked continuation."
+                  : sourceFailureCode === NATIVE_PROVIDER_STATE_INCOMPATIBLE
+                    ? NATIVE_PROVIDER_STATE_INCOMPATIBLE_ACTION
                     : recoveryEvidence.recoveryMode === "ambiguous_state"
                       ? "Inspect the original provider failure and durable events; state is ambiguous and a replacement provider session is forbidden."
                       : integrityFailure
@@ -10326,11 +10497,13 @@ async function executeAndrecompNativeSessionWithinScope(
                           ? "Restore model provider usage capacity, then explicitly retry the task. Automatic retries cannot resolve an exhausted provider allowance."
                           : ownershipUnverified
                             ? "Inspect the retained runner's executable and authenticated connection. Do not replace its provider until ownership is safely resolved."
+                            : startupRetryExhausted
+                              ? nativeStartupRetryExhaustedAction(attempt, providerCooldownAt)
                             : exhausted
                               ? "Inspect the persisted native session after its bounded resume budget was exhausted."
                               : recoveryEvidence.recoveryMode ===
                                   "bootstrap_retry"
-                                ? "Retry provider bootstrap on this same run; durable evidence proves no provider session or provider event was created."
+                                ? `Retry provider bootstrap on this same run${nativeStartupRetryWait(providerCooldownAt)}; durable evidence proves no provider session or provider event was created.`
                                 : "Resume this same run from its exact persisted native provider checkpoint after the retry delay.",
             }),
             nextAttemptAt,
@@ -10497,6 +10670,7 @@ async function executeAndrecompNativeSessionWithinScope(
             recoveryMode: recoveryEvidence.recoveryMode,
             providerSessionEstablished:
               recoveryEvidence.providerSessionEstablished,
+            ...(providerCooldownAt ? { providerCooldownAt: providerCooldownAt.toISOString() } : {}),
           },
           nextAction:
             sourceFailureCode === "native_permission_declined"
@@ -10507,6 +10681,8 @@ async function executeAndrecompNativeSessionWithinScope(
               ? NATIVE_CLEANUP_OPERATOR_RECOVERY_MESSAGE
               : sourceFailureCode === "native_provider_terminal_failed"
                 ? "Verify that the failed provider stopped and reconcile its action outcomes. A linked continuation can proceed only after these checks succeed."
+              : sourceFailureCode === NATIVE_PROVIDER_STATE_INCOMPATIBLE
+                ? NATIVE_PROVIDER_STATE_INCOMPATIBLE_ACTION
                 : recoveryEvidence.recoveryMode === "ambiguous_state"
                   ? "Inspect the original provider failure and explicitly resolve the ambiguous session state; do not open a replacement provider session."
                   : integrityFailure
@@ -10515,10 +10691,12 @@ async function executeAndrecompNativeSessionWithinScope(
                       ? "Restore model provider usage capacity, then explicitly retry the task; automatic retries are stopped."
                       : ownershipUnverified
                         ? "Resolve the retained runner's authentication or executable compatibility before an explicit recovery; do not blindly restart, cancel, or replace its provider session."
+                        : startupRetryExhausted
+                          ? nativeStartupRetryExhaustedAction(attempt, providerCooldownAt)
                         : exhausted
                           ? "Inspect the provider trace and explicitly choose a replacement run or provider configuration; automatic provider work is stopped."
                           : recoveryEvidence.recoveryMode === "bootstrap_retry"
-                            ? "Retry bootstrap on the same run without manufacturing a provider checkpoint."
+                            ? `Retry bootstrap on the same run${nativeStartupRetryWait(providerCooldownAt)} without manufacturing a provider checkpoint.`
                             : "Resume the exact persisted native session on the same heartbeat run.",
           wakePolicy: nextAttemptAt
             ? {
@@ -14175,21 +14353,7 @@ async function createRunnerdBackendWithinSessionClaim(
     mkdirSync(archiveRoot, { recursive: true, mode: 0o700 });
     await cursorCloudRuntime?.archiveCheckpoint(archiveRoot, previous);
     noteNativeRunnerEvidence(archivedAt);
-    for (const name of [
-      "control-plane",
-      "runner",
-      "codex-home",
-      "opencode",
-      "acpx",
-      // Backups belong to the retired provider session. Leaving them active
-      // makes the fresh replacement look like ambiguous lost harness state.
-      // Keep their evidence inside the same continuity-break archive.
-      "failover-backups",
-      "provider-pack-authority.json",
-    ]) {
-      const source = resolve(root, name);
-      if (existsSync(source)) renameSync(source, resolve(archiveRoot, name));
-    }
+    moveNativeContinuityState(root, archiveRoot);
     if (remoteCommandRunner && remoteSessionRoot) {
       const escapedSource = remoteSessionRoot.replaceAll("'", "'\\''");
       const archivedRemote = `${remoteSessionRoot}.continuity-break-${archiveToken}`;
