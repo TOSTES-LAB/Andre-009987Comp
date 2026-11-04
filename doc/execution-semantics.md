@@ -263,6 +263,15 @@ Messages from the same conversation still coalesce into one run. Messages from
 different conversations queue separately and run one after the other. Wakes
 without a conversation keep their normal coalescing.
 
+For a truncated external-chat wake, native completion feedback requires the
+run-bound complete comment-read receipt before accepting a finish report. An
+unread, partial, stale or foreign receipt returns a corrective
+`read_current_wake_comments` instruction through the completion tool. The agent
+can read the accepted comments and correct its report in the same turn without
+repeating completed actions. An unfinished read continues with its most recent
+`nextCursor`; a changed snapshot restarts without a cursor. The terminal guard
+still checks the exact current binding and snapshot after provider settlement.
+
 ### `done`
 
 The work is complete and terminal.
@@ -360,6 +369,13 @@ The active-lock lifecycle is part of the checkout contract:
 - the recovery sweeper may clear rows whose checkout and execution locks all point at terminal or missing runs
 
 Stale-lock recovery is crash recovery, not a retry loop. Andrecomp must not clear or adopt locks held by non-terminal runs. After stale cleanup, a checkout `409` should mean a real live owner, status/assignee mismatch, unresolved blocker, or active gate still prevents checkout. Agents must treat that `409` as an ownership conflict and stop rather than retrying the same checkout.
+
+A queued retry waits for its same-company, same-task and same-agent predecessor
+to finish execution and cleanup, including when the task execution lock already
+names the retry. This also applies to failures before native runtime selection.
+Committed cleanup notifications reconsider that same queued run through ordinary
+admission. Failed cleanup, Stop, reassignment and independent recovery gates
+retain their existing effect; a terminal run row alone cannot release the wait.
 
 Stopping a queued legacy run before runtime selection clears only its own task
 locks. It preserves deferred messages without promoting another run. The stop
@@ -853,6 +869,18 @@ receipt. A changed source or cancelled capture removes its incomplete archive;
 an existing archive remains untouched. Temporary space must still hold the
 normalized Git metadata and the complete archive together.
 
+Shallow and partial Git checkouts retain their available object files instead
+of asking a mirror clone to transfer promised or index-only objects. Capture
+does not fetch missing objects. It preserves the shallow boundary, promisor pack
+markers, portable promisor settings, and the selected sparse-checkout settings
+and patterns. Both source and saved Git state must pass connectivity checks.
+Missing objects in an ordinary repository remain a failure. Partial or shallow
+repositories with alternate object stores, unsupported filters, or unsafe object
+links remain protected sources and do not receive a successful save receipt.
+This uses the existing archive format and ordinary Git files, so earlier archive
+readers restore the same state. It does not add remote history or change the
+authority to resume work, publish a result, or remove a source.
+
 ### Remote Codex model compatibility
 
 Fresh remote Codex Runner runs check the selected image CLI before saving the
@@ -944,6 +972,36 @@ same preparation retains its directory and receipt check. A published workspace
 on the same allocation retains its recorded directory. Automatic bootstrap
 timeout retries still require a fresh allocation under the policy above.
 
+### Saved chat Retry preparation
+
+Task Retry can meet a busy chat identity or endpoint lock before its source is authorized.
+The canonical Retry and its linked chat action then retain one unadmitted request.
+The existing chat retry worker prepares that request after the lock is available.
+It checks the current board actor, source, principal, conversation, task owner,
+and canonical intent before normal admission. Stop, changed input, revoked access,
+or newer execution can reject it without adopting input or publishing a notice.
+Restoration of a certified unstarted input batch stays in the same transaction as
+source preparation. Contention cannot commit a partial restoration.
+
+Pending preparation and a prepared but unsettled action show the existing
+retry-scheduled state and the chat outbox's actual retry or stale-claim deadline.
+They do not imply that a provider started. Source authorization contention has a separate
+60-second deadline saved with the pending request, or at the first contention
+for an older action. Waiting on these locks does not consume the eight delivery
+attempts. Expiry is checked before source preparation commits and before a
+prepared action can leave its authorization wait. A lock that becomes available
+after expiry cannot complete a still-pending wait. The authorization transaction
+saves completion of that wait under the current claim before wake delivery.
+A restart rechecks current source and execution gates; elapsed time alone does
+not expire a completed wait. New contention still uses the original deadline.
+Generic delivery failure cannot put a completed wait back into the pending
+state. A lost commit acknowledgment preserves the stored phase and does not
+authorize a wake.
+Duplicate clicks and background sweeps cannot renew either limit. Preparation
+does not create a generic board wake. Only the endpoint query's lock-unavailable
+error can defer through its explicit Retry callback. Other database and
+authorization errors keep their existing behavior.
+
 ### Runner authentication and ACP startup handshake bounds
 
 The native Runner waits up to the ten-second connection setup budget for the
@@ -960,6 +1018,8 @@ An adapter-backed live path also requires that the ACP startup handshake itself 
 The handshake failure code is distinct from a session-identity mismatch. A timeout or a duplex-channel loss during startup must not be reported as the same code as a failed session resume, because the two need different operator responses.
 
 ### Explicit recovery actions
+
+Connected task Retry can continue a failed legacy setup before provider dispatch. The bootstrap marker is insufficient by itself. The server requires its exact error and durable measurement events, a dispatch-only Runner profile, and no retained runtime, process, output, coordinator, result or environment lease. Current source authorization and every normal admission gate still apply. An inherited session display hint grants no resume authority. The original failed attempt remains unchanged, and an independent unfinished writer keeps its hold.
 
 An explicit recovery action is a typed liveness repair path for a source issue. It is the recovery primitive; the action can be rendered directly on the source issue or backed by a separate recovery issue when the repair needs its own work item.
 
@@ -1616,6 +1676,13 @@ does not prove that the provider stopped or that a retry is safe; it remains
 non-recoverable until the existing ownership and recovery checks establish the
 next permitted action.
 
+If a failed sidecar control closes an ACPX session before the event pump observes
+the failure, its terminal retains the original closed-code diagnostic. Later
+polling must not replace it with a generic closed-session message or infer a
+provider explanation from that code. Intentional shutdown keeps its ordinary
+closed state. A startup failure with a validated provider cause keeps that cause
+when cleanup also fails. Neither case authorizes another attempt.
+
 Provider rejections additionally use the versioned `ProviderFailure` cause.
 The provider adapter extracts and redacts the original explanation before the
 process boundary. Startup command receipts and failed turns retain the same
@@ -1636,6 +1703,45 @@ session and retires only the exact predecessor's obsolete recovery hold while
 recording the proof and successor lineage. Retained provider files are not edited.
 
 Bootstrap retries, exact-checkpoint resumes, and fresh replacement sessions share three total provider attempts, including the original attempt. Linked run IDs, controller restarts, and duplicate wakes do not reset this budget. Exact-checkpoint resumes retain the 30-second delay. Replacement scheduling and predecessor lineage commit together, with one successor per predecessor and admission through the normal task locks, authorization, pause, approval, and budget gates.
+
+A due failed remote retry can retain its provider PID after heartbeat completion
+releases the task execution lock. Both remote workspace reference formats and
+exact company/task/run plugin task leases route that retry to remote restart
+recovery. Plugin leases do not require a workspace reference. A PID from another
+host is never checked or cleared through the local process table. Before remote inspection, recovery
+can reclaim the original task execution only for an explicit exact-checkpoint
+retry with a fenced previous controller, matching durable authority and ordinary
+resumption eligibility. A newer run for the task, another execution or checkout,
+Stop, pause, changed assignment or an unresolved dependency prevents the claim.
+The task lock, controller claim, run status and recovery event commit together.
+A new failed retry consumes the existing provider attempt budget; replacing an
+active controller does not. The claim permits only inspection and attachment to
+the recorded remote execution. Missing live provider evidence
+still prevents replay or replacement. Admission holds use the existing system
+recovery policy: five backoff retries within a 30-minute window, with persisted
+jitter and a budget separate from provider attempts. A newer source or an ended
+task cannot become eligible and exhausts this automatic policy immediately.
+Exhaustion gives the board a manual reconciliation action and stops retry
+deadlines. It preserves execution and checkout bindings, the provider PID and
+checkpoint, and does not request environment settlement or file preservation:
+none of those facts prove the old provider stopped. Live leases stay read-only
+until their own deadline. Stale-lock sweeps, terminal checkout cleanup, stale
+adoption and queue release share this manual ownership hold. Terminal status
+alone cannot clear it; the existing receipt contract must confirm every exact
+remote lease stopped before ordinary cleanup and checkout can progress. Missing
+lease records do not establish termination. An explicit Stop can still reserve
+and fence this exact held execution through the existing audited cancellation
+path. The hold survives that Stop's intent and acknowledgement until remote
+termination is confirmed. Normal Retry can register the exact source's existing
+stop-and-preserve recovery. It waits for verified termination and file recovery
+before admitting one continuation from the preserved workspace. The run log
+records a changed hold reason once instead
+of repeating the same warning on every sweep. A historical provider-budget-exhausted retry can
+release its task lock only after the same admission, controller fence and exact
+remote authority checks pass. Existing terminal recovery then preserves the
+provider evidence and gives the board a reconciliation action; it authorizes no
+new provider work. A completed turn without a semantic result retains its
+existing bounded disposition-only recovery policy.
 
 A bootstrap retry requires durable evidence that no provider session, provider
 event, or checkpoint exists. A runner report that `session.open` failed or was
@@ -1679,6 +1785,15 @@ completion result. The existing lease-transfer policy must verify the company,
 agent, workspace, retained session, and termination of prior execution. The
 checkpoint must match the exact Runner, lease, run, session, turn, and item.
 A missing restart claim does not remove these checks or authorize a fresh session.
+
+Reattachment readies the exact retained sandbox lease through the provider's
+bounded lifecycle resume before running short preparation commands such as the
+managed project-authentication check. The resume receipt must confirm the same
+provider allocation without reporting expiration. Missing or mismatched receipts
+hold recovery; this path never acquires a replacement sandbox. The validated
+lease retains its recorded working directory, since optional provider metadata
+can describe the allocation root. A resume setup failure preserves the retained
+sandbox and saved work. Plugin task reattachment remains with its task owner.
 
 After a remote sandbox session passes provider recovery and durable run admission,
 its local suspension receipt is removed. This applies to built-in sandbox runners
@@ -2557,6 +2672,14 @@ turn finishes during shutdown, its release checkpoints the session before
 returning instead of leaving a new idle owner behind. If checkpointing fails,
 the retained state continues to block unverified reuse.
 
+Object-backed provider backups use the same completed-run fence during warm
+retirement. A committed result can preserve its provider files after its live
+controller lease is released. The boot ID and controller generation must still
+match. A successor must pass the existing same-controller preparation or native
+ownership checks. The backup transaction checks this authority again after
+upload, and a late predecessor cannot replace a newer conversation backup.
+This grants no new lease or permission to start provider work.
+
 Local durable control-plane state is bounded at 256 MiB in the server,
 runnerd recovery, and durable control-plane readers. These paths synchronously
 read and parse the full JSON file, so memory use and parse time grow with file
@@ -2809,6 +2932,13 @@ and the old local process or remote environment has a verified stop record,
 Andrecomp submits saved input through normal task admission, once, with the
 original user's authority. Pauses, task ownership, budgets, approvals, and
 execution recovery holds still apply. Unconfirmed cleanup does not start work.
+
+An admitted connected-task Retry keeps its existing successor queued while the
+exact native predecessor still owes cleanup, even when the task already points
+to the successor. A stop-and-retain receipt alone does not settle that cleanup.
+Cleanup writes and exact workspace-owner releases wake scoped dispatch after
+commit; the same run then passes the normal source, identity, Stop, approval and
+budget checks again.
 
 A Stop from a bound Slack session records the verified user's identity, just as
 a board Stop does. Native cancellation can then recognize the acknowledged
@@ -3399,3 +3529,16 @@ response with no matching cancellation intent. A matching durable pending intent
 can be accepted without a terminal acknowledgement. The selected run and its
 history refresh after either outcome. Stop does not resume the provider or change
 a manual task hold.
+
+### Native session diagnostic ownership
+
+Native session diagnostics follow the current execution's recorder epoch, including
+warm-session reuse. Active diagnostics enter the recorder synchronously. Execution
+retirement detaches that exact epoch without awaiting optional progress metadata.
+The recorder retains ownership of admitted-byte draining and finalization, including
+its existing unknown-size/hash result when an append cannot settle. A later idle transport
+close retains its transport evidence and emits only a fixed diagnostic category
+with company/run identifiers to the process logger; it cannot append provider text
+to a completed run or borrow a successor run's recorder. Canonical native output
+export, source coverage, secret redaction and persistence-failure warnings retain
+their existing contracts.

@@ -1591,6 +1591,28 @@ gh workflow run runner-full-stack-e2e.yml \
   -f id=core-compatibility.runner-codex.local.message-marker
 ```
 
+The same trusted workflow can run the standing **Product regression — core
+workflows** TestOps plan. Bootstrap one actual case with `-f testops_case=66`
+(message-marker), or select the complete plan with `-f testops_case=all`.
+Leave the ordinary `id`, `suite`, `group`, `profile`, `environment` and `case`
+selectors empty in this mode. TestOps dispatch supplies `ALLURE_JOB_RUN_ID` and
+`ALLURE_USERNAME`; the requested test-plan selection overrides the bootstrap
+case. All 20 imported case IDs and full names remain stable. The lane uses the
+existing native Codex/local cells and the existing native OpenCode/local
+task-workspaces cell. It does not qualify the historical 355-result snapshot.
+
+The protected `runner-e2e-testops-reporting` environment supplies `ALLURE_TOKEN`.
+Only default-branch selection and reporting code receives this token. The
+ordinary paid provider jobs, their authorization and their evidence paths stay
+the same. Selection binds the job run, launch, source and workflow revisions.
+Reporting parses the retained normalized campaign, publishes original attempts
+and assertions, and makes an absent result explicitly broken. It verifies the
+uploaded case IDs and verdicts before finishing the original TestOps job run.
+No bootstrap or synthetic control result contributes to the pass count. Tag
+only a complete 20-case attempt `full-run` and `test-plan-2`; omit `full-run`
+from focused reruns. Inspect the linked launch and the retained report for
+acceptance. A local projection test does not establish a live product pass.
+
 Create a protected `runner-e2e-paid` GitHub environment, restrict it to the
 default branch, limit environment administration to trusted maintainers, and
 store the four provider secrets there. This is a second authorization boundary:
@@ -3492,3 +3514,19 @@ separate BROKEN gap shape and must not be used for this recovery bundle. Final
 coverage must match all selected case IDs and preserve the separate gap count.
 This mode prepares data only. It does not upload, start jobs, reopen launches,
 change credentials, or change evaluation and evidence limits.
+# Legacy workspace migration
+
+`legacy-workspace-migration` and `legacy-workspace-migration-warm` are explicit,
+paid, two-turn Daytona workflows for registered native production profiles. They
+create a private reference file and ask a question on a local-disk controller.
+The supervisor stops that controller, runs the packaged offline migration with
+owned PostgreSQL and S3, verifies the export, starts an empty-home controller,
+and deletes the original home. The browser answers the existing question. The
+oracle requires the same native and provider session, workspace addresses and
+file bytes, plus the exact final document. Provider session identifiers are
+hashed in the added evidence. The company budget is $10 and automatic retries
+are disabled. Existing fixture teardown owns sandboxes, credentials, processes,
+database and storage; failed private evidence is retained under the usual policy.
+
+This proves preservation during initial enrollment, which has an offline step.
+Use the separate rolling deployment suites for uninterrupted deployment proof.
