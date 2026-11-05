@@ -935,7 +935,7 @@ describe.skipIf(!support.supported && !process.env.ANDRECOMP_TEST_DATABASE_URL)(
     const resume = new ReusableSandboxResumeError({ provider: "daytona", providerLeaseId: "lease-1", cause: providerError });
     // The orchestrator wraps the runtime error, exactly as staging recorded it.
     const wrapped = new EnvironmentRunError("lease_acquire_failed",
-      `Failed to acquire lease for environment "Andrecomp Computer" (sandbox): ${resume.message}`, { cause: resume });
+      `Failed to acquire lease for environment "Andrecomp Sandbox" (sandbox): ${resume.message}`, { cause: resume });
     const error = scenario === "untrusted" ? new Error(wrapped.message) : wrapped;
     f.deps.scheduleBoundedRetryForRun.mockResolvedValueOnce({ outcome: "not_scheduled", reason: "Fixture scheduler boundary", issueId: null });
     await f.completion.failRunSetup(f.setup(error, scenario === "started"));
@@ -971,7 +971,7 @@ describe.skipIf(!support.supported && !process.env.ANDRECOMP_TEST_DATABASE_URL)(
     const refusal = new PluginWorkerUnavailableError({ pluginId: "plugin-1", workerStatus: null,
       message: 'Sandbox provider "daytona" is installed via plugin "andrecomp.daytona-sandbox-provider", but its worker is not running.' });
     const wrapped = new EnvironmentRunError("lease_acquire_failed",
-      `Failed to acquire lease for environment "Andrecomp Computer" (sandbox): ${refusal.message}`, { cause: refusal });
+      `Failed to acquire lease for environment "Andrecomp Sandbox" (sandbox): ${refusal.message}`, { cause: refusal });
     f.deps.scheduleBoundedRetryForRun.mockResolvedValueOnce({ outcome: "not_scheduled", reason: "Fixture scheduler boundary", issueId: null });
     await f.completion.failRunSetup(f.setup(wrapped));
     expect(await read(f.run.id)).toMatchObject({ status: "failed", errorCode: "plugin_worker_unavailable",

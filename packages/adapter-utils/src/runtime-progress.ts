@@ -93,7 +93,7 @@ export function createRuntimeProgressReporter(
   const now = options.now ?? Date.now;
   // "sandbox" is the transport key, not product vocabulary: progress lines are
   // user-visible run status, and the product refers to the run's machine as an
-  // environment ("Andrecomp Computer" on managed deployments).
+  // environment ("Andrecomp Sandbox" on managed deployments).
   const targetDisplay = options.target === "sandbox" ? "environment" : options.target;
   const prefix = `[andrecomp] ${options.phase}${options.label ? ` ${options.label}` : ""} ${options.direction} ${targetDisplay}`;
 

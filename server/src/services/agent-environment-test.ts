@@ -55,7 +55,7 @@ export function agentEnvironmentTestService(db: Db, pluginWorkerManager?: Plugin
     if ((await instanceSettings.getExperimental()).enableManagedSandboxOnly === true) {
       const managed = await environmentsSvc.findManagedSandboxEnvironment(companyId);
       if (!managed) {
-        throw unprocessable("The managed sandbox is unavailable. Restore Andrecomp Computer and retry.", {
+        throw unprocessable("The managed sandbox is unavailable. Restore Andrecomp Sandbox and retry.", {
           code: "managed_sandbox_unavailable",
         });
       }

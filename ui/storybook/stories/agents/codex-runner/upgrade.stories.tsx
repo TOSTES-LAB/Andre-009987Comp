@@ -23,7 +23,7 @@ function installUpgradeFixture({ harness = "codex_local", failOnce = false, inco
   resetOnboardingFixtureState();
   setOnboardingFixtureState({ environments: "local", authSignal: "present", localLoginStatus: "ready" });
   const profile = harness === "claude_local" ? { provider: "acpx", acpxAgent: "claude" } : { provider: "codex" };
-  const savedComputer = { id: "environment-native-recovery", name: "Andrecomp Computer", driver: "sandbox", status: "active",
+  const savedComputer = { id: "environment-native-recovery", name: "Andrecomp Sandbox", driver: "sandbox", status: "active",
     config: { provider: "daytona", snapshot: "managed-snapshot" }, metadata: { managedByAndrecomp: true } };
   let qualified = false;
   let agent = { ...storybookAgents[0]!, urlKey: "migration-agent", name: harness === "claude_local" ? "ClaudeWriter" : "CodexCoder",

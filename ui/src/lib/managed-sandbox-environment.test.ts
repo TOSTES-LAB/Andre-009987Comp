@@ -17,11 +17,11 @@ describe("managed sandbox environment helpers", () => {
   it("labels platform-managed rows by name alone and keeps the driver suffix elsewhere", () => {
     expect(
       environmentDisplayLabel({
-        name: "Andrecomp Computer",
+        name: "Andrecomp Sandbox",
         driver: "sandbox",
         metadata: { managedByAndrecomp: true },
       }),
-    ).toBe("Andrecomp Computer");
+    ).toBe("Andrecomp Sandbox");
     expect(
       environmentDisplayLabel({ name: "E2B", driver: "sandbox", metadata: null }),
     ).toBe("E2B · sandbox");

@@ -859,7 +859,7 @@ describe("AgentConfigForm environment selector", () => {
   });
 
   it.each(["explicit", "instance", "managed", "env-draft"])("qualifies a saved Daytona Claude agent and upgrades with its legacy turn limit (%s environment)", async mode => {
-    const environment = makeEnvironment({ id: "daytona-computer", name: "Andrecomp Computer", driver: "sandbox", status: "active",
+    const environment = makeEnvironment({ id: "daytona-computer", name: "Andrecomp Sandbox", driver: "sandbox", status: "active",
       config: { provider: "daytona", snapshot: "managed-snapshot" }, metadata: { managedByAndrecomp: true } });
     const inventory = (qualified: boolean) => [
       { type: "claude_local", supportedRunners: qualified ? ["andrecomp", "legacy"] : ["legacy"], defaultRunner: qualified ? "andrecomp" : "legacy" },
@@ -917,7 +917,7 @@ describe("AgentConfigForm environment selector", () => {
   });
 
   it.each(["probe", "unsupported", "settings-changed"])("does not save after Daytona %s", async failure => {
-    const environment = makeEnvironment({ id: "daytona-computer", name: "Andrecomp Computer", driver: "sandbox", status: "active",
+    const environment = makeEnvironment({ id: "daytona-computer", name: "Andrecomp Sandbox", driver: "sandbox", status: "active",
       config: { provider: "daytona", snapshot: "managed-snapshot" } });
     mockAdaptersApi.list.mockResolvedValue([{ type: "claude_local", supportedRunners: ["legacy"], defaultRunner: "legacy" }, { type: "andrecomp_runner", supportedRunners: ["legacy"], defaultRunner: "legacy" }]);
     let finish!: () => void;
@@ -1680,12 +1680,12 @@ describe("AgentConfigForm environment selector", () => {
     expect(selector?.textContent).toContain("Fake Sandbox · sandbox");
   });
 
-  it("labels the platform-managed instance default by name, without the driver key", async () => {
+  it.each(["Andrecomp Sandbox", "Andrecomp Computer", "Custom managed environment"])("labels the platform-managed instance default %s by its configured name", async (name) => {
     mockInstanceSettingsApi.get.mockResolvedValue({ defaultEnvironmentId: "managed-1" });
     const result = await renderForm([
       makeEnvironment({
         id: "managed-1",
-        name: "Andrecomp Computer",
+        name,
         driver: "sandbox",
         config: { provider: "daytona" },
         metadata: { managedByAndrecomp: true },
@@ -1695,10 +1695,23 @@ describe("AgentConfigForm environment selector", () => {
 
     const selector = await environmentOptions(result.container);
 
-    expect(selector?.textContent).toContain("Default: Andrecomp Computer");
-    expect(selector?.textContent).toContain("Andrecomp Computer");
+    expect(selector?.textContent).toContain(`Default: ${name}`);
+    expect(selector?.textContent).toContain(name);
     expect(selector?.textContent).not.toContain("(sandbox)");
     expect(selector?.textContent).not.toContain("· sandbox");
+  });
+
+  it("uses Andrecomp Sandbox while the managed default environment is unavailable", async () => {
+    mockInstanceSettingsApi.getExperimental.mockResolvedValue({ enableEnvironments: true, enableManagedSandboxOnly: true });
+    mockInstanceSettingsApi.get.mockResolvedValue({ defaultEnvironmentId: null });
+    const result = await renderForm([
+      makeEnvironment({ id: "other-sandbox", name: "Other sandbox", driver: "sandbox", config: { provider: "daytona" } }),
+    ]);
+    roots.push(result.root);
+
+    const selector = await environmentOptions(result.container);
+    expect(selector?.textContent).toContain("Default: Andrecomp Sandbox");
+    expect(selector?.textContent).not.toContain("Andrecomp Computer");
   });
 
   it("renders non-local adapter config fields in the Adapter card", async () => {

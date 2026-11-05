@@ -3301,7 +3301,7 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
           {
             code: "environment_identity",
             level: "info",
-            message: 'Environment test identity for "Andrecomp Computer".',
+            message: 'Environment test identity for "Andrecomp Sandbox".',
             detail: "andrecompLeaseId=ff9e58e9; provider=daytona",
           },
         ],

@@ -329,7 +329,7 @@ export function createSettingsFixtures(
               url.pathname.split("/").at(-2) ?? agent.adapterType,
               outcome,
               data.adapterConfig?.model ?? "",
-              "Andrecomp Computer",
+              "Andrecomp Sandbox",
             ),
           );
         }
