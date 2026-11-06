@@ -2,6 +2,7 @@ import type { SetIssueTitle } from "@andrecomp/shared";
 import { ISSUE_SUMMARIES_MAX_IDS } from "@andrecomp/shared";
 import type { IssueSummary } from "@andrecomp/shared";
 import type { ExecutionReconciliation } from "@andrecomp/shared";
+import type { IssueContextUsage } from "@andrecomp/shared";
 import type {
   AcceptedPlanDecompositionSummary,
   AskUserQuestionsAnswer,
@@ -370,6 +371,7 @@ export const issuesApi = {
     options
       ? api.get<Issue>(`/issues/${id}`, options)
       : api.get<Issue>(`/issues/${id}`),
+  getContextUsage: (id: string) => api.get<IssueContextUsage | null>(`/issues/${id}/context-usage`),
   getRunnerGoal: (id: string, agentId?: string | null) => {
     const query = agentId ? `?agentId=${encodeURIComponent(agentId)}` : "";
     return api.get<RunnerGoalProjection>(`/issues/${id}/runner-goal${query}`);

@@ -42,7 +42,7 @@ import { resumeNativeWorkspaceAfterOwnerStop } from "../services/native-runtime/
 import { retryNativeWorkspaceExport } from "../services/native-runtime/native-workspace-export-retry.js";
 import { reconstructNativeWorkspace, unreconciledNativeExportPredicate } from "../services/native-runtime/native-workspace-reconstruction.js";
 import { reconstructWorkspaceSchema } from "@andrecomp/shared";
-import { queuedInteractionId, readQueuedInteractionResponse, hasQueuedInteractionResponse } from "../services/queued-interaction-response.js";
+import { queuedInteractionId, readQueuedInteractionResponse, hasQueuedInteractionResponse, type QueuedInteractionResponse } from "../services/queued-interaction-response.js";
 import { deliverConversationComments, isConversation } from "../services/agent-conversations.js";
 import { assertOnboardingFirstTaskDependenciesAllowed } from "../services/onboarding-first-task-admission.js";
 import { resolveChatTaskAssignment } from "../services/chat-task-assignment.js";
@@ -7403,6 +7403,8 @@ export function issueRoutes(
     wake: Pick<IssueQueueWake, "id" | "companyId" | "payload" | "status" | "runId">;
     state: "deferred" | "queued";
     queueRun: Pick<IssueQueueRun, "runtimeMode"> | null;
+    /** The receipt already read for an interaction wake, reused by the queue builder. */
+    response?: QueuedInteractionResponse | null;
   };
 
   async function findQueuedCommentWake(
@@ -7454,8 +7456,14 @@ export function issueRoutes(
         continue;
       const isReceipt = Boolean(queuedInteractionId(wake.payload));
       if (isReceipt && receipt) continue;
+      // A receipt a run already received is not pending; a later one may be.
+      const readReceipt = () => readQueuedInteractionResponse(executor as Db, wake.companyId, issue.id, wake.payload);
       if (wake.status === "deferred_issue_execution") {
-        if (isReceipt) { receipt = { wake, state: "deferred", queueRun: null }; continue; }
+        if (isReceipt) {
+          const response = await readReceipt();
+          if (response) receipt = { wake, state: "deferred", queueRun: null, response };
+          continue;
+        }
         return { wake, state: "deferred", queueRun: null };
       }
       if (!wake.runId) continue;
@@ -7473,7 +7481,10 @@ export function issueRoutes(
         )
         .limit(1)
         .then((runRows) => runRows[0] ?? null);
-      if (queueRun && isReceipt) receipt = { wake, state: "queued", queueRun };
+      if (queueRun && isReceipt) {
+        const response = await readReceipt();
+        if (response) receipt = { wake, state: "queued", queueRun, response };
+      }
       else if (queueRun) return { wake, state: "queued", queueRun };
     }
     return receipt;
@@ -7483,11 +7494,9 @@ export function issueRoutes(
     executor: IssueQueueDb,
     issueId: string,
     wake: Pick<IssueQueueWake, "companyId" | "payload"> | null,
+    response: QueuedInteractionResponse | null,
   ) {
-    if (wake && queuedInteractionId(wake.payload)) {
-      const response = await readQueuedInteractionResponse(executor as Db, wake.companyId, issueId, wake.payload);
-      return response ? [response.comment] : [];
-    }
+    if (wake && queuedInteractionId(wake.payload)) return response ? [response.comment] : [];
     const ids = queuedCommentIdsFromWakePayload(wake?.payload);
     if (ids.length === 0) return [];
     const rows = await executor
@@ -7516,10 +7525,17 @@ export function issueRoutes(
         ? await findQueuedCommentWake(input.executor, input.issue)
         : input.queueState;
     const wake = queueState?.wake ?? null;
+    // Read an interaction receipt once per snapshot.
+    const response = wake && queuedInteractionId(wake.payload)
+      ? queueState?.response !== undefined
+        ? queueState.response
+        : await readQueuedInteractionResponse(input.executor as Db, input.issue.companyId, input.issue.id, wake.payload)
+      : null;
     const comments = await queueCommentsForWake(
       input.executor,
       input.issue.id,
       wake,
+      response,
     );
     const assignedAgent = input.issue.assigneeAgentId
       ? await input.executor
@@ -7563,7 +7579,6 @@ export function issueRoutes(
       actorId: input.actor.actorId,
     });
     if (wake && queuedInteractionId(wake.payload)) {
-      const response = await readQueuedInteractionResponse(input.executor as Db, input.issue.companyId, input.issue.id, wake.payload);
       if (response?.source.requiresFreshSession) queue.steeringDisposition = "unsupported";
       queue.entries = response ? [{ comment: response.comment, source: response.source, position: 0, canEdit: false, canDiscard: false }] : [];
     }
@@ -14807,26 +14822,51 @@ export function issueRoutes(
           runToStopForReassignment.companyId === existing.companyId &&
           runToStopForReassignment.contextSnapshot?.issueId === existing.id;
         if (runToStopForReassignment && !isHumanSelfHandoff) {
-          const cancelled = await heartbeat.cancelRun(
-            runToStopForReassignment.id,
-            "Cancelled before issue reassignment",
-            {
-              errorCode: "issue_reassigned",
-              resultJson: { reassignmentStopConfirmed: true, issueMutationStopId },
-              eventMessage: "run cancelled before issue reassignment",
-              eventPayload: { issueId: existing.id },
-            },
-          );
-          if (!cancelled || cancelled.status !== "cancelled") {
-            throw conflict(
-              "The active agent run could not be stopped before reassignment",
+          let cancelled: Awaited<ReturnType<typeof heartbeat.cancelRun>> = null;
+          try {
+            cancelled = await heartbeat.cancelRun(
+              runToStopForReassignment.id,
+              "Cancelled before issue reassignment",
               {
-                code: "runner_goal_reassignment_stop_unconfirmed",
-                runId: runToStopForReassignment.id,
+                errorCode: "issue_reassigned",
+                resultJson: { reassignmentStopConfirmed: true, issueMutationStopId },
+                eventMessage: "run cancelled before issue reassignment",
+                eventPayload: { issueId: existing.id },
               },
             );
+          } catch (error) {
+            // The durable Stop intent is committed; only its remote owner's
+            // acknowledgement is outstanding. Settle below like any pending Stop.
+            if (!(error instanceof HttpError && parseObject(error.details).code === "native_stop_pending")) throw error;
           }
-          interruptedRunId = cancelled.id;
+          if (!cancelled || cancelled.status !== "cancelled") {
+            // A native Stop can outlast this request. Once its durable fence is
+            // committed the stop will complete, so apply the reassignment now:
+            // the new assignee's wake defers behind the stopping run and is
+            // promoted when it releases the issue. Refusing here would stop the
+            // work but drop the reassignment. A run that already finished on its
+            // own needs no stop. A failed native run may still own a same-run
+            // retry, so it keeps requiring a confirmed stop.
+            // Read the server-owned Stop fence through the bounded evidence projection,
+            // which is available even where the presentation projection hides resultJson.
+            const current = await heartbeat.getRun(runToStopForReassignment.id, { includeExecutionEvidence: true });
+            const finishedWithoutRetry = Boolean(current) && (
+              ["succeeded", "cancelled", "timed_out", "interrupted"].includes(current!.status) ||
+              (current!.status === "failed" && current!.runtimeMode !== "native"));
+            const stopDurablyRequested = current?.runtimeMode === "native" &&
+              ["running", "queued"].includes(current.status) &&
+              parseObject(current.resultJson).reassignmentStopRequested === true;
+            if (!finishedWithoutRetry && !stopDurablyRequested) {
+              throw conflict(
+                "The active agent run could not be stopped before reassignment",
+                {
+                  code: "runner_goal_reassignment_stop_unconfirmed",
+                  runId: runToStopForReassignment.id,
+                },
+              );
+            }
+          }
+          interruptedRunId = runToStopForReassignment.id;
         }
       }
 
@@ -16871,16 +16911,15 @@ export function issueRoutes(
         });
         assertQueueMutationTarget({ queue: locked.queue, queueId: req.body.queueId, revision: req.body.revision });
         const freshResponse = locked.queue.entries.some(entry => entry.source?.requiresFreshSession);
-        const stoppedNativeQueue = locked.queue.protocol === "andrecomp_runner_v1" &&
-          (!locked.activeRun || ["succeeded", "failed", "timed_out", "interrupted", "cancelled"].includes(locked.activeRun.status));
+        // The UI offers Send whenever no turn is running. The issue's run may
+        // still be waiting to start or to retry: it has no turn to interrupt,
+        // so save the click and deliver the queue as soon as that run stops.
+        const previousRunNotRunning = !locked.activeRun || locked.activeRun.status !== "running";
+        const stoppedNativeQueue = locked.queue.protocol === "andrecomp_runner_v1" && previousRunNotRunning;
         if ((locked.queue.protocol !== "legacy" && !freshResponse && !stoppedNativeQueue) || locked.state !== "deferred" ||
             !locked.queue.entries.length ||
             (locked.activeRun && locked.activeRun.agentId !== locked.wake.agentId)) {
           throw conflict("This queue does not support interruption");
-        }
-        if (locked.activeRun && locked.activeRun.status !== "running" &&
-            !["succeeded", "failed", "timed_out", "interrupted", "cancelled"].includes(locked.activeRun.status)) {
-          throw conflict("The previous run has not stopped");
         }
         if (locked.activeRun?.status === "running" && locked.activeRun.id !== req.body.targetRunId) {
           throw conflict("The queued message targets a stale run", { code: "queued_comment_stale_target" });

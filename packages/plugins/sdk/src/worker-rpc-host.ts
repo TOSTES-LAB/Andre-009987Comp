@@ -9,7 +9,8 @@ import { environmentSyncErrorData, withEnvironmentSyncErrorCapture } from "./env
 import { environmentRunnerIngressErrorData } from "./environment-runner-ingress-error.js";
 import { environmentStopErrorData } from "./environment-stop-error.js";
 import { environmentResumeErrorData } from "./environment-resume-error.js";
-import { environmentTaskErrorData } from "./environment-task-error.js";
+import { environmentTaskErrorCodeData, environmentTaskErrorData } from "./environment-task-error.js";
+import { workspaceOperationErrorData } from "./workspace-operation-error.js";
 import { createInvocationTracer } from "./invocation-tracer.js";
 import { createPluginIdleDrain } from "./idle-drain.js";
 /**
@@ -1654,7 +1655,9 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
           : method === "environmentSyncOut" ? environmentSyncErrorData(err)
           : method === "environmentRunnerIngressEndpoint" ? environmentRunnerIngressErrorData(err)
           : method === "environmentStopLease" ? environmentStopErrorData(err)
-          : method === "environmentResumeLease" ? environmentResumeErrorData(err) : taskError));
+          : method === "environmentResumeLease" ? environmentResumeErrorData(err)
+          : method === "environmentTask" ? taskError ?? environmentTaskErrorCodeData(err)
+          : method === "workspaceOperation" ? workspaceOperationErrorData(err) : undefined));
     } finally {
       done?.();
     }

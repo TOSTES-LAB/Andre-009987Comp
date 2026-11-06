@@ -3,6 +3,7 @@ import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parse } from 'yaml';
+import { validateCompanySecretBindingApprovalSource } from './chat-full-catalog-testops-manifest.mjs';
 import { model, catalogDefinition, catalogWorkflow } from './chat-completion-testops-contract.mjs';
 
 export function paidWorker(definition, called) {
@@ -55,6 +56,7 @@ export async function verifyHostContract(workspace, temporaryRoot, env = process
           || execution.task.attemptTimeoutMs.local !== descriptor.attemptTimeoutMs
           || execution.suite.definitionMetadata?.companyAndAgentBudgetCents !== 500
           || execution.suite.definitionMetadata?.maximumAttemptsPerCell !== 1)) throw new Error('Pinned source selection mismatch');
+      if (full) validateCompanySecretBindingApprovalSource(descriptor, execution.task);
       const controlEnv = { GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: 'TOSTES-LAB/Andre-009987Comp', GITHUB_REF: 'refs/heads/master',
         GITHUB_WORKFLOW_REF: `TOSTES-LAB/Andre-009987Comp/${workflow}@refs/heads/master`, GITHUB_RUN_ID: '1', GITHUB_RUN_ATTEMPT: '1',
         ANDRECOMP_RUNNER_E2E_SOURCE_SHA: targetSha, ANDRECOMP_CHAT_COMPLETION_TESTOPS: paid.env.ANDRECOMP_CHAT_COMPLETION_TESTOPS,
