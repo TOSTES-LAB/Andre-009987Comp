@@ -37,8 +37,9 @@ COPY ui/package.json ./ui/package.json
 COPY cli/package.json ./cli/package.json
 # The complete resolved lock (including transitive integrity hashes) is reviewed.
 # Reject registry-time drift BEFORE installing packages or running lifecycle code.
-# Refresh this digest together with source/provider dependency changes.
-ARG ANDRECOMP_RUNNER_LOCK_SHA256=342a01e487a68d0ad9cb8d8852a0ffed4dd7b0fa58e2e047d1064e9340fe6f57
+# Every build supplies the digest of the reviewed lockfile it was given; there
+# is no default, so a stale fixed value can never masquerade as lockfile drift.
+ARG ANDRECOMP_RUNNER_LOCK_SHA256
 ARG ANDRECOMP_RUNNER_SOURCE_REVISION
 # Optional qualification assets; this never promotes candidate profiles.
 ARG ANDRECOMP_RUNNER_CANDIDATE_PROVIDERS=
@@ -46,7 +47,11 @@ ARG ANDRECOMP_RUNNER_CANDIDATE_PROVIDERS=
 # Subtract all available CPUs to select its minimum (one tarball worker).
 # Install and build in one layer so the disposable workspace and package store
 # do not remain in an earlier snapshot while BuildKit exports the portable pack.
-RUN test -n "${ANDRECOMP_RUNNER_SOURCE_REVISION}" \
+RUN if ! printf '%s' "${ANDRECOMP_RUNNER_LOCK_SHA256}" | grep -Eqx '[0-9a-f]{64}'; then \
+      echo 'ANDRECOMP_RUNNER_LOCK_SHA256 build arg must be the SHA-256 of pnpm-lock.yaml: --build-arg "ANDRECOMP_RUNNER_LOCK_SHA256=$(shasum -a 256 pnpm-lock.yaml | cut -d " " -f 1)"' >&2; \
+      exit 1; \
+    fi \
+    && test -n "${ANDRECOMP_RUNNER_SOURCE_REVISION}" \
     && export PNPM_WORKERS="$(node -p 'require("node:os").availableParallelism()')" \
     && printf '%s  pnpm-lock.yaml\n' "${ANDRECOMP_RUNNER_LOCK_SHA256}" > /tmp/provider-lock.sha256 \
     && sha256sum -c /tmp/provider-lock.sha256 \

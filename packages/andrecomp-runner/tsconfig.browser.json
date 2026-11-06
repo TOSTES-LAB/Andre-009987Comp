@@ -14,22 +14,21 @@
       "vite/client",
       "node"
     ],
-    "baseUrl": ".",
     "paths": {
       "@andrecomp/andrecomp-runner/browser": [
-        "src/browser/index.ts"
+        "./src/browser/index.ts"
       ],
       "@andrecomp/andrecomp-runner/react": [
-        "src/react/index.ts"
+        "./src/react/index.ts"
       ],
       "@andrecomp/andrecomp-runner/standalone": [
-        "src/standalone/index.ts"
+        "./src/standalone/index.ts"
       ],
       "@andrecomp/andrecomp-runner/styles.css": [
-        "styles.css"
+        "./styles.css"
       ],
       "@andrecomp-runner-local/capability": [
-        "src/scenarios/index.ts"
+        "./src/scenarios/index.ts"
       ]
     }
   },

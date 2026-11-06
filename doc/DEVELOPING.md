@@ -1054,7 +1054,63 @@ defines synchronization, permissions and evidence. After map edits, run
 `node scripts/check-maps.mjs` for structural/reference checks; it does not start an
 instance or qualify access as an agent.
 
-Use the cheap local default unless you are specifically working on browser flows:
+### Incremental local verification
+
+Use the local verification entry point for ordinary issue work:
+
+```sh
+pnpm verify
+pnpm verify --explain
+pnpm verify --base origin/master
+```
+
+The command compares the actual working tree with the merge base of the supplied
+local ref, including committed, staged, unstaged, deleted, renamed, and untracked
+paths. The default ref is local `origin/master`, falling back to `master`; it does
+not fetch. Tests read the current working-tree bytes. CI must still verify the
+final committed revision. The task/input policy, conservative import and file-read
+graph, exact Vitest specifications, and stable test runner are shared with CI.
+Serialized server tests retain their owner. Native server tests remain in local
+coverage. Selected chat tests retain six sequential isolated line shards.
+
+Successful selected checks with complete input graphs are reusable in this
+worktree. Opaque filesystem, subprocess, network, generated/untracked-module, and
+unreviewed dependency consumers continue to run fresh. A selected pass never
+satisfies a full run. Non-isolated projects and uncertain selection require broader
+verification. The command prints the local test scope and remaining CI lanes.
+
+An unchanged repeat can reuse both graph discovery and passing checks. Keys include
+actual tracked and non-ignored file contents (including dirty and untracked files),
+the shared audited-prose exclusions, dotenv files, lockfile, installation metadata,
+dependency bindings and installed package contents, the complete effective child environment, Node/pnpm/Rust toolchains,
+platform, checkout path, comparison, and selection. Values from the environment
+are hashed, not written to results. External database/live-test settings and
+out-of-checkout source symlinks disable reuse. Cache state lives under the ignored
+`.turbo/local-verify/` directory and is not shared across worktrees or machines.
+Installed package content digests are memoized against file identity, size, mode,
+and nanosecond modification/change times; every check rescans the installation.
+Generated Vite/cache directories are excluded. The first run after installation
+reads package contents; unchanged repeats avoid reading those bytes again.
+`last-run.json` retains the latest completed execution's status and scope. Failed/interrupted
+attempts do not publish passes. Inputs changed during a run invalidate its result.
+
+Exit 2 reports a broad input, incomplete graph, or unsupported selection. It does
+not silently launch the full suite or claim affected coverage passed. Use focused
+checks and required CI to close that gap, or explicitly request a broad local run:
+
+```sh
+pnpm verify --full
+pnpm verify --no-cache
+```
+
+`--full` executes the complete existing Vitest path with fresh integration coverage.
+`--no-cache` bypasses pass/plan reuse and does not save passes. A fresh failed or
+interrupted attempt removes its old reusable pass. Required CI on the final tested
+revision may supply broad typecheck/build/test coverage for a PR handoff; do not
+repeat a full local suite solely because a chat resumed or a PR is ready. Keep
+release checks and any real browser, provider, local-platform or acceptance proof.
+
+The full local Vitest commands remain available:
 
 ```sh
 pnpm test
@@ -1092,7 +1148,9 @@ the development server's unbundled module graph on each navigation. Browser
 assertion deadlines and retries remain unchanged. Use `pnpm dev` separately when
 verifying Vite/HMR behavior.
 
-For normal issue work, start with the smallest targeted check that proves the change. Reserve repo-wide typecheck/build/test runs for PR-ready handoff or changes broad enough that narrow checks do not cover the risk.
+For normal issue work, start with the smallest targeted check that proves the change.
+Use the incremental command above and required final-revision CI for PR handoff.
+Run broad local checks when an unresolved risk or explicit qualification needs them.
 
 The Runner transport suite keeps attachment recovery, warm attachment, live
 adoption, and suspension in separate test files. Vitest can schedule these
@@ -1260,6 +1318,40 @@ that file, and it fails when a referenced config does not exist yet. The
 `tests/runner-e2e/native-completion-checks.mjs` still checks that project as one
 program. That program peaks at about 15 GiB at default settings and about 8 GiB on
 one thread.
+
+#### Typecheck test files outside the build
+
+Most package tsconfigs exclude tests, and Vitest strips types, so a type error in
+one of those tests fails nothing. `scripts/typecheck-test-programs.mjs` reads them
+through separate programs, usually a `tsconfig.test.json` beside the package's
+`tsconfig.json`:
+
+```sh
+node scripts/typecheck-test-programs.mjs --low-memory
+node scripts/typecheck-test-programs.mjs packages/andrecomp-runner/tsconfig.test.json
+```
+
+The first form runs in the required `Typecheck + Release Registry` job. It checks
+one program at a time and the largest peaks below 2 GiB. It then fails if a tracked
+`*.test.ts(x)` or `*.spec.ts(x)` file is in no program. The compiler's file list
+decides that, because `include` silently drops `foo.test.tsx` when `foo.test.ts`
+exists.
+
+To add a test directory, add it to the `include` of the package's
+`tsconfig.test.json`. To add a package, add a program to `PROGRAMS` in the script.
+
+Sandbox providers are outside the root workspace, so the root install has none of
+their SDKs. `scripts/typecheck-sandbox-providers` is a small workspace that lists
+them and holds one lockfile. Its install replaces any standalone `node_modules` in
+those providers. After changing a provider's `package.json`, refresh that lockfile:
+
+```sh
+pnpm -C scripts/typecheck-sandbox-providers install --ignore-scripts --lockfile-only
+```
+
+Do not commit a lockfile inside a provider.
+`scripts/build-standalone-public-packages.mjs` uses a frozen install when one
+exists, which changes what a release resolves.
 
 #### Reused Runner build in the server build
 
@@ -1827,6 +1919,37 @@ that the whole web server is disposable or that all execution and recovery paths
 survive web-server replacement. Run-log/trace storage and producer retention are
 separate changes.
 
+### Managed environments
+
+The `environments` list in `ANDRECOMP_MANAGED_CONFIG` declares instance-level
+environments that boot provisions and tenants cannot edit. It holds at most one
+sandbox entry (no `driver`, or `driver: "sandbox"`) and any number of
+`driver: "plugin"` entries. A plugin entry names a plugin by its manifest id
+(`pluginKey`) and one of its environment drivers:
+
+```json
+{
+  "name": "Remote Host",
+  "description": "Runs the agent on a remote host",
+  "driver": "plugin",
+  "pluginKey": "example.remote-host-plugin",
+  "driverKey": "tasks",
+  "driverConfig": {}
+}
+```
+
+Names and `pluginKey`–`driverKey` pairs must be unique, and `driverConfig` must
+not contain secret-like keys. Any other key refuses startup. `plugins.autoInstall`
+holds catalog keys, not manifest ids, so boot also refuses to start unless an
+auto-installed bundled or distribution catalog entry installs the entry's
+`pluginKey`.
+
+Boot validates the driver config through the plugin, marks the row
+`managedPluginEnvironment: "<pluginKey>:<driverKey>"`, and adopts an existing
+unmarked row for the same plugin and driver. While the plugin is down, the row is
+archived; it comes back when the worker is ready. Removing an entry never archives
+its row. Plugin entries do not change the instance default.
+
 ### Experimental native remote workspace storage
 
 `experimental.remoteWorkspaceStorageEnabled` is a managed feature, on by default
@@ -1938,6 +2061,13 @@ publication. Saved nested sources must still belong to the same company and
 project with the same repository URL; publication locks and rechecks those source
 rows. Imports from mutable local folders still recapture and compare the
 current files; a saved upload does not permit later local edits to be discarded.
+
+If every recorded snapshot upload is definitively absent, an unpublished
+archived Git import can recapture the same validated logical source. Private Git
+administrative bytes can differ between reconstructions. The original journal
+and every upload attempt remain recorded; available prior uploads and concurrent
+publication winners are reused. Unknown or corrupt objects block recapture.
+The source recipe and ownership checks still gate authority publication.
 
 When the verified Git source still exists, reconstruction also copies its local
 `info/exclude` rules into the private repository before applying a saved restore
@@ -2608,6 +2738,13 @@ and interaction bindings, the displayed wait reason, and fresh-session flags.
 They read only the queued run's runtime mode. Mutation locks retain complete
 wake and run rows, so edits, ordering, interruption, and saved execution inputs
 keep their existing write contract.
+
+The task composer offers Steer when the native session has an active provider
+turn that accepts steering. If steering is unavailable or unsupported, it offers
+an explicit Interrupt action instead. Interrupt records the board user's intent,
+requests cancellation, and delivers the saved queue through normal admission after
+the previous execution stops. Preparation and cleanup can keep messages queued;
+the action does not bypass Stop confirmation or execution gates.
 
 Run retrieval and session state are in `server/src/services/heartbeat/run-state.ts`.
 It owns bounded run projections, database encoding checks, task session reads and
@@ -4622,3 +4759,15 @@ and background revalidation still apply. Recent-window catch-up retains messages
 observed before navigation. Agent Chat can render from the current person's
 company-scoped navigation list, carrying its original fetch timestamp so stale
 conversations refresh in the background. No conversation is created by a read.
+
+### Remote repository admission saves
+
+Remote admission validates each registered repository against its current sandbox,
+origin, and pinned commit. A matching descriptor in the committed snapshot receipt
+allows admission without another archive upload. New repositories and legacy
+repositories without that receipt require one workspace snapshot for the admission
+batch. Repository ready receipts publish after the snapshot commits. An upload
+failure remains retryable even when the clone directory already exists. Later
+workspace saves retain repository coverage only for directories present in the
+captured archive. Deleted checkouts lose coverage and can be acquired again.
+A failed batch upload marks the affected repository rows as needing repair.

@@ -2616,7 +2616,8 @@ export function buildWorkspaceConfigFreshnessOperation(
       previousWorkspaceId: input.previousWorkspaceId,
       activeWorkspaceId: input.activeWorkspaceId,
     },
-    system: `[andrecomp] ${workspaceConfigFreshnessActionLabel(input.decision.action)} after config freshness check${categorySummary}: ${reasonSummary}\n`,
+    system: `[andrecomp] ${(input.workspaceReused && input.decision.action === "replace"
+      ? "reused execution workspace" : workspaceConfigFreshnessActionLabel(input.decision.action))} after config freshness check${categorySummary}: ${reasonSummary}\n`,
   };
 }
 

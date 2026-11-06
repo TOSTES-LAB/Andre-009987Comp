@@ -4,7 +4,7 @@ import type { AndrecompPluginManifestV1, ResourceLifecycleEvent } from "../src/t
 
 const manifest: AndrecompPluginManifestV1 = {
   id: "fixture.lifecycle", apiVersion: 1, version: "1.0.0", displayName: "Lifecycle", description: "Fixture",
-  author: "Tests", categories: ["automation"], capabilities: ["events.subscribe"], entrypoints: {},
+  author: "Tests", categories: ["automation"], capabilities: ["events.subscribe"], entrypoints: { worker: "./worker.js" },
 };
 
 describe("Lifecycle inbox test harness", () => {
