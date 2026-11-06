@@ -39,7 +39,7 @@ describe.skipIf(!support.supported)('skill source persistence', () => {
     process.env.ANDRECOMP_SKILL_PACKAGE_STORAGE_ENABLED = "true";
     if (externalUrl) await applyPendingMigrations(externalUrl);
     else testDb = await startEmbeddedPostgresTestDatabase('andrecomp-skill-sources-');
-    db = createDb(externalUrl ?? testDb.connectionString);
+    db = createDb(externalUrl ?? testDb.connectionString, { maxConnections: 4 });
     home = await fs.mkdtemp(path.join(os.tmpdir(), 'andrecomp-source-test-')); process.env.ANDRECOMP_HOME = home;
     await db.insert(companies).values({ id: companyId, name: 'Skills', issuePrefix: 'SKL' });
   }, 30000);

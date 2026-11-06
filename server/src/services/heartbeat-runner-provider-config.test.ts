@@ -150,7 +150,7 @@ describe("Andrecomp Runner native provider configuration", () => {
     expect(changedModel).not.toHaveProperty("modelReasoningEffort");
     expect(resolveAndrecompRunnerNativeProviderInput({ backend: "acpx_runtime", adapterConfig: { ...base, chrome: true, maxTurnsPerRun: 1000 } }))
       .toEqual(resolveAndrecompRunnerNativeProviderInput({ backend: "acpx_runtime", adapterConfig: base }));
-    expect(() => resolveAndrecompRunnerNativeProviderInput({ backend: "acpx_runtime", adapterConfig: { ...base, networkScope: "unrestricted" } })).toThrow("Legacy runner");
+    expect(() => resolveAndrecompRunnerNativeProviderInput({ backend: "acpx_runtime", adapterConfig: { ...base, networkScope: "unrestricted" } })).toThrow("networkScope");
   });
 
   it("projects Grok task model and effort while retaining the search policy and account", () => {

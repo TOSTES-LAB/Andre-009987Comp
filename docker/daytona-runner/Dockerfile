@@ -7,11 +7,32 @@ FROM rust:1.97-bookworm@sha256:408fe88047cef61a2087653b0c5255fa51c0f2d6d94ddedd7
 
 WORKDIR /workspace/packages/andrecomp-runner/runner
 COPY packages/andrecomp-runner/runner/Cargo.toml packages/andrecomp-runner/runner/Cargo.lock ./
+COPY packages/andrecomp-runner/runner/crates/runner-core/Cargo.toml ./crates/runner-core/Cargo.toml
+# Compile the locked third-party dependency graph against placeholder targets
+# so this layer depends only on the manifests and lockfile. Runner source
+# changes then reuse it from the registry cache and recompile one crate instead
+# of the whole AWS/TLS graph (about five of the build's six and a half minutes).
+# The placeholder targets' outputs and fingerprints are deleted, so the next
+# step always compiles the real runner sources against the same lockfile.
+RUN set -eu; \
+    mkdir -p crates/runner-core/src; \
+    : > crates/runner-core/src/lib.rs; \
+    for target in $(grep -Eo 'src/bin/[A-Za-z0-9_-]+\.rs' crates/runner-core/Cargo.toml); do \
+      mkdir -p "crates/runner-core/$(dirname "$target")"; \
+      printf 'fn main() {}\n' > "crates/runner-core/$target"; \
+    done; \
+    cargo build --locked --release -j 2 -p andrecomp-runner-core --bin andrecomp-runnerd; \
+    rm -rf crates/runner-core/src \
+      target/release/.fingerprint/andrecomp-runner-core-* \
+      target/release/deps/*andrecomp_runner* \
+      target/release/andrecomp-runnerd target/release/andrecomp-runnerd.d; \
+    du -sk target /usr/local/cargo/registry
 COPY packages/andrecomp-runner/runner/crates ./crates
 COPY packages/andrecomp-runner/protocol ../protocol
 COPY packages/andrecomp-runner/acpx-profiles.json packages/andrecomp-runner/antigravity-distributions.json ../
-# Retain only the finished executable in this layer. Keeping Cargo's target and
-# download trees makes BuildKit run out of disk while exporting the final image.
+# Only the finished executable leaves this stage. The final image never carries
+# Cargo's target or download trees; the dependency layer above keeps them only
+# in this builder stage and the trusted build cache.
 RUN cargo build --locked --release -j 2 -p andrecomp-runner-core --bin andrecomp-runnerd \
     && strip /workspace/packages/andrecomp-runner/runner/target/release/andrecomp-runnerd \
     && install -m 0755 target/release/andrecomp-runnerd /usr/local/bin/andrecomp-runnerd \
@@ -122,20 +143,25 @@ COPY packages/andrecomp-runner/scripts/provision-grok.mjs /tmp/grok-provision/sc
 COPY packages/andrecomp-runner/src/providers/grok/platforms.json /tmp/grok-provision/src/providers/grok/platforms.json
 RUN node /tmp/grok-provision/scripts/provision-grok.mjs /opt/andrecomp/providers/grok/1.0.13/grok && rm -rf /tmp/grok-provision
 
-COPY --from=runnerd-build /usr/local/bin/andrecomp-runnerd /usr/local/bin/andrecomp-runnerd
-COPY --chown=0:0 --from=provider-pack-build /provider-pack /opt/andrecomp-runner/provider-pack
-RUN set -eu; for cli in codex claude opencode; do \
-      printf '#!/bin/sh\nexec /opt/andrecomp-runner/provider-pack/node_modules/.bin/%s "$@"\n' "$cli" > "/usr/local/bin/$cli"; \
-      chmod 755 "/usr/local/bin/$cli"; \
-    done
-
 # Keep revision-dependent metadata below the stable agent CLI installation
 # layers. A source-only image miss can then reuse those expensive layers from
 # the trusted registry cache.
+# This step must stay ABOVE the COPY --from steps. It does not wait for either
+# builder stage, so BuildKit downloads the cached base and CLI layers (about
+# four minutes) while runnerd and the provider pack compile, instead of after.
 ARG ANDRECOMP_RUNNER_CONTENT_ID
 ARG ANDRECOMP_RUNNER_SOURCE_REVISION
 RUN test -n "${ANDRECOMP_RUNNER_CONTENT_ID}" \
     && test -n "${ANDRECOMP_RUNNER_SOURCE_REVISION}"
+
+# --link builds each copied tree as an independent layer, so producing it does
+# not wait for the cached layers below to finish downloading.
+COPY --link --from=runnerd-build /usr/local/bin/andrecomp-runnerd /usr/local/bin/andrecomp-runnerd
+COPY --link --chown=0:0 --from=provider-pack-build /provider-pack /opt/andrecomp-runner/provider-pack
+RUN set -eu; for cli in codex claude opencode; do \
+      printf '#!/bin/sh\nexec /opt/andrecomp-runner/provider-pack/node_modules/.bin/%s "$@"\n' "$cli" > "/usr/local/bin/$cli"; \
+      chmod 755 "/usr/local/bin/$cli"; \
+    done
 
 RUN set -eu; \
     printf '%s\n' 'export PATH=/opt/andrecomp-runner/provider-pack/node_modules/.bin:$PATH' \

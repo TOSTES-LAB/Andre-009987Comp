@@ -160,6 +160,7 @@ test("the digest is stable, ignores outputs and caches, and tracks every kind of
       "packages/andrecomp-runner/node_modules/dep/index.js": "changed\n",
       "packages/andrecomp-runner/.vite/cache.json": '{"changed":true}\n',
       "packages/andrecomp-runner/runner/target/release/andrecomp-runnerd": "rebuilt\n",
+      "packages/andrecomp-runner/provider-assets/copilot/copilot": "installed by the build\n",
       "packages/andrecomp-eval-kernel/dist/index.js": "changed\n",
     });
     assert.equal(computeBuildInputsDigest(repoRoot).digest, before.digest, "an output changed the digest");

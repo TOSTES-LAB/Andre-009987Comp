@@ -57,15 +57,55 @@ import { HttpError } from "../errors.js";
 import { logger } from "../middleware/logger.js";
 import { environmentService } from "./environments.js";
 import type { ManagedSandboxEnvironmentReconcileAction } from "./environments.js";
-import { instanceSettingsService } from "./instance-settings.js";
+import { fillUnsetInstanceDefault, type FillInstanceDefaultResult } from "./managed-instance-default.js";
 import type { ManagedInstanceConfig } from "./managed-config.js";
 import type { ManagedResourceStockStatus } from "./managed-resource-drift.js";
 import { parseExecutionPolicyBootstrapEnv } from "./execution-policy-bootstrap.js";
 import { resolvePluginSandboxProviderDriverByKey } from "./plugin-environment-driver.js";
 import { pluginRegistryService } from "./plugin-registry.js";
+import { trackIdleWork } from "./task-admission.js";
 import { resolveBundledCatalogRoot, resolveBundledPluginInstalls } from "./bundled-plugins.js";
 import type { PluginWorkerManager } from "./plugin-worker-manager.js";
 import type { ManagedPluginEnvironmentReconcileAction } from "./managed-plugin-environments.js";
+
+/**
+ * Lifecycle of the recovery work `applyManagedEnvironments` leaves behind
+ * after boot (re-ensuring an archived environment when its plugin worker
+ * becomes ready).
+ */
+export interface ManagedEnvironmentRecovery {
+  /** Run one attempt as idle-tracked work, unless stopped. */
+  run(work: () => Promise<void>): void;
+  /** Register an unsubscribe function for `stop()`. Calls it at once when stopped. */
+  onStop(unsubscribe: () => void): void;
+  /** Unsubscribe every listener, refuse new attempts, and await unfinished ones. */
+  stop(): Promise<void>;
+}
+
+export function createManagedEnvironmentRecovery(): ManagedEnvironmentRecovery {
+  const inFlight = new Set<Promise<void>>();
+  const unsubscribers = new Set<() => void>();
+  let stopped = false;
+  return {
+    run(work) {
+      if (stopped) return;
+      const attempt: Promise<void> = trackIdleWork(work())
+        .catch(() => undefined)
+        .finally(() => { inFlight.delete(attempt); });
+      inFlight.add(attempt);
+    },
+    onStop(unsubscribe) {
+      if (stopped) unsubscribe();
+      else unsubscribers.add(unsubscribe);
+    },
+    async stop() {
+      stopped = true;
+      for (const unsubscribe of unsubscribers) unsubscribe();
+      unsubscribers.clear();
+      while (inFlight.size > 0) await Promise.allSettled([...inFlight]);
+    },
+  };
+}
 
 export interface ApplyManagedEnvironmentsOptions {
   env?: Record<string, string | undefined>;
@@ -90,7 +130,7 @@ export interface ApplyManagedEnvironmentsOptions {
    * Plugin entries also need `call`, to run the plugin's own config
    * validation; without it every plugin entry is treated as unavailable.
    */
-  workerManager?: Pick<PluginWorkerManager, "isRunning"> & Partial<Pick<PluginWorkerManager, "call">> & {
+  workerManager?: Pick<PluginWorkerManager, "isRunning"> & Partial<Pick<PluginWorkerManager, "call" | "onWorkerReady">> & {
     getWorker(pluginId: string):
       | {
           on(event: "ready", listener: (payload: { pluginId: string }) => void): void;
@@ -103,14 +143,11 @@ export interface ApplyManagedEnvironmentsOptions {
     ReturnType<typeof environmentService>,
     | "ensureManagedSandboxEnvironment"
     | "archiveManagedSandboxEnvironment"
-    | "getById"
-    | "update"
-    | "findManagedSandboxEnvironment"
     | "ensureManagedPluginEnvironment"
     | "archiveManagedPluginEnvironment"
   >;
-  /** Test seam: overrides the instance-settings service built from `db`. */
-  instanceSettings?: Pick<ReturnType<typeof instanceSettingsService>, "get" | "update">;
+  /** Test seam: overrides the locked fill of an unset instance default (`fillUnsetInstanceDefault`). */
+  fillInstanceDefault?: (environmentId: string) => Promise<FillInstanceDefaultResult>;
   /** Test seam: overrides the sandbox-provider plugin driver lookup. */
   resolveSandboxProviderDriver?: (input: {
     db: Db;
@@ -134,6 +171,13 @@ export interface ApplyManagedEnvironmentsOptions {
    * startup. When omitted, the list is resolved here the same way.
    */
   autoInstalledPluginKeys?: readonly string[];
+  /**
+   * Owns the post-boot recovery attempts and their `ready` subscriptions:
+   * each attempt counts as idle-tracked work, and `stop()` (called on
+   * shutdown before the database closes) unsubscribes and awaits unfinished
+   * attempts. Defaults to a controller nobody stops (tests).
+   */
+  recovery?: ManagedEnvironmentRecovery;
 }
 
 export interface ManagedPluginEnvironmentReconciliationOutcome {
@@ -202,43 +246,10 @@ export async function applyManagedEnvironments(
 ): Promise<ApplyManagedEnvironmentsResult | null> {
   if (!managedConfig) return null;
 
-  const settings = opts.instanceSettings ?? instanceSettingsService(db);
+  const fillInstanceDefault = opts.fillInstanceDefault
+    ?? ((environmentId: string) => fillUnsetInstanceDefault(db, environmentId));
   const environments = opts.environments ?? environmentService(db);
   const managedSandboxOnlyDeclared = managedConfig.features.enableManagedSandboxOnly === true;
-
-  // Mode-off default cleanup runs BEFORE any ensure, and regardless of
-  // whether the document still declares environments or the provider is
-  // available: a reconciliation-stamped default must not outlive the mode
-  // through the paths that skip per-entry reconciliation entirely — the
-  // declaration was removed, the provider is down, or the row was
-  // archived. Only a default that points at the managed row AND carries
-  // the `managedDefaultStamped` marker reverts; tenant-chosen defaults
-  // (no marker) are untouched.
-  if (!managedSandboxOnlyDeclared) {
-    try {
-      const managedRow = await environments.findManagedSandboxEnvironment(undefined, {
-        includeArchived: true,
-      });
-      if (
-        managedRow &&
-        managedRow.metadata?.managedDefaultStamped === true &&
-        ((await settings.get()).defaultEnvironmentId ?? null) === managedRow.id
-      ) {
-        await settings.update({ defaultEnvironmentId: null });
-        const { managedDefaultStamped: _cleared, ...remainingMetadata } = managedRow.metadata ?? {};
-        await environments.update(managedRow.id, { metadata: remainingMetadata });
-        logger.info(
-          { environmentId: managedRow.id },
-          "instance default environment reverted from the managed sandbox environment (managed-sandbox-only is not declared)",
-        );
-      }
-    } catch (err) {
-      logger.error(
-        { err },
-        "failed to revert the stamped managed sandbox instance default (degraded: stale default until the next boot)",
-      );
-    }
-  }
 
   const pluginSpecs = managedConfig.pluginEnvironments;
   if (managedConfig.environments.length === 0 && pluginSpecs.length === 0) return null;
@@ -283,53 +294,24 @@ export async function applyManagedEnvironments(
   const resolveDriver = opts.resolveSandboxProviderDriver ?? resolvePluginSandboxProviderDriverByKey;
 
   /**
-   * Point the instance default at the managed sandbox row when no
-   * deliberate choice stands in the way: an unset default, a default on
-   * the (hidden-under-this-mode) local row, or a dangling reference all
-   * move to the managed environment, so pickers and run selection agree
-   * that "the default" is the platform sandbox. A tenant-chosen custom
-   * environment (ssh, their own sandbox) is never overridden.
+   * Under `enableManagedSandboxOnly`, point the instance default at the
+   * managed sandbox row when nothing deliberate is set: an unset default, the
+   * (hidden-under-this-mode) local row, or a dangling reference. A set default
+   * (any other environment, whoever chose it) is never changed, and nothing
+   * reverts the filled default later: it is an ordinary set value from then
+   * on. The write is one locked transaction (`fillUnsetInstanceDefault`), so
+   * overlapping boots and admin writes cannot overwrite each other.
    *
-   * Gated symmetrically on the document declaring
-   * `enableManagedSandboxOnly`:
-   *
-   * - Declared: stamp the managed row as the default, so pickers and run
-   *   selection agree the platform sandbox is "the default". The stamp is
-   *   recorded as `managedDefaultStamped` in the row's platform-owned
-   *   metadata (which boot reconciliation preserves and the client write
-   *   floor protects), so a stamped default is distinguishable from one
-   *   the tenant chose deliberately.
-   * - Not declared: local execution is a legitimate default again, so a
-   *   default THIS reconciliation stamped earlier (points at the managed
-   *   row AND carries the stamp marker) reverts to unset — otherwise
-   *   turning the mode off would keep routing default-following runs
-   *   into the sandbox off a stale stamp. A default the tenant selected
-   *   themselves — the managed row without the marker, or any custom
-   *   environment — is untouched in both directions.
-   *
-   * Idempotent and best-effort — a failure degrades to the run-time
-   * policy, which refuses local under managed-sandbox-only regardless.
+   * Best-effort: a failure degrades to the run-time policy, which refuses
+   * local under managed-sandbox-only regardless.
    */
-  const ensureManagedInstanceDefault = async (managedEnvironment: {
-    id: string;
-    metadata: Record<string, unknown> | null;
-  }): Promise<void> => {
+  const ensureManagedInstanceDefault = async (managedEnvironment: { id: string }): Promise<void> => {
     if (!managedSandboxOnlyDeclared) return;
     try {
-      const current = (await settings.get()).defaultEnvironmentId ?? null;
-      if (current === managedEnvironment.id) return;
-      if (current !== null) {
-        const currentEnvironment = await environments.getById(current);
-        if (currentEnvironment && currentEnvironment.driver !== "local") return;
-      }
-      // Marker first: a crash between the two writes must never leave a
-      // stamped default that the revert path cannot attribute.
-      await environments.update(managedEnvironment.id, {
-        metadata: { ...(managedEnvironment.metadata ?? {}), managedDefaultStamped: true },
-      });
-      await settings.update({ defaultEnvironmentId: managedEnvironment.id });
+      const { filled, previousDefaultEnvironmentId } = await fillInstanceDefault(managedEnvironment.id);
+      if (!filled) return;
       logger.info(
-        { environmentId: managedEnvironment.id, previousDefaultEnvironmentId: current },
+        { environmentId: managedEnvironment.id, previousDefaultEnvironmentId },
         "instance default environment set to the managed sandbox environment",
       );
     } catch (err) {
@@ -341,27 +323,50 @@ export async function applyManagedEnvironments(
   };
 
   // Recovery path for a `ready` plugin whose worker was down at check time:
-  // that shape is usually a crash in restart-backoff, and the manager's
-  // respawn re-emits `ready` on the same handle. A one-shot listener re-runs
-  // the idempotent ensure so the recovered provider becomes selectable again
-  // without waiting for the next boot (this pass has already archived the
-  // row). The post-subscribe `isRunning` re-check closes the race where the
-  // worker recovered between the gate check and the subscription. No handle
-  // means no respawn is coming (activation never started a worker), so the
-  // degraded-until-next-boot posture stands.
-  const scheduleRecoveryReactivation = (pluginId: string, reactivateEntry: () => Promise<void>): void => {
+  // that shape is usually a crash in restart-backoff, and the manager
+  // re-emits `ready` when it respawns or replaces the worker. A one-shot
+  // listener re-runs the idempotent ensure so the recovered provider becomes
+  // selectable again without waiting for the next boot (this pass has already
+  // archived the row). The post-subscribe `isRunning` re-check closes the race
+  // where the worker recovered between the gate check and the subscription.
+  // Each attempt runs through `recovery`, so idle checks count it and shutdown
+  // awaits it.
+  const recovery = opts.recovery ?? createManagedEnvironmentRecovery();
+
+  /**
+   * Call `listener` on each `ready` of the plugin's worker. Prefers the
+   * manager-wide subscription, which survives a restart replacing the worker
+   * handle (for example a settings save that restarts the worker). Returns
+   * the unsubscribe function, or null when there is no way to hear a `ready`
+   * (no manager-wide subscription and no handle: activation never started a
+   * worker, so no respawn is coming).
+   */
+  const subscribeWorkerReady = (pluginId: string, listener: () => void): (() => void) | null => {
     const manager = opts.workerManager;
+    if (manager?.onWorkerReady) {
+      return manager.onWorkerReady((readyPluginId) => {
+        if (readyPluginId === pluginId) listener();
+      });
+    }
     const handle = manager?.getWorker(pluginId);
-    if (!handle) return;
+    if (!handle) return null;
+    handle.on("ready", listener);
+    return () => handle.off("ready", listener);
+  };
+
+  const scheduleRecoveryReactivation = (pluginId: string, reactivateEntry: () => Promise<void>): void => {
     let reactivated = false;
+    let unsubscribe: (() => void) | null = null;
     const reactivate = (): void => {
       if (reactivated) return;
       reactivated = true;
-      handle.off("ready", reactivate);
-      void reactivateEntry();
+      unsubscribe?.();
+      recovery.run(reactivateEntry);
     };
-    handle.on("ready", reactivate);
-    if (manager?.isRunning(pluginId)) reactivate();
+    unsubscribe = subscribeWorkerReady(pluginId, reactivate);
+    if (!unsubscribe) return;
+    recovery.onStop(unsubscribe);
+    if (opts.workerManager?.isRunning(pluginId)) reactivate();
   };
 
   const reactivateSandboxEntry = async (spec: ManagedInstanceConfig["environments"][number]): Promise<void> => {
@@ -525,37 +530,35 @@ export async function applyManagedEnvironments(
    * worker that crashes during an attempt (for example inside
    * `environmentValidateConfig`) leaves the listener armed, so its next
    * respawn retries. A `ready` that arrives during an attempt queues one more
-   * attempt. No handle means no respawn is coming (activation never started a
-   * worker), so the degraded-until-next-boot posture stands.
+   * attempt. The subscription survives a restart that replaces the worker
+   * handle (see `subscribeWorkerReady`).
    */
   const schedulePluginRecovery = (spec: PluginSpec, pluginId: string, workerAccess: PluginWorkerAccess): void => {
-    const manager = opts.workerManager;
-    const handle = manager?.getWorker(pluginId);
-    if (!handle) return;
     const logBase = { name: spec.name, pluginKey: spec.pluginKey, driverKey: spec.driverKey };
     let settled = false;
     let inFlight = false;
     let queued = false;
+    let unsubscribe: (() => void) | null = null;
     const settle = (): void => {
       settled = true;
-      handle.off("ready", attempt);
+      unsubscribe?.();
     };
-    function attempt(): void {
+    const attempt = (): void => {
       if (settled) return;
       if (inFlight) {
         queued = true;
         return;
       }
       inFlight = true;
-      void ensurePluginEntry(spec, workerAccess)
-        .then((result) => {
+      recovery.run(async () => {
+        try {
+          const result = await ensurePluginEntry(spec, workerAccess);
           settle();
           logger.info(
             { ...logBase, environmentId: result.environment.id, action: result.action },
             "managed plugin environment reactivated after plugin worker recovery",
           );
-        })
-        .catch((err: unknown) => {
+        } catch (err) {
           if (isPermanentConfigRejection(err)) {
             settle();
             logger.error(
@@ -568,17 +571,19 @@ export async function applyManagedEnvironments(
               "failed to reactivate managed plugin environment; retrying when the plugin worker is ready again",
             );
           }
-        })
-        .finally(() => {
+        } finally {
           inFlight = false;
           if (queued && !settled) {
             queued = false;
             attempt();
           }
-        });
-    }
-    handle.on("ready", attempt);
-    if (manager?.isRunning(pluginId)) attempt();
+        }
+      });
+    };
+    unsubscribe = subscribeWorkerReady(pluginId, attempt);
+    if (!unsubscribe) return;
+    recovery.onStop(unsubscribe);
+    if (opts.workerManager?.isRunning(pluginId)) attempt();
   };
 
   for (const spec of pluginSpecs) {

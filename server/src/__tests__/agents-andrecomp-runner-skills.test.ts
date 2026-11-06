@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ANDRECOMP_RUNNER_DEFAULT_MODELS } from "@andrecomp/adapter-utils/andrecomp-runner-permissions";
 import {
   normalizeAndrecompOperationalSkillPreference,
   normalizeAndrecompRunnerAdapterConfig,
@@ -16,7 +17,7 @@ describe("andrecomp_runner operational skill normalization", () => {
   it("applies full-auto native runner defaults at persistence boundaries", () => {
     expect(normalizeAndrecompRunnerAdapterConfig("andrecomp_runner", {})).toEqual({
       provider: "codex",
-      model: "gpt-5.6-sol",
+      model: ANDRECOMP_RUNNER_DEFAULT_MODELS.codex,
       codexPermissionMode: "never",
       lifecycleMode: "per_turn",
     });
@@ -24,7 +25,7 @@ describe("andrecomp_runner operational skill normalization", () => {
 
   it("repairs an existing blank model without replacing an explicit model", () => {
     expect(normalizeAndrecompRunnerAdapterConfig("andrecomp_runner", { model: "" }))
-      .toMatchObject({ model: "gpt-5.6-sol" });
+      .toMatchObject({ model: ANDRECOMP_RUNNER_DEFAULT_MODELS.codex });
     expect(normalizeAndrecompRunnerAdapterConfig("andrecomp_runner", { model: "gpt-5.5" }))
       .toMatchObject({ model: "gpt-5.5" });
   });

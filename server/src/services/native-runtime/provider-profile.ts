@@ -480,7 +480,7 @@ export function resolveAndrecompRunnerProviderProfile(
   if (candidate === "acpx" && agentHarnessType("andrecomp_runner", config) === "claude_local") {
     const unsupported = claudeRunnerUnsupportedSettings(config);
     if (unsupported.length) throw new AndrecompRunnerProviderProfileError("agent_runner_config_incompatible",
-      `Andrecomp Runner cannot honor these settings: ${unsupported.join(", ")}. Remove them or select Legacy runner in Advanced.`);
+      `Andrecomp Runner cannot honor these settings: ${unsupported.join(", ")}. Remove them before retrying.`);
   }
   assertPermissionMode(candidate, config);
   try {

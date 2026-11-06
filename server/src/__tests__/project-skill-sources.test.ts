@@ -43,7 +43,7 @@ describe.skipIf(!support.supported)('automatic project skill sources', () => {
   beforeAll(async () => {
     if (externalUrl) await applyPendingMigrations(externalUrl);
     else testDb = await startEmbeddedPostgresTestDatabase('andrecomp-project-skills-');
-    db = createDb(externalUrl ?? testDb.connectionString);
+    db = createDb(externalUrl ?? testDb.connectionString, { maxConnections: 4 });
     home = await fs.mkdtemp(path.join(os.tmpdir(), 'andrecomp-project-skills-home-'));
     process.env.ANDRECOMP_HOME = home;
     await db.insert(companies).values({ id: companyId, name: 'Project skills', issuePrefix: 'PSK' });

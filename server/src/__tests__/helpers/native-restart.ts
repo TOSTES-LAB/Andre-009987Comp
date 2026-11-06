@@ -244,7 +244,7 @@ export function nativeRestartFixture() {
     };
   }
 
-  return { seedRun, transportOptions, get current() { return { temporary, runtimeRoot, andrecompHome, apiUrl, companyId, agentId, successor }; } };
+  return { seedRun, transportOptions, get current() { return { temporary, runtimeRoot, andrecompHome, apiUrl, companyId, agentId, successor, server }; } };
 }
 
 export function remotePreparedWorkspace() {

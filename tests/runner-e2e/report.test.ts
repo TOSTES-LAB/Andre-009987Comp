@@ -391,6 +391,7 @@ describe("runner E2E report aggregation", () => {
           GITHUB_SERVER_URL: "https://github.com",
           GITHUB_REPOSITORY: "TOSTES-LAB/Andre-009987Comp",
           GITHUB_RUN_ID: "123456",
+          GITHUB_RUN_ATTEMPT: "1",
           ANDRECOMP_RUNNER_E2E_HISTORY_PUBLIC_BASE_URL:
             "https://reports.example.test/",
           ANDRECOMP_RUNNER_E2E_HISTORY_PREFIX: "/runner-e2e/",
