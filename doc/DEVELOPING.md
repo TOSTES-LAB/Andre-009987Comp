@@ -420,12 +420,18 @@ This gives interrupted jobs an independent recovery path. It keeps the same
 source, commands, assertions and required gates. A failed test still needs a fix;
 a successful rerun does not explain an earlier failure.
 
-The two PR Runner Vitest jobs separate package tests from native server tests.
-The first runs the complete package inventory; the second runs the complete
-native server group. The existing `--shard=1/2` and `--shard=2/2` commands route
-through `run-pr-vitest-lane.mjs` for compatibility with the master-pinned
-workflow. Other workflow names and shard counts keep their existing coverage.
-Both jobs still prepare debug binaries. A separate exact-key debug cache holds
+The PR Runner Vitest jobs separate package tests from native server tests.
+Three `--package-lane=K/3` jobs each run one duration-balanced partition of the
+package inventory, and one `--native-server` job runs the complete native server
+group. `run-pr-vitest-lane.mjs` asks `vitest list` for the inventory, so it
+follows the `vitest.config.ts` includes. It partitions the files with the general
+server partitioner, using the weights in
+`packages/andrecomp-runner/scripts/vitest-lane-durations.json`. Files missing
+from that manifest get the median weight. The legacy `--shard=1/2` and
+`--shard=2/2` commands keep their earlier PR behavior: the first runs the whole
+package inventory and the second runs the native group. Other workflow names and
+shard counts keep their existing coverage. Every lane still prepares debug
+binaries. A separate exact-key debug cache holds
 the workspace library and every Cargo binary target. Its key includes source,
 protocol and fixture content, Cargo configuration, compiler flags, toolchain
 and checkout path. Only the Rust lane of a verified master push saves it.
@@ -559,6 +565,20 @@ STORYBOOK_TEST_BASE_URL=http://localhost:6006 pnpm exec playwright test failure-
 The suite checks Storybook play and accessibility reports and saves screenshots.
 It does not compare visual baselines or dispatch real agent work.
 
+**Patch previews** mounts production inline document cards, attachment tabs,
+workspace source views, and Markdown diff fences. Use **Preview patch** to load
+an inline attachment preview. Opening the artifact list does not load patch bytes.
+The fixtures include long
+unbroken lines, multiple files, and literal HTML. The browser checks cover both
+themes at desktop and mobile widths, source preservation, and overflow:
+
+```sh
+STORYBOOK_TEST_BASE_URL=http://localhost:6006 pnpm exec playwright test patch-preview.spec.ts --config=tests/storybook-visual/playwright.config.ts --project=stories
+```
+
+These checks save screenshots. They do not compare external visual baselines or
+verify live file storage.
+
 **HTML artifacts** covers secure rendered/raw attachment previews, interactive
 reports, security probes, workspace previews, and opening a report from a task.
 See [HTML artifact previews](html-artifact-previews.md) for the security boundary,
@@ -593,6 +613,13 @@ one sidebar entry, and choosing them again reopens the same conversation. The
 **Add and reopen** component story exercises that constraint. Agent selection
 and sending use local fixtures. The live `/chats` and `/chats/:agentRef` routes
 use the same sidebar, picker, landing page, and existing chat surface for everyone.
+The **Switch agents · Unread chats** page stories cover per-agent unread badges
+in the chat header picker in dark, light, and mobile views. The header and Add
+chat pickers show numeric unread message counts from the shared account-scoped
+chat-list cache, with indexed lookups and no per-agent read-state requests.
+Chat endpoints return `unreadMessageCount` alongside `isUnreadForMe`; the count
+uses the same batched query and excludes human messages, deleted messages, system
+notices, and fast responses. Opening or selecting a chat does not mark unseen messages read.
 
 Use **Chat & Comments → Issue Thread Interactions → Composer Questions Auto Advance**
 to try the paged composer form. A single selection shows a brief checked-state animation before advancing to the
@@ -1250,6 +1277,26 @@ family, including the separate deadline and settlement regressions, with:
 ```sh
 pnpm --filter @andrecomp/andrecomp-runner exec vitest run runnerd-codex-transport
 ```
+
+#### PR Vitest retry
+
+PR CI retries a failing Vitest case once, so a single contention flake does not
+force a re-run of the whole workflow. `scripts/ci/vitest-retry.mjs` owns the gate.
+The default is one retry when `GITHUB_ACTIONS=true` and `GITHUB_WORKFLOW=PR`.
+Reusable workflows inherit the caller's name, so `pr-trusted.yml` gets the retry
+through `pr.yml`. Release, release verify, cloud readiness, master and local runs
+keep zero retries. `ANDRECOMP_VITEST_RETRY` overrides the default in any context.
+For example, set the `CI_VITEST_RETRY` repository variable to `0` to turn the retry
+off, or set `ANDRECOMP_VITEST_RETRY=1` locally to reproduce the CI behavior.
+
+`scripts/run-vitest-stable.mjs` passes `--retry` to every `vitest run`. This
+covers the general, workspace, chat, native Runner and serialized lanes and the
+selected-file path. The Runner package config sets `retry` itself, because its
+lane runs Vitest directly. A test that passes only on a retry is still a flake.
+`scripts/ci/retry-reporter.mjs` adds a `Flaky test passed on retry` warning
+annotation for each such test, and a row to the step summary with the file, test,
+retry count and job. Fix a test that this reporter reports. Do not treat the
+retry as the fix. Playwright retries stay at zero.
 
 #### Embedded Postgres template cache
 
@@ -2051,12 +2098,14 @@ sandbox entry (no `driver`, or `driver: "sandbox"`) and any number of
   "driver": "plugin",
   "pluginKey": "example.remote-host-plugin",
   "driverKey": "tasks",
-  "driverConfig": {}
+  "driverConfig": {},
+  "instanceDefault": true
 }
 ```
 
-Names and `pluginKey`–`driverKey` pairs must be unique, and `driverConfig` must
-not contain secret-like keys. Any other key refuses startup. `plugins.autoInstall`
+Names and `pluginKey`–`driverKey` pairs must be unique, `driverConfig` must not
+contain secret-like keys, and `instanceDefault` is allowed on at most one plugin
+entry and never on the sandbox entry. Any other key refuses startup. `plugins.autoInstall`
 holds catalog keys, not manifest ids, so boot also refuses to start unless an
 auto-installed bundled or distribution catalog entry installs the entry's
 `pluginKey`.
@@ -2065,14 +2114,27 @@ Boot validates the driver config through the plugin, marks the row
 `managedPluginEnvironment: "<pluginKey>:<driverKey>"`, and adopts an existing
 unmarked row for the same plugin and driver. While the plugin is down, the row is
 archived; it comes back when the worker is ready. Removing an entry never archives
-its row. Plugin entries do not change the instance default.
+its row.
 
-Under `enableManagedSandboxOnly`, boot fills the instance default with the
-managed sandbox only when the default is unset, names the local environment, or
-names a deleted one. The fill locks the default row and rechecks it, so a
+Boot fills the instance default only when it is unset, names the local
+environment, or names a deleted one. A plugin entry with `instanceDefault` fills
+first, right after its ensure; then, under `enableManagedSandboxOnly`, the
+managed sandbox fills. So a new instance gets the plugin environment, and an
+existing instance keeps the default it already has. If the plugin is down at a
+new instance's first boot, the managed sandbox fills the default instead, and the
+plugin environment does not replace it later. Recovery after boot never fills.
+Like an admin's default write, the plugin fill declines while an active agent
+that follows the default has not been prepared by that plugin; the managed
+sandbox then fills as usual. The fill locks the default row and rechecks it, so a
 concurrent boot or admin write is never overwritten. A filled default is an
 ordinary set value: nothing reverts it when the mode is later turned off, and an
 admin can change it in instance settings.
+
+`server/src/services/managed-config-capabilities.json` lists the managed-config
+capabilities a release supports, for the control plane to read at a release
+commit. It must equal `MANAGED_CONFIG_CAPABILITIES` in `managed-config.ts`
+(`managed-config-capabilities.test.ts` checks this), and the parser accepts plugin
+entries only while that list includes `pluginEnvironments`.
 
 
 ### Experimental native remote workspace storage

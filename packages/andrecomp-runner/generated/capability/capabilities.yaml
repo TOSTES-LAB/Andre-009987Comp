@@ -236,55 +236,46 @@
       "expectedMockState": "operation_result"
     },
     {
-      "id": "skill:skills/andrecomp/SKILL.md:664",
+      "id": "skill:skills/andrecomp/SKILL.md:668",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/andrecomp/SKILL.md#L664:update",
+      "sourceAnchor": "skills/andrecomp/SKILL.md#L668:update",
       "heading": "Update",
       "primaryDisposition": "control_plane_owned",
       "semanticOperation": "runtime_reconciliation",
       "expectedMockState": "runtime_decision_record"
     },
     {
-      "id": "skill:skills/andrecomp/SKILL.md:674",
+      "id": "skill:skills/andrecomp/SKILL.md:678",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/andrecomp/SKILL.md#L674:task-documents-and-deliverables",
+      "sourceAnchor": "skills/andrecomp/SKILL.md#L678:task-documents-and-deliverables",
       "heading": "Task Documents and Deliverables",
       "primaryDisposition": "always_agent_tool",
       "semanticOperation": "write_document",
       "expectedMockState": "operation_result"
     },
     {
-      "id": "skill:skills/andrecomp/SKILL.md:688",
+      "id": "skill:skills/andrecomp/SKILL.md:692",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/andrecomp/SKILL.md#L688:planning-required-when-planning-requested",
+      "sourceAnchor": "skills/andrecomp/SKILL.md#L692:planning-required-when-planning-requested",
       "heading": "Planning (Required when planning requested)",
       "primaryDisposition": "always_agent_tool",
       "semanticOperation": "write_document",
       "expectedMockState": "operation_result"
     },
     {
-      "id": "skill:skills/andrecomp/SKILL.md:719",
+      "id": "skill:skills/andrecomp/SKILL.md:723",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/andrecomp/SKILL.md#L719:key-endpoints-hot-routes",
+      "sourceAnchor": "skills/andrecomp/SKILL.md#L723:key-endpoints-hot-routes",
       "heading": "Key Endpoints (Hot Routes)",
       "primaryDisposition": "control_plane_owned",
       "semanticOperation": "runtime_reconciliation",
       "expectedMockState": "runtime_decision_record"
     },
     {
-      "id": "skill:skills/andrecomp/SKILL.md:749",
+      "id": "skill:skills/andrecomp/SKILL.md:753",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/andrecomp/SKILL.md#L749:searching-issues",
+      "sourceAnchor": "skills/andrecomp/SKILL.md#L753:searching-issues",
       "heading": "Searching Issues",
-      "primaryDisposition": "control_plane_owned",
-      "semanticOperation": "runtime_reconciliation",
-      "expectedMockState": "runtime_decision_record"
-    },
-    {
-      "id": "skill:skills/andrecomp/SKILL.md:759",
-      "kind": "skill_heading",
-      "sourceAnchor": "skills/andrecomp/SKILL.md#L759:full-reference",
-      "heading": "Full Reference",
       "primaryDisposition": "control_plane_owned",
       "semanticOperation": "runtime_reconciliation",
       "expectedMockState": "runtime_decision_record"
@@ -292,16 +283,25 @@
     {
       "id": "skill:skills/andrecomp/SKILL.md:763",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/andrecomp/SKILL.md#L763:conversational-confirmation-answers",
+      "sourceAnchor": "skills/andrecomp/SKILL.md#L763:full-reference",
+      "heading": "Full Reference",
+      "primaryDisposition": "control_plane_owned",
+      "semanticOperation": "runtime_reconciliation",
+      "expectedMockState": "runtime_decision_record"
+    },
+    {
+      "id": "skill:skills/andrecomp/SKILL.md:767",
+      "kind": "skill_heading",
+      "sourceAnchor": "skills/andrecomp/SKILL.md#L767:conversational-confirmation-answers",
       "heading": "Conversational confirmation answers",
       "primaryDisposition": "always_agent_tool",
       "semanticOperation": "call_api",
       "expectedMockState": "operation_result"
     },
     {
-      "id": "skill:skills/andrecomp/SKILL.md:780",
+      "id": "skill:skills/andrecomp/SKILL.md:784",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/andrecomp/SKILL.md#L780:incidental-feedback",
+      "sourceAnchor": "skills/andrecomp/SKILL.md#L784:incidental-feedback",
       "heading": "Incidental feedback",
       "primaryDisposition": "optional_agent_tool",
       "semanticOperation": "scoped_discovery",

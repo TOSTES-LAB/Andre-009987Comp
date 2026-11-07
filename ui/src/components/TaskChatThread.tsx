@@ -1,3 +1,4 @@
+import { imagePreparationReceiptIds } from "./task-chat/image-resources";
 import type { ScrollingHistory } from "@/components/task-chat/TaskMessageScroller";
 import { TaskChatShimmerScope } from "@/components/task-chat/TaskChatShimmer";
 import { useRunnerSubmission } from "@/hooks/useRunnerSubmission";
@@ -865,7 +866,7 @@ export function TaskChatThread(props: TaskChatThreadProps) {
       <>
         {threadHeader}
         {liveWorkLinks ? (
-          <TaskChatLiveWorkLinks liveWork={liveWorkLinks} placement="top" />
+          <TaskChatLiveWorkLinks liveWork={liveWorkLinks} placement="top" companyId={companyId} />
         ) : blockerLinks ? (
           <TaskChatBlockerLinks
             directBlocker={blockerLinks.directBlocker}
@@ -909,9 +910,14 @@ export function TaskChatThread(props: TaskChatThreadProps) {
   // Historical placeholder comments remain untouched in storage. Projection
   // prefers the accepted semantic result so runs such as DOT-20 recover their
   // real upstream response without a data migration.
+  const imageReceipts = useMemo(
+    () => imagePreparationReceiptIds(comments, attachments, workProducts),
+    [comments, attachments, workProducts],
+  );
   const projectedComments = useMemo(
     () =>
       comments.flatMap((comment) => {
+        if (imageReceipts.has(comment.id)) return [];
         if (comment.authorType === "system" && comment.metadata?.recoveryResponsibility === "system") return [];
         if (statusRelevance.isHistoricalNotice(comment)) return [];
         if (isRedundantAiRecoveryNotice(comment, interactions)) return [];
@@ -927,7 +933,7 @@ export function TaskChatThread(props: TaskChatThreadProps) {
         const summary = acceptedSemanticResultSummary(resultJson);
         return [summary ? { ...comment, body: summary } : comment];
       }),
-    [comments, interactions, linkedRunMetaById, statusRelevance],
+    [comments, interactions, linkedRunMetaById, statusRelevance, imageReceipts],
   );
 
   const commentItems = useMemo(
@@ -2405,9 +2411,12 @@ export function TaskChatThread(props: TaskChatThreadProps) {
   // Hand off once the settled turn or its reply comment is in the thread; a
   // stopped run that yields neither is released by the backstop timeout so the
   // tail never lingers indefinitely.
+  const settlingRunSource =
+    settlingRun != null ? runs.find((run) => run.id === settlingRun.id) : undefined;
   const settlingIsAndrecompRunner =
-    settlingRun != null &&
-    isNativeAndrecompRunnerRun(runs.find((run) => run.id === settlingRun.id));
+    settlingRun != null && isNativeAndrecompRunnerRun(settlingRunSource);
+  // A stopped turn posts no reply, so its settled turn is already complete.
+  const settlingRunStopped = settlingRunSource?.status === "cancelled";
   const settlingHasComment =
     settlingRun != null &&
     comments.some((comment) =>
@@ -2434,6 +2443,7 @@ export function TaskChatThread(props: TaskChatThreadProps) {
       ? settledRunIds.has(settlingRun.id) &&
         (settlingHasComment ||
           settlingHasDurableInteraction ||
+          settlingRunStopped ||
           // A projected terminal answer can already own the response while
           // the canonical comment request is still in flight. Do not show a
           // second activity tail just because that fetch is slower.
@@ -2547,7 +2557,7 @@ export function TaskChatThread(props: TaskChatThreadProps) {
     !streamlinedUiEnabled || shouldRepeatTaskChatBlockers(items);
   const bottomBlockerLinks = repeatBlockersAtBottom ? (
     liveWorkLinks ? (
-      <TaskChatLiveWorkLinks liveWork={liveWorkLinks} placement="bottom" />
+      <TaskChatLiveWorkLinks liveWork={liveWorkLinks} placement="bottom" companyId={companyId} />
     ) : blockerLinks ? (
       <TaskChatBlockerLinks
         directBlocker={blockerLinks.directBlocker}

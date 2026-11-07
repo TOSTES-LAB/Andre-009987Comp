@@ -21,7 +21,7 @@ pnpm exec vitest run --config tests/restart-chaos/vitest.config.ts  # credential
 node scripts/typecheck-test-projects.mjs tests/restart-chaos        # typecheck
 ```
 
-Options: `--triggers time,comment,retry,queued,tool` (fault timing, below),
+Options: `--triggers time,comment,retry,queued,tool,result` (fault timing, below),
 `--workloads A1,B1,B5,C1`, `--budget-cents` (company hard cap,
 default 3000), `--poll-ms` (2000–5000), `--keep` (keep the temporary instance).
 
@@ -33,6 +33,26 @@ A replay inherits the masks saved in the source wave's `plan.json`;
 `--replay <wave>/<task> --rc06-masked` adds the mask to a replay of an unmasked wave.
 Each fault receipt records the host 1-minute load average (`loadAvg1m`); treat
 timeout failures above about 16 as load-suspect.
+
+## Restart storm (K13, `--storm-minutes`)
+
+```sh
+node cli/node_modules/tsx/dist/cli.mjs tests/restart-chaos/main.ts --env local \
+  --adapters codex,claude,opencode --concurrency 6 --storm-minutes 60 --seed 7
+```
+
+A storm wave fires faults on its own seeded clock instead of one fault per
+task. Each fault is drawn from `--faults` (default K1, K2, K4, K6) and fires
+2–4 minutes after the previous one settled (server ready), so a K4 hold never
+eats the next gap. Each fault hits every task in flight. While the storm lasts
+the harness launches a new task whenever one rests, keeping `--concurrency`
+in flight; `--tasks` (default 200) is only the pool. A pool that runs dry
+before the storm ends fails the wave as a harness error (`storm_pool_exhausted`). When the storm ends no
+new task or fault starts, the in-flight tasks drain to rest or their deadline,
+and only launched tasks are graded. Storm tasks show fault `K13` in the ledger;
+`storm_fault`, `storm_started` and `storm_ended` are in the timeline and the
+receipts are in `faults.json`. A replay of a storm task fires the faults that
+crossed it, without a new storm. Only `--triggers time` applies.
 
 ## Daytona (`--env daytona`)
 
@@ -117,6 +137,7 @@ the observer, after a seeded delay:
 | Trigger | Fires | Plan |
 | --- | --- | --- |
 | `comment` | 0–5 s after the C1 follow-up was posted to a live run (C1 only) | C1 + K1, B8 |
+| `result` | 0–3 s after the run that received the C1 follow-up proposed or accepted its result, only while that run is still `running` (C1 only) | C1 + K1, B8 |
 | `retry` | 0–2 s after an accepted Retry click, as an extra K1 after the planned fault | K8 |
 | `queued` | on the first poll whose run is still `queued` with no start | B1 |
 | `tool` | 15–60 s after `bench.sh` progress first appears (B5 only) | B6 |

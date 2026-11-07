@@ -447,6 +447,7 @@ export const CLOUD_CONTROL_HEADER = "x-andrecomp-cloud-control";
 export const CLOUD_CONTROL_AUDIENCE = "andrecomp-cloud-control/v1";
 export const CLOUD_CONTROL_JWS_TYPE = "andrecomp-cloud-control+jwt";
 export const CLOUD_CONTROL_ACTIONS = [
+  "ephemeral-enrollment:prepare",
   "task-drain:read",
   "task-drain:start",
   "task-drain:stop",

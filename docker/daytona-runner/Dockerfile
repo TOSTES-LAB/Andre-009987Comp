@@ -7,32 +7,14 @@ FROM rust:1.97-bookworm@sha256:408fe88047cef61a2087653b0c5255fa51c0f2d6d94ddedd7
 
 WORKDIR /workspace/packages/andrecomp-runner/runner
 COPY packages/andrecomp-runner/runner/Cargo.toml packages/andrecomp-runner/runner/Cargo.lock ./
-COPY packages/andrecomp-runner/runner/crates/runner-core/Cargo.toml ./crates/runner-core/Cargo.toml
-# Compile the locked third-party dependency graph against placeholder targets
-# so this layer depends only on the manifests and lockfile. Runner source
-# changes then reuse it from the registry cache and recompile one crate instead
-# of the whole AWS/TLS graph (about five of the build's six and a half minutes).
-# The placeholder targets' outputs and fingerprints are deleted, so the next
-# step always compiles the real runner sources against the same lockfile.
-RUN set -eu; \
-    mkdir -p crates/runner-core/src; \
-    : > crates/runner-core/src/lib.rs; \
-    for target in $(grep -Eo 'src/bin/[A-Za-z0-9_-]+\.rs' crates/runner-core/Cargo.toml); do \
-      mkdir -p "crates/runner-core/$(dirname "$target")"; \
-      printf 'fn main() {}\n' > "crates/runner-core/$target"; \
-    done; \
-    cargo build --locked --release -j 2 -p andrecomp-runner-core --bin andrecomp-runnerd; \
-    rm -rf crates/runner-core/src \
-      target/release/.fingerprint/andrecomp-runner-core-* \
-      target/release/deps/*andrecomp_runner* \
-      target/release/andrecomp-runnerd target/release/andrecomp-runnerd.d; \
-    du -sk target /usr/local/cargo/registry
 COPY packages/andrecomp-runner/runner/crates ./crates
 COPY packages/andrecomp-runner/protocol ../protocol
 COPY packages/andrecomp-runner/acpx-profiles.json packages/andrecomp-runner/antigravity-distributions.json ../
-# Only the finished executable leaves this stage. The final image never carries
-# Cargo's target or download trees; the dependency layer above keeps them only
-# in this builder stage and the trusted build cache.
+# Retain only the finished executable in this layer. Keeping Cargo's target and
+# download trees makes BuildKit run out of disk while exporting the final image
+# and the default-branch build cache. A separate dependency-precompile layer
+# (#19545) did exactly that: about 1.2 GB of retained Cargo trees exhausted the
+# builder disk during the registry cache export.
 RUN cargo build --locked --release -j 2 -p andrecomp-runner-core --bin andrecomp-runnerd \
     && strip /workspace/packages/andrecomp-runner/runner/target/release/andrecomp-runnerd \
     && install -m 0755 target/release/andrecomp-runnerd /usr/local/bin/andrecomp-runnerd \

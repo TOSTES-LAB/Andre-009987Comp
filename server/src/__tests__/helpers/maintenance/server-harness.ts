@@ -1,3 +1,4 @@
+import type { ManagedExperimentalFeatureKey } from "@andrecomp/shared";
 import type { IdleWorkCaptureSnapshot } from './idle-work-capture.js';
 import type { IncomingHttpSnapshot } from '../../../../../scripts/sleep-qualification/evidence.mjs';
 import { fork } from "node:child_process";
@@ -51,6 +52,7 @@ type Snapshot = { idle: { active: number; generation: number }; startup: { phase
   announcement?: { intercepted: boolean; requests: string[]; unmatched: string[]; boundary: string } };
 
 export interface MaintenanceConfiguration {
+  managedFeatures?: Readonly<Partial<Record<ManagedExperimentalFeatureKey, boolean>>>;
   automaticBackups?: { intervalMinutes: number; idleCheckpoint: boolean };
   announcements?: boolean;
   telemetryOrigin?: string;
@@ -60,7 +62,15 @@ export interface MaintenanceConfiguration {
   deploymentMode?: "local_trusted" | "authenticated";
   storageProvider?: "local_disk" | "s3";
 }
+export interface MaintenanceRuntimeSecrets {
+  ANDRECOMP_AGENT_JWT_SECRET: string;
+  ANDRECOMP_DECISION_SIGNING_SECRET: string;
+  ANDRECOMP_TOOL_ACTION_SIGNING_SECRET: string;
+  BETTER_AUTH_SECRET: string;
+  ANDRECOMP_SECRETS_MASTER_KEY: string;
+}
 export interface MaintenanceServerOptions {
+  runtimeSecrets?: Readonly<MaintenanceRuntimeSecrets>;
   childEntry?: URL;
   childPreload?: URL;
   databasePoolMax?: number;
@@ -74,6 +84,16 @@ export interface MaintenanceServerOptions {
 }
 export async function startMaintenanceServer(databaseUrl: string, options: MaintenanceServerOptions = {}) {
   const configuration = options.configuration;
+  const runtimeSecrets = options.runtimeSecrets;
+  if (runtimeSecrets !== undefined) {
+    const keys: Array<keyof MaintenanceRuntimeSecrets> = ['ANDRECOMP_AGENT_JWT_SECRET', 'ANDRECOMP_DECISION_SIGNING_SECRET',
+      'ANDRECOMP_TOOL_ACTION_SIGNING_SECRET', 'BETTER_AUTH_SECRET', 'ANDRECOMP_SECRETS_MASTER_KEY'];
+    if (!runtimeSecrets || Object.keys(runtimeSecrets).length !== keys.length || keys.some(key =>
+      typeof runtimeSecrets[key] !== 'string' || runtimeSecrets[key].trim().length < 32)
+      || !/^[a-f0-9]{64}$/.test(runtimeSecrets.ANDRECOMP_SECRETS_MASTER_KEY)) {
+      throw new Error('Maintenance runtimeSecrets requires exactly five complete generated fixture secrets');
+    }
+  }
   if (options.databasePoolMax !== undefined && (!Number.isInteger(options.databasePoolMax) || options.databasePoolMax < 1 || options.databasePoolMax > 4)) {
     throw new Error('Maintenance database pool must be an integer from 1 through 4');
   }
@@ -117,7 +137,7 @@ export async function startMaintenanceServer(databaseUrl: string, options: Maint
     })();
   }
   try {
-    const proxy = await startMaintenancePostgresProxy(databaseUrl);
+    const proxy = await startMaintenancePostgresProxy(databaseUrl, options.captureIdleWork);
     stopProxy = proxy.stop;
     await new Promise<void>((resolve, reject) => { reservation.once("error", reject); reservation.listen(0, "127.0.0.1", resolve); });
     const address = reservation.address();
@@ -154,8 +174,8 @@ export async function startMaintenanceServer(databaseUrl: string, options: Maint
         ANDRECOMP_HOME: directory, ANDRECOMP_CONFIG: configPath, ANDRECOMP_INSTANCE_ID: "maintenance-test",
         ANDRECOMP_RUNNER_STATE_DIR: path.join(directory, "durable-sessions"),
         DATABASE_URL: proxy.url, DATABASE_POOL_MAX: options.databasePoolMax === undefined ? (configuration ? "4" : "6") : String(options.databasePoolMax), DATABASE_APPLICATION_NAME: "maintenance-integration-test",
-        ANDRECOMP_AGENT_JWT_SECRET: randomUUID(), ANDRECOMP_DECISION_SIGNING_SECRET: randomUUID(),
-        ANDRECOMP_TOOL_ACTION_SIGNING_SECRET: randomUUID(), BETTER_AUTH_SECRET: randomUUID(),
+        ANDRECOMP_AGENT_JWT_SECRET: runtimeSecrets?.ANDRECOMP_AGENT_JWT_SECRET ?? randomUUID(), ANDRECOMP_DECISION_SIGNING_SECRET: runtimeSecrets?.ANDRECOMP_DECISION_SIGNING_SECRET ?? randomUUID(),
+        ANDRECOMP_TOOL_ACTION_SIGNING_SECRET: runtimeSecrets?.ANDRECOMP_TOOL_ACTION_SIGNING_SECRET ?? randomUUID(), BETTER_AUTH_SECRET: runtimeSecrets?.BETTER_AUTH_SECRET ?? randomUUID(),
         CODEX_HOME: path.join(directory, "codex"), ANDRECOMP_ANNOUNCEMENTS_ENABLED: String(configuration?.announcements ?? false),
         ...(configuration?.announcements ? { ANDRECOMP_MAINTENANCE_ANNOUNCEMENT_FIXTURE: '1' } : {}),
         ANDRECOMP_DB_BACKUP_ENABLED: String(Boolean(configuration?.automaticBackups)), ANDRECOMP_UI_DEV_MIDDLEWARE: "false",
@@ -174,8 +194,8 @@ export async function startMaintenanceServer(databaseUrl: string, options: Maint
         } : {}),
         ...(options.controlJwks ? { ANDRECOMP_CLOUD_STACK_ID: "maintenance-stack", ANDRECOMP_CLOUD_RUNTIME_IDENTITY_JWKS: options.controlJwks } : {}),
         ...(options.cloud ? {
-          ANDRECOMP_MANAGED_CONFIG: JSON.stringify({ v: 1, mode: "cloud", catalogVersion: "2026.720.0", features: {}, plugins: { autoInstall: [] } }),
-          ANDRECOMP_SECRETS_MASTER_KEY: randomBytes(32).toString("hex"),
+          ANDRECOMP_MANAGED_CONFIG: JSON.stringify({ v: 1, mode: "cloud", catalogVersion: "2026.720.0", features: configuration?.managedFeatures ?? {}, plugins: { autoInstall: [] } }),
+          ANDRECOMP_SECRETS_MASTER_KEY: runtimeSecrets?.ANDRECOMP_SECRETS_MASTER_KEY ?? randomBytes(32).toString("hex"),
           ANDRECOMP_CLOUD_TENANT_SERVER_TOKEN: "maintenance-tenant-token", ANDRECOMP_CLOUD_STACK_ID: "maintenance-stack",
           ANDRECOMP_CLOUD_RUNTIME_IDENTITY_JWKS: options.cloud.jwks, ANDRECOMP_CLOUD_WARM_STANDBY: options.cloud.standby ? "1" : "0",
           ANDRECOMP_PUBLIC_URL: options.tenantActor ? `http://127.0.0.1:${address.port}` : "https://pool-maintenance.staging.andrecomp.app", ANDRECOMP_PRIMARY_HOST: options.tenantActor ? "127.0.0.1" : "pool-maintenance.staging.andrecomp.app",
