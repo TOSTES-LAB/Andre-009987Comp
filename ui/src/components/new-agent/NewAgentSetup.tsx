@@ -29,7 +29,7 @@ import type {
   Agent,
   EnvBinding,
 } from "@andrecomp/shared";
-import { ADAPTER_AUTH_MISSING_CHECK_CODE, isAgentStatusInvokable, andrecompRunnerProfileForHarness } from "@andrecomp/shared";
+import { ADAPTER_AUTH_MISSING_CHECK_CODE, isAgentStatusInvokable, andrecompRunnerCreationLifecycle, andrecompRunnerProfileForHarness } from "@andrecomp/shared";
 import { useNavigate, useSearchParams } from "@/lib/router";
 import { agentsApi } from "@/api/agents";
 import { ApiError } from "@/api/client";
@@ -494,7 +494,7 @@ function Setup({
     const config = getUIAdapter(preserveNativeHarness && runner === "andrecomp" && brandType !== "pi_local" ? "andrecomp_runner" : adapterType).buildAdapterConfig(preserveNativeHarness && runner === "andrecomp" ? { ...values, adapterSchemaValues: nativeSchema } : values,
       antigravityCandidate ? { candidateHarnesses: [antigravityCandidate] } : undefined);
     if (preserveNativeHarness && runner === "andrecomp" && profile) {
-      Object.assign(config, nativeSchema, profile.provider === "opencode" ? { opencodePermissionMode: "allow" } : profile.provider === "codex" ? { codexPermissionMode: "never" } : {}, { lifecycleMode: "per_turn" });
+      Object.assign(config, nativeSchema, profile.provider === "opencode" ? { opencodePermissionMode: "allow" } : profile.provider === "codex" ? { codexPermissionMode: "never" } : {}, andrecompRunnerCreationLifecycle(profile));
     }
     if (isRunner)
       Object.assign(config, {

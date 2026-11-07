@@ -17,6 +17,7 @@ import {
   ANDRECOMP_RUNNER_PERMISSION_CAPABILITIES,
   resolveAndrecompRunnerModel,
   normalizeLegacyRunnerProvider,
+  andrecompRunnerFollowsLifecycleDefault,
 } from "./andrecomp-runner-permissions.js";
 import type {
   AdapterExecutionContext,
@@ -4294,7 +4295,6 @@ export function normalizeAndrecompRunnerAdapterConfig(
     provider: "codex",
     codexPermissionMode:
       ANDRECOMP_RUNNER_PERMISSION_CAPABILITIES.codex.defaultMode,
-    lifecycleMode: "per_turn",
     ...config,
   };
   if (next.provider === "codex") {
@@ -4306,6 +4306,9 @@ export function normalizeAndrecompRunnerAdapterConfig(
       next.model = resolveAndrecompRunnerModel("acpx", config.model);
     }
   }
+  // No stored lifecycle means the product default for these providers; never
+  // write the old per_turn default back on a configuration write.
+  if (next.lifecycleMode === undefined && !andrecompRunnerFollowsLifecycleDefault(next)) next.lifecycleMode = "per_turn";
   return normalizeAndrecompOperationalSkillPreference(adapterType, next);
 }
 

@@ -124,6 +124,7 @@ export {
   resolveAndrecompRunnerIdleTimeoutMs,
   resolveAndrecompRunnerModel,
   andrecompRunnerTransitionConfig,
+  andrecompRunnerFollowsLifecycleDefault,
   normalizeLegacyRunnerProvider,
   resolveAndrecompRunnerPermissionMode,
   resolveAndrecompRunnerCursorMode,

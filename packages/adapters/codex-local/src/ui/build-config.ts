@@ -196,7 +196,8 @@ export function buildAndrecompRunnerConfig(v: CreateConfigValues, context?: {
     "AWS AgentCore timeoutSeconds",
   );
   const lifecycleCandidate = v.andrecompRunnerLifecycleMode ?? schemaValues.lifecycleMode;
-  const lifecycleMode = lifecycleCandidate === "warm" ? "warm" : "per_turn";
+  // No choice stores no lifecycleMode; the server applies the product default.
+  const lifecycleMode = lifecycleCandidate === "warm" || lifecycleCandidate === "per_turn" ? lifecycleCandidate : undefined;
   const configuredIdleTimeoutMs =
     v.andrecompRunnerIdleTimeoutMs ?? schemaValues.idleTimeoutMs;
   const idleTimeoutMs = resolveAndrecompRunnerIdleTimeoutMs(
@@ -322,7 +323,7 @@ export function buildAndrecompRunnerConfig(v: CreateConfigValues, context?: {
           timeoutSeconds,
         }
       : {}),
-    lifecycleMode,
+    ...(lifecycleMode ? { lifecycleMode } : {}),
     ...(lifecycleMode === "warm" ? { idleTimeoutMs } : {}),
   };
 }

@@ -11,7 +11,7 @@ import type {
 } from "../contracts/harness-driver.js";
 import { OpenCodeServerDriver } from "../drivers/opencode/opencode-server-driver.js";
 import { parseNativeRuntimeContext } from "../contracts/runtime-context.js";
-import { openCodeProxyTaskEnvelope } from "./opencode-proxy-task-envelope.js";
+import { openCodeProxyCompletionContract, openCodeProxyTaskEnvelope } from "./opencode-proxy-task-envelope.js";
 import {
   openCodeProxyItemNotification,
   openCodeProxyToolNotification,
@@ -356,7 +356,10 @@ async function handle(message: RpcMessage): Promise<void> {
           throw new Error("Invalid Andrecomp run identity");
         if (runId !== activeRunId) {
           if (!session.attachRun) throw new Error("OpenCode run attachment unavailable");
-          await session.attachRun({ runId });
+          // Runnerd sends the attached run's contract with its run identity;
+          // the launch parameters still name the first run's contract.
+          const contract = openCodeProxyCompletionContract(params.andrecompCompletionContract);
+          await session.attachRun({ runId, ...(contract ? { completionContract: contract } : {}) });
           activeRunId = runId;
         }
       }

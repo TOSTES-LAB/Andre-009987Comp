@@ -16,6 +16,19 @@ export function andrecompRunnerProfileForHarness(harness: string): { provider: "
   return undefined;
 }
 
+/**
+ * The lifecycle a new native agent stores. Codex, OpenCode and Claude store
+ * none, so the server applies the product default (warm on a local target for
+ * Codex and OpenCode). Other harnesses keep an explicit per_turn.
+ */
+export function andrecompRunnerCreationLifecycle(
+  profile: NonNullable<ReturnType<typeof andrecompRunnerProfileForHarness>>,
+): { lifecycleMode?: "per_turn" } {
+  return profile.provider === "codex" || profile.provider === "opencode"
+    || (profile.provider === "acpx" && profile.acpxAgent === "claude")
+    ? {} : { lifecycleMode: "per_turn" };
+}
+
 export const ANDRECOMP_RUNNER_MINIMUM_GLIBC_VERSION = "2.39";
 
 function supportsLinuxLibc(libc?: "glibc" | "musl" | "unknown", version?: string): boolean {
