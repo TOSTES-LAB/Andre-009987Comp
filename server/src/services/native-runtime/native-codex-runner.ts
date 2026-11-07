@@ -171,12 +171,22 @@ function executableName(): string {
   return process.platform === "win32" ? "andrecomp-runnerd.exe" : "andrecomp-runnerd";
 }
 
-export function resolveAndrecompRunnerBinary(
-  configuredPath = process.env.ANDRECOMP_RUNNER_BINARY,
-): string {
+function controllerAndrecompRunnerBinaryConfiguration(): string | undefined {
+  return process.env.ANDRECOMP_RUNNER_BINARY;
+}
+
+export function assertAndrecompRunnerBinaryConfiguration(
+  configuredPath = controllerAndrecompRunnerBinaryConfiguration(),
+): void {
   if (configuredPath && !isAbsolute(configuredPath)) {
     throw new Error("ANDRECOMP_RUNNER_BINARY must be an absolute path");
   }
+}
+
+export function resolveAndrecompRunnerBinary(
+  configuredPath = controllerAndrecompRunnerBinaryConfiguration(),
+): string {
+  assertAndrecompRunnerBinaryConfiguration(configuredPath);
   if (configuredPath) {
     try {
       accessSync(configuredPath, constants.R_OK | (process.platform === "win32" ? 0 : constants.X_OK));
