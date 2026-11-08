@@ -63,6 +63,16 @@ describe("heartbeat task markdown rendering", () => {
     expect(buildAndrecompTaskMarkdown({ issue, nativeRunner: false, coordinatorWorkspace: true }))
       .not.toContain("Coordinator task proposals:");
   });
+  it("tells a standing chat about the Conference Room only while the experiment is enabled", () => {
+    const chat = { id: "chat", identifier: "RUN-1", title: "Chat", conversationAgentId: "ceo" };
+    const enabled = buildAndrecompTaskMarkdown({ issue: chat, nativeRunner: true, conferenceRoomEnabled: true });
+    expect(enabled).toContain("Conference Room:");
+    expect(enabled).toContain("[Open the Conference Room](/<prefix>/board-chat)");
+    expect(enabled).toContain("does not carry over this conversation's history");
+    expect(buildAndrecompTaskMarkdown({ issue: chat, nativeRunner: true })).not.toContain("board-chat");
+    expect(buildAndrecompTaskMarkdown({ issue: { ...chat, conversationAgentId: null }, nativeRunner: true, conferenceRoomEnabled: true }))
+      .not.toContain("board-chat");
+  });
   it("returns null without a task or a nonempty wake comment", () => {
     expect(buildAndrecompTaskMarkdown({ issue: null })).toBeNull();
     expect(buildAndrecompTaskMarkdown({
