@@ -241,7 +241,8 @@ async function main(): Promise<number> {
       adapters: [...new Set([...plan.tasks.map(task => task.adapter),
         ...(plan.tasks.some(task => task.workload === "M1") ? plan.options.adapters : [])])],
       concurrency: plan.options.concurrency, budgetCents: plan.options.budgetCents, masks: plan.options.masks,
-      fixtureRoot: path.join(supervisor.paths.temporaryRoot, "fixtures"), waveId: plan.waveId, timeline,
+      fixtureRoot: path.join(supervisor.paths.temporaryRoot, "fixtures"), workspaceRepo: plan.options.workspaceRepo,
+      workspaceCommit: plan.options.workspaceCommit, waveId: plan.waveId, timeline,
       adapterConfigOverrides: chaosLifecycleOverrides(plan.options.lifecycle),
       onEnvironment: owned => {
         sweeper = new DaytonaWaveSweeper({ apiKey: process.env.DAYTONA_API_KEY!, companyId: owned.companyId, environmentId: owned.environmentId, api });
@@ -425,7 +426,10 @@ async function main(): Promise<number> {
     // An injected fault that did not complete invalidates the wave, even when
     // bounded recovery brought the server back and the tasks passed.
     if (faultFailures) harnessError ??= new Error(`${faultFailures} injected fault(s) failed; see fault_error in the timeline`);
-    if (interrupted) throw new Error("Harness interrupted before the wave finished");
+    if (interrupted) {
+      harnessError ??= new Error("Harness interrupted before the wave finished");
+      for (const observer of launched) observer.markUnfinished();
+    }
 
     // R6: let finalizers settle, then sweep for anything still pending.
     const quietFor = Date.now() - lastDoneAt;
