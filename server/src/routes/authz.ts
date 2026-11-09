@@ -29,9 +29,70 @@ export function assertAuthenticated(req: Request) {
   }
 }
 
+export const BOARD_ACCESS_REQUIRED_CODE = "board_access_required";
+
+// Agent API subresources whose controls live on their own profile tab.
+const AGENT_PROFILE_TABS: Record<string, [string, string]> = {
+  keys: ["API keys", "api-keys"],
+  permissions: ["permissions", "permissions"],
+  budgets: ["budget", "budgets"],
+  identity: ["identity and instructions", "identity"],
+  "instructions-bundle": ["identity and instructions", "identity"],
+  "instructions-path": ["identity and instructions", "identity"],
+  configuration: ["harness settings", "runtime"],
+  "runtime-state": ["harness settings", "runtime"],
+};
+
+// The board page that holds the control behind a board-only API route, when one
+// is known. Paths keep <prefix> for the agent to fill from its own task identifier.
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const BOARD_CONTROL_PAGES: Array<[RegExp, (match: RegExpExecArray, req: Request) => [string, string] | null]> = [
+  [/^\/(?:companies\/[^/]+\/)?secrets?(?:[-/]|$)/, () => ["company secrets", "/<prefix>/company/settings/secrets"]],
+  [/^\/companies\/[^/]+\/(?:budgets|budget-incidents|costs)(?:\/|$)/, () => ["budgets", "/<prefix>/activity/budgets"]],
+  [/^\/companies\/[^/]+\/(?:prompt-injection-prevention|decision-model)(?:\/|$)/, () => ["connection settings", "/<prefix>/company/settings/connections"]],
+  [/^\/companies\/[^/]+\/(?:members|invites|join-requests)(?:\/|$)/, () => ["company members", "/<prefix>/company/settings/members"]],
+  [/^\/companies\/[^/]+\/(?:tools\/)?gateways(?:\/|$)|^\/tool-gateway\//, () => ["tool gateways", "/<prefix>/apps/gateways"]],
+  [/^\/approvals\/([^/]+)/, match => ["the approval", `/<prefix>/approvals/${match[1]}`]],
+  [/^\/projects\/([^/]+)\/access-members(?:\/|$)/, (match, req) => {
+    const projectId = [req.params?.id, match[1]].find((id): id is string => typeof id === "string" && UUID_PATTERN.test(id));
+    return projectId ? ["the project's access settings", `/<prefix>/projects/${projectId}/configuration`] : null;
+  }],
+  [/^\/agents\/([0-9a-f-]{36})(?:\/([^/]+))?(?:\/|$)/i, match => {
+    const tab = match[2] && Object.hasOwn(AGENT_PROFILE_TABS, match[2]) ? AGENT_PROFILE_TABS[match[2]] : undefined;
+    return tab ? [`the agent's ${tab[0]}`, `/<prefix>/agents/${match[1]}/${tab[1]}`] : ["the agent's profile", `/<prefix>/agents/${match[1]}`];
+  }],
+  [/^\/companies\/[^/]+(?:\/(?:archive|branding|settings))?\/?$/, () => ["company settings", "/<prefix>/company/settings"]],
+];
+
+function boardControlPage(req: Request) {
+  const path = (req.originalUrl ?? "").split("?")[0]!.replace(/^\/api(?=\/)/, "");
+  for (const [pattern, page] of BOARD_CONTROL_PAGES) {
+    const match = pattern.exec(path);
+    if (match) return page(match, req);
+  }
+  return null;
+}
+
+/**
+ * A board-only denial. Agents get a final, actionable remediation so they hand the
+ * action to the person instead of searching other routes for one that does not exist.
+ */
+export function boardAccessRequired(req: Request) {
+  if (req.actor.type !== "agent") return forbidden("Board access required");
+  const page = boardControlPage(req);
+  const where = page
+    ? `They can do it in the Andrecomp web app: link [Open ${page[0]}](${page[1]}), with this conversation's company prefix as <prefix>.`
+    : "They can do it in the Andrecomp web app or with their own board credentials. Link a page only if you already know its route; do not search for one.";
+  return forbidden("Board access required", {
+    code: BOARD_ACCESS_REQUIRED_CODE,
+    remediation: `This action is board-only by design and this denial is final: no agent credential, tool or other API route can do it, so do not search for one. Tell the person that a board user must do it. ${where}`,
+  });
+}
+
 export function assertBoard(req: Request) {
   if (req.actor.type !== "board") {
-    throw forbidden("Board access required");
+    throw boardAccessRequired(req);
   }
 }
 
