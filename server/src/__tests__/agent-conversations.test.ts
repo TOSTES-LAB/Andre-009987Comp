@@ -994,9 +994,36 @@ describe("chat prompt policy", () => {
     expect(prompt).toContain("/<prefix>/agents/<urlKey or id>");
   });
 
+  it("points chat at the teams catalog for ready-made teams and stops the search there", () => {
+    expect(AGENT_CHAT_DIRECTIVE).toContain("Ready-made teams are installable packages in Andrecomp's teams catalog");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("list the catalog with GET /api/teams/catalog");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("do not look for others in package registries, repositories or the web");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("The web app has no teams catalog page, so do not link one");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("andrecomp teams install <team id> --company-id <companyId>");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("When you recommend a team, name its roles (agentSlugs), every required skill (requiredSkills, by its ref) and every configuration input (envInputs)");
+    const prompt = buildAndrecompTaskMarkdown({ issue: { id: "chat", identifier: "RUN-1", title: "Chat", workMode: "ask", conversationAgentId: "agent" } });
+    expect(prompt).toContain("GET /api/teams/catalog");
+  });
+
+  it("tells chat to answer terminal requests with the person's own CLI commands", () => {
+    expect(AGENT_CHAT_DIRECTIVE).toContain("they mean their own terminal: give them commands using the Andrecomp CLI, npx andrecomp");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("instead of doing the work yourself, saving a file in your workspace or writing curl");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("Fill in values you can read here, such as this company's id");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("Write the Andrecomp address as <your Andrecomp URL>");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("npx andrecomp run cancel <runId> stops a queued or running one (board users only)");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("a command whose output is piped cannot open the sign-in prompt");
+    const prompt = buildAndrecompTaskMarkdown({ issue: { id: "chat", identifier: "RUN-1", title: "Chat", workMode: "ask", conversationAgentId: "agent" } });
+    expect(prompt).toContain("npx andrecomp issue document:get <task id or identifier> <key> --json | jq -r .body > <file name>");
+  });
+
   it("tells chat where a person can hire when the agent cannot", () => {
     expect(AGENT_CHAT_DIRECTIVE).toContain("send the person to the hire form at /<prefix>/agents/new");
     expect(AGENT_CHAT_DIRECTIVE).toContain("to your own /permissions page, where they can turn on hiring for you");
+  });
+
+  it("tells chat overviews to state their observation time from the message timestamp", () => {
+    expect(AGENT_CHAT_DIRECTIVE).toContain("say when that picture is from as a clock time in UTC, such as \"As of 15:26 UTC\"");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("Use the time of the person's latest message, which this prompt lists with each new comment");
   });
 
   it("tells chat to link the agent profile page that holds a control, including the unlisted API keys page", () => {
@@ -1011,6 +1038,16 @@ describe("chat prompt policy", () => {
     expect(AGENT_CHAT_DIRECTIVE).toContain("Never build a prefix from the company name");
     const prompt = buildAndrecompTaskMarkdown({ issue: { id: "chat", identifier: "RUN-1", title: "Chat", workMode: "ask", conversationAgentId: "agent" } });
     expect(prompt).toContain("for task RUN-1 the prefix is RUN");
+  });
+
+  it("sends a task-tree pause to the person's Pause subtree control instead of imitating it with task edits", () => {
+    expect(AGENT_CHAT_DIRECTIVE).toContain("Pausing, stopping or resuming a whole task tree (a parent task and all of its subtasks) is a person's control, not an agent action.");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("chooses More task actions, then Pause subtree");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("do not change task statuses or assignees, cancel runs, pause agents, or create tasks or routines to resume it later");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("Andrecomp has no scheduled resume");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("[<identifier>](/<prefix>/issues/<identifier>)");
+    const prompt = buildAndrecompTaskMarkdown({ issue: { id: "chat", identifier: "RUN-1", title: "Chat", workMode: "ask", conversationAgentId: "agent" } });
+    expect(prompt).toContain("then Pause subtree");
   });
 
   it("asks which record is meant before changing one of several matches", () => {
@@ -1045,6 +1082,15 @@ describe("chat prompt policy", () => {
     expect(AGENT_CHAT_DIRECTIVE).toContain("read the agent and name it rather than showing a raw ID");
     const prompt = buildAndrecompTaskMarkdown({ issue: { id: "chat", identifier: null, title: "Chat", workMode: "ask", conversationAgentId: "agent" } });
     expect(prompt).toContain("/<prefix>/agents/<agentId>/runs/<runId>");
+  });
+
+  it("says the task-chat lab exists only under pnpm dev in the person's own checkout", () => {
+    expect(AGENT_CHAT_DIRECTIVE).toContain("Some developer labs, including the task-chat interaction lab at /<prefix>/dev/task-chat-lab, are registered only in a development build of the UI");
+    expect(AGENT_CHAT_DIRECTIVE).not.toContain("Developer labs, such as");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("the design guide and the ux-lab pages, are registered in every build");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("running pnpm dev in their own Andrecomp checkout and visiting /<prefix>/dev/task-chat-lab");
+    const prompt = buildAndrecompTaskMarkdown({ issue: { id: "chat", identifier: null, title: "Chat", workMode: "ask", conversationAgentId: "agent" } });
+    expect(prompt).toContain("/<prefix>/dev/task-chat-lab");
   });
 
   it("routes a person's own profile change to their profile settings instead of an agent write", () => {

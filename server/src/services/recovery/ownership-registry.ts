@@ -36,8 +36,8 @@ import {
   settleNativeAcceptedResultLease,
 } from "../native-runtime/native-accepted-result-lease-settlement.js";
 import { settleClaimedWakeRequest } from "./wake-request-claimed-settlement.js";
-import { settleAbandonedWorkspaceFinalizeAttempt } from "./workspace-finalize-attempt-settlement.js";
-import { runtimeControlOperationOwnerStamp, settleRuntimeControlOperation } from "../workspace-operations.js";
+import { settleAbandonedRemoteSnapshotSave, settleAbandonedWorkspaceCommandOperation, settleAbandonedWorkspaceFinalizeAttempt } from "./workspace-finalize-attempt-settlement.js";
+import { LOCAL_WORKSPACE_COMMAND_PHASES, runtimeControlOperationOwnerStamp, settleRuntimeControlOperation } from "../workspace-operations.js";
 import { copybackOwnerHoldOwner, settleCopybackOwnerHold } from "./copyback-owner-hold.js";
 import { applyObservedFenceProviderProof, observedWorkspaceFenceOwner, settleObservedWorkspaceFence } from "./observed-workspace-fence.js";
 import { copybackOwnerStamp } from "../native-runtime/native-workspace-owner-stop-proof.js";
@@ -854,13 +854,21 @@ export const OWNABLE_KINDS: readonly OwnableKind[] = [
     settle: settleAbandonedWorkspaceFinalizeAttempt,
 
   }, versionLock(workspaceOperations)),
+  ownerGoneAttestable({
+    ...operationKind("workspace_command_operation", "Local workspace command (provision, prepare, teardown)", "ownership",
+      and(inArray(workspaceOperations.phase, [...LOCAL_WORKSPACE_COMMAND_PHASES]), eq(workspaceOperations.status, "running"),
+        sql`not (${workspaceOperations.metadata} ? 'runtimeControlOwner')`),
+      row => json(row.metadata).commandOwner ? controllerStamp(json(row.metadata).commandOwner, "workspace_command_operation")
+        : runOwner(row.heartbeatRunId)),
+    settle: settleAbandonedWorkspaceCommandOperation,
+  }, versionLock(workspaceOperations)),
   operationKind("remote_provision_command", "Remote provision command intent", "workspace_preservation",
     and(eq(workspaceOperations.phase, "remote_workspace_provision"), or(eq(workspaceOperations.status, "running"),
       sql`(${workspaceOperations.metadata}->>'uncertain')::boolean is true`)),
     row => runOwner(row.heartbeatRunId)),
-  operationKind("remote_snapshot_save", "Remote snapshot save", "workspace_preservation",
+  { ...operationKind("remote_snapshot_save", "Remote snapshot save", "workspace_preservation",
     and(eq(workspaceOperations.phase, "remote_workspace_snapshot"), inArray(workspaceOperations.status, ["running", "pending"])),
-    row => runOwner(row.heartbeatRunId)),
+    row => runOwner(row.heartbeatRunId)), settle: settleAbandonedRemoteSnapshotSave },
   operationKind("remote_workspace_migration", "Remote workspace migration op", "workspace_preservation",
     and(eq(workspaceOperations.phase, "remote_workspace_migration"), eq(workspaceOperations.status, "running")),
     () => ({ kind: "none" })),
