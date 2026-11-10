@@ -8487,6 +8487,34 @@ describe("native terminal-turn accounting", () => {
     }
   });
 
+  // w-20261110T100747-s20386 run 71f71d10: K1 stopped the ACPX Claude
+  // provider before the turn's final report; the restored Runner resumed the
+  // session and reported the same turn completed without it.
+  it.each([false, true])("certifies a turn completed across a session restore as a lower bound (history replay: %s)", async replay => {
+    const { rehydrateRunnerdUsageNotification } = await import("@andrecomp/andrecomp-runner/live");
+    const onUsage = vi.fn(async (_receipt: import("@andrecomp/adapter-utils").AdapterUsageCheckpoint) => {});
+    const event = (eventType: string, turnId: string | undefined, sourceSeq: number, payload: object = {}) => ({
+      eventType, turnId, sourceSeq, sourceInstanceId: "provider", emittedAt: new Date().toISOString(), payload,
+    }) as unknown as PrpEvent;
+    const provisional = { kind: "usage", usage: rehydrateRunnerdUsageNotification({ provider: "acpx", runDeltaAvailable: false,
+      cumulative: { inputTokens: 0, outputTokens: 0, providerCostUsd: 0 },
+      runDelta: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, providerCostUsd: 0 } }, "session", "turn").tokenUsage };
+    const before = [event("turn.started", "turn", 7), event("item.completed", "turn", 10, provisional), event("item.completed", "turn", 113, provisional)];
+    const restored = [event("session.resumed", undefined, 119, { context: {} }), event("turn.completed", "turn", 124, { status: "completed" })];
+    state.execute.mockReset().mockImplementationOnce(async () => {
+      for (const entry of [...(replay ? [] : before), ...restored]) await accountingEvents.committed!(entry);
+      return { result: { summary: "done" }, terminal: { runTerminalState: "succeeded" }, turnId: "turn",
+        normalizedSessionId: "session", providerSessionId: null, driverKind: "acpx_runtime", driverVersion: "1",
+        nativeEventCount: 5, highestContiguousSourceSeq: 124, usage: null };
+    });
+    const result = await executeAndrecompNativeSession({ db: leaseDb(execution, {}, {}, [], {}, "running", replay ? before : []),
+      execution: { ...execution, provider: { kind: "acpx", agent: "claude", model: "claude-sonnet-5" } } as NativeExecutionInput,
+      runnerInstanceId: "runner", runnerEnvironment: { ANTHROPIC_API_KEY: "fixture" }, onUsage });
+    expect(result).toMatchObject({ usageComplete: true });
+    expect(onUsage).toHaveBeenLastCalledWith(expect.objectContaining({ complete: true,
+      pricingProvenance: expect.objectContaining({ evidence: expect.any(String) }) }));
+  });
+
   it.each(["claude", "codex"].flatMap(agent =>
     ["missing", "partial", "complete_zero", "later_partial", "recovered"].map(scenario => ({ agent, scenario })),
   ))("honors runner completeness for ACPX $agent ($scenario)", async ({ agent, scenario }) => {
@@ -8670,12 +8698,25 @@ describe("native terminal-turn accounting", () => {
       expect(firstCapture).toHaveBeenCalledTimes(2);
       expect(secondCapture).toHaveBeenCalledTimes(1);
       await expect(retainedHook({ ...firstReport, runId: "unrelated-run" })).rejects.toThrow("native_usage_run_binding_mismatch");
+      // A session restore reaches the producer that owns its run, so an open
+      // turn can close as a lower bound; another run's restore is ignored.
+      const currentResume = { ...secondReport, eventType: "session.resumed" } as PrpEvent;
+      const drainingResume = { ...firstReport, eventType: "session.resumed" } as PrpEvent;
+      await retainedHook(currentResume);
+      expect(secondCapture).toHaveBeenLastCalledWith(currentResume);
+      await retainedHook(drainingResume);
+      expect(firstCapture).toHaveBeenLastCalledWith(drainingResume);
+      const [firstCalls, secondCalls] = [firstCapture.mock.calls.length, secondCapture.mock.calls.length];
+      await expect(retainedHook({ ...currentResume, runId: "unrelated-run" })).resolves.toBeUndefined();
+      expect([firstCapture.mock.calls.length, secondCapture.mock.calls.length]).toEqual([firstCalls, secondCalls]);
       const recoveryHook = state.createTransport.mock.calls.at(-1)![0].onRecoveryAccountingEvent!;
       const source = { runnerInstanceId: "warm-producer", environmentLeaseId: "warm-usage-workspace",
         runId: first.binding.runId, normalizedSessionId: first.session.normalizedSessionId!, turnId: "source-turn", itemId: "source-item" };
       await recoveryHook(firstReport, source);
-      expect(firstCapture).toHaveBeenCalledTimes(3);
-      expect(secondCapture).toHaveBeenCalledTimes(1);
+      expect(firstCapture).toHaveBeenCalledTimes(firstCalls + 1);
+      expect(secondCapture).toHaveBeenCalledTimes(secondCalls);
+      // Recovery routing stays usage-only: a source restore needs no proven source.
+      await expect(recoveryHook({ ...drainingResume, runId: "foreign-source" }, source)).resolves.toBeUndefined();
       await expect(recoveryHook({ ...firstReport, runId: "foreign-source" }, source)).rejects.toThrow("native_recovery_usage_source_unproven");
     } finally {
       if (previous === undefined) delete process.env.ANDRECOMP_RUNNER_STATE_DIR; else process.env.ANDRECOMP_RUNNER_STATE_DIR = previous;
@@ -13956,7 +13997,7 @@ describe("native session bounded recovery", () => {
     }
   });
 
-  it("persists actionable operator recovery without an automatic cleanup wake", async () => {
+  it("persists plain cleanup recovery without an automatic cleanup wake", async () => {
     const updates: Array<{ table: unknown; values: Record<string, unknown> }> =
       [];
     const failure = new NativeSessionCleanupQuarantinedError();
@@ -13987,7 +14028,7 @@ describe("native session bounded recovery", () => {
         nextAttemptAt: null,
         failureDetail: {
           nextAction: expect.stringContaining(
-            "Clearing a task session does not resolve this quarantine",
+            "it starts once the previous session has stopped",
           ),
         },
       });
@@ -13998,7 +14039,7 @@ describe("native session bounded recovery", () => {
           ownerType: "board",
           wakePolicy: null,
           nextAction: expect.stringContaining(
-            "Clearing a task session does not resolve this quarantine",
+            "it starts once the previous session has stopped",
           ),
         }),
       );
@@ -14007,6 +14048,45 @@ describe("native session bounded recovery", () => {
         { status: "blocked" },
         expect.anything(),
       );
+    } finally {
+      service.mockRestore();
+    }
+  });
+
+  // Remote native run shape: the provider turn completed and its work was
+  // saved; a same-run recovery was then refused by the cleanup gate. The task
+  // disposition can still be missing, so the hold stays; the wording names the
+  // saved work and a message, never an administrator.
+  it("explains a cleanup refusal after a completed turn without asking an operator", async () => {
+    const updates: Array<{ table: unknown; values: Record<string, unknown> }> = [];
+    const failure = new NativeSessionCleanupQuarantinedError();
+    state.execute.mockReset().mockRejectedValueOnce(failure);
+    state.upsertRecoveryAction.mockReset().mockResolvedValue({});
+    const updateIssue = vi.fn(async () => ({ status: "blocked", statusVersion: 7 }));
+    const service = vi.spyOn(issueServiceModule, "issueService")
+      .mockReturnValue({ update: updateIssue } as unknown as ReturnType<typeof issueServiceModule.issueService>);
+    const completedCheckpoint = { sessionCheckpoint: {
+      activeTurnId: null, semanticResult: null, cursor: "818",
+      identity: { runId: execution.binding.runId, agentId: execution.binding.agentId,
+        issueId: execution.binding.issueId, companyId: execution.binding.companyId, sessionId: "session" },
+      terminal: { schema: "andrecomp.prp.terminal.v1", runTerminalState: "succeeded",
+        turnTerminalState: "completed", reportedWorkDisposition: "yielded" },
+    } };
+    try {
+      await expect(executeAndrecompNativeSession({
+        db: leaseDb(execution, {}, {}, updates, completedCheckpoint), execution, runnerInstanceId: "runner",
+      })).rejects.toBe(failure);
+      const terminal = updates.find(entry => entry.table === nativeRunFinalizations
+        && entry.values.phase === "terminal_failure")?.values;
+      // Still a permanent, named refusal: no provider work is replayed.
+      expect(terminal).toMatchObject({ failureCode: "native_session_cleanup_quarantined", nextAttemptAt: null });
+      const nextAction = String((terminal?.failureDetail as Record<string, unknown>).nextAction);
+      expect(nextAction).toMatch(/finished its work and saved it/);
+      expect(nextAction).not.toMatch(/operator|admin|Clearing a task session/i);
+      expect(state.upsertRecoveryAction).toHaveBeenCalledWith(expect.objectContaining({
+        cause: "native_session_cleanup_quarantined", wakePolicy: null,
+        nextAction: expect.stringMatching(/finished its work and saved it/),
+      }));
     } finally {
       service.mockRestore();
     }
@@ -16869,14 +16949,19 @@ describe("runnerd provider runtime wiring", () => {
     } finally {owner.mockRestore();await rm(home,{recursive:true,force:true});}
   });
 
-  it.each((["codex", "claude"] as const).flatMap(provider => [[false, false, false, false], [true, false, false, false], [false, true, false, false], [false, false, true, false], ...(provider === "codex" ? [[false, false, false, true]] : [])].map(([unknown, shutdown, journalFailure, deadline]) => [provider, unknown, shutdown, journalFailure, deadline] as const)))(
-    "releases settled %s only under its current owner and detaches its cache locally (unknown=%s, shutdown=%s, journalFailure=%s, deadline=%s)", async (provider, unknown, shutdown, journalFailure, deadline) => {
+  it.each((["codex", "claude"] as const).flatMap(provider => [
+    ...[[false, false, false, false], [true, false, false, false], [false, true, false, false], [false, false, true, false], ...(provider === "codex" ? [[false, false, false, true]] : [])]
+      .map(([unknown, shutdown, journalFailure, deadline]) => [provider, unknown, shutdown, journalFailure, deadline, "idle timeout"] as const),
+    ...(["controller restart", "detach failure", "environment deletion"] as const)
+      .map(retirement => [provider, false, false, false, false, retirement] as const),
+  ]))(
+    "releases settled %s only under its current owner and retires its cache (unknown=%s, shutdown=%s, journalFailure=%s, deadline=%s, retirement=%s)", async (provider, unknown, shutdown, journalFailure, deadline, retirement) => {
       await closeIdleWarmNativeSessionsForRestart();
       expect(readNativeSessionIdleWork()).toBe("none");
       const previousHome = process.env.ANDRECOMP_HOME;
       process.env.ANDRECOMP_HOME = isolatedStateDirectory;
       const current = scopedNativeExecution(`released-${provider}-${unknown}`);
-      current.session.lifecyclePolicy = { mode: "warm", idleTimeoutMs: unknown ? 750 : 250 };
+      current.session.lifecyclePolicy = { mode: "warm", idleTimeoutMs: retirement === "idle timeout" ? unknown ? 750 : 250 : 60_000 };
       if (provider === "claude") current.provider = { kind: "acpx", agent: "claude", model: "fixture", permissionMode: "deny-all" } as never;
       const source = { runnerInstanceId: "released-runner", environmentLeaseId: "released-lease", runId: current.binding.runId,
         normalizedSessionId: current.session.normalizedSessionId!, turnId: "settled-turn", itemId: "settled-item" };
@@ -17014,7 +17099,28 @@ describe("runnerd provider runtime wiring", () => {
           expect(state.execute).toHaveBeenCalledTimes(1);
           expect(JSON.parse(await readFile(path, "utf8")).releasedRunner).toEqual(envelope.releasedRunner);
         }
-        await vi.waitFor(() => expect(detachControllerForRestart).toHaveBeenCalledOnce());
+        if (retirement === "environment deletion") {
+          expect(await closeWarmNativeSessionsForEnvironment({ environmentId: target.environmentId, reason: "environment deleted" }))
+            .toEqual({ closed: 1, busy: 0, failed: 0 });
+          expect(close).toHaveBeenCalledExactlyOnceWith({ reason: "environment deleted" });
+          expect(detachControllerForRestart).not.toHaveBeenCalled();
+          return;
+        }
+        if (retirement === "detach failure") {
+          detachControllerForRestart.mockRejectedValue(new Error("fixture journal drain failed"));
+          for (let attempt = 0; attempt < 2; attempt++) {
+            expect(await closeIdleWarmNativeSessionsForRestart()).toEqual({ closed: 0, busy: 0, failed: 1 });
+            expect(close).not.toHaveBeenCalled();
+            expect(readNativeSessionIdleWork()).toBe("present");
+            expect(JSON.parse(await readFile(path, "utf8")).releasedRunner).toEqual(envelope.releasedRunner);
+          }
+          detachControllerForRestart.mockResolvedValue(undefined);
+        }
+        if (retirement !== "idle timeout") {
+          expect(await closeIdleWarmNativeSessionsForRestart()).toEqual({ closed: 1, busy: 0, failed: 0 });
+          expect(await closeIdleWarmNativeSessionsForRestart()).toEqual({ closed: 0, busy: 0, failed: 0 });
+        } else await vi.waitFor(() => expect(detachControllerForRestart).toHaveBeenCalledOnce());
+        expect(readNativeSessionIdleWork()).toBe("none");
         expect(close).not.toHaveBeenCalled();
         expect(task.mock.calls.map(([operation]) => (operation as { kind: string }).kind)).toEqual(["describe"]);
         expect(JSON.parse(await readFile(path, "utf8")).releasedRunner).toEqual(envelope.releasedRunner);
@@ -17047,6 +17153,7 @@ describe("runnerd provider runtime wiring", () => {
         await expect(owners.mock.calls.at(-1)![0].onResumed!(source)).rejects.toThrow("released_source_mismatch");
         expect(JSON.parse(await readFile(path, "utf8")).releasedRunner).toEqual(replacement.releasedRunner);
       } finally {
+        detachControllerForRestart.mockResolvedValue(undefined);
         allowRelease(); allowPhysicalStop(); await execute.catch(() => undefined); await closeIdleWarmNativeSessionsForRestart(); owners.mockRestore();
         if (previousHome === undefined) delete process.env.ANDRECOMP_HOME; else process.env.ANDRECOMP_HOME = previousHome;
       }

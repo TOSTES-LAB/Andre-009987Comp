@@ -15,10 +15,11 @@ import { setTimeout as delay } from "node:timers/promises";
 import { ChaosApi, isSocketTypeOfServiceRace } from "./api.js";
 import { BoardUi } from "./board-ui.js";
 import { DEFAULT_MINIO_BINARY, MINIO_RELEASE, minioBinary, objectStoreServerEnvironment, startMinio, type ObjectStore } from "./object-store.js";
-import { StorageChaos, planStorageFaults, replayStorageWindows, type StorageFaultReceipt } from "./storage-chaos.js";
+import { StorageChaos, planStorageFaults, replayStorageWindows, type StorageFaultReceipt, type StorageFaultWindow } from "./storage-chaos.js";
 import { startStorageFaultProxy } from "./storage-proxy.js";
 import { StorageAuditor, auditsStorage, storageAuditMarkdown } from "./storage-audit.js";
 import { exposedAfterLaunch, StorageTrigger, storageTriggerMarkdown, storageTriggerShortfall } from "./storage-trigger.js";
+import { NativeTrigger, nativeTriggerMarkdown, nativeTriggerShortfall, triggeredOutageWindow } from "./native-trigger.js";
 import { needsCredentialRotation, startCredentialRotation, type CredentialRotation } from "./storage-credentials.js";
 import { describeProviderFault, installProviderFaultSeam, resolveRealCodex, withProviderFaultCheck, type ProviderFaultSeam } from "./provider-faults.js";
 import { installAcpxSidecarSeam, withAcpxSidecarHook, type AcpxSidecarSeam } from "./acpx-provider-faults.js";
@@ -44,6 +45,7 @@ import { TimeShiftedApi } from "./time-faults.js";
 import type { RestartStep } from "./repeated-restarts.js";
 import { isBrokenStdoutError, markTimelineEchoBroken, Timeline } from "./timeline.js";
 import { guardedRunnerOutputs, worktreeFingerprint } from "./wave-guard.js";
+import { checkCrossServer, readCrossServerEvidence } from "./multi-server.js";
 import type { FaultKind, FaultReceipt, OracleArtifacts, TriggerId, WavePlan } from "./types.js";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
@@ -253,6 +255,7 @@ async function main(): Promise<number> {
   let objectStore: ObjectStore | null = null;
   let storageChaos: StorageChaos | null = null;
   let storageTrigger: StorageTrigger | null = null;
+  let nativeTrigger: NativeTrigger | null = null;
   let storageProxy: Awaited<ReturnType<typeof startStorageFaultProxy>> | null = null;
   let credentialRotation: CredentialRotation | null = null;
   let storageAuditor: StorageAuditor | null = null;
@@ -321,11 +324,13 @@ async function main(): Promise<number> {
         rules: plan.tasks.flatMap(task => task.providerFault ? [`${task.taskId}:${describeProviderFault(task.providerFault)}`] : []) });
     }
     if (plan.options.timeAgeMs) supervisor.timeAgeMs = plan.options.timeAgeMs;
+    if (plan.options.rrStopOn) supervisor.rrStopOn = plan.options.rrStopOn;
     await supervisor.start(serverEnvironment);
     // TM2/TM3 age the database; the observer and grader read run times back at their real times.
     const api: ChaosApi = new TimeShiftedApi(supervisor.baseUrl, supervisor.agingShifts);
     const lab = await seedChaosLab({ api, env: plan.options.env, waitForReadyAgents: true, cancelled: () => interrupted, daytonaImage: plan.options.daytonaImage, daytonaCpu: plan.options.daytonaCpu,
       daytonaReuseLease: plan.options.daytonaReuseLease,
+      daytonaWarm: plan.options.daytonaWarm, daytonaInherit: plan.options.daytonaInherit,
       adapters: [...new Set([...plan.tasks.map(task => task.adapter),
         ...(plan.tasks.some(task => task.workload === "M1") ? plan.options.adapters : [])])],
       concurrency: plan.options.concurrency, budgetCents: plan.options.budgetCents, masks: plan.options.masks,
@@ -412,6 +417,39 @@ async function main(): Promise<number> {
       });
       storageProxy.observe(storageTrigger.listener);
     }
+    const outageMs = plan.options.nativeTrigger?.outageMs;
+    const outageWindows: StorageFaultWindow[] = [];
+    const outageClock = Date.now();
+    if (outageMs && storageProxy && !storageChaos && !plan.replayOf) {
+      storageChaos = new StorageChaos(outageWindows, outageClock, credentialRotation?.wrap(storageProxy) ?? storageProxy, (kind, data) => timeline.add(kind, data));
+      storageChaos.start(1_000, outageClock);
+    }
+    if (plan.options.nativeTrigger && !plan.replayOf) {
+      nativeTrigger = new NativeTrigger(plan.options.nativeTrigger, {
+        canFire: () => !interrupted && !faultsQueued && !supervisor.faultInProgress && supervisor.serverReady,
+        isOpen: taskId => observers.some(observer => observer.plan.taskId === taskId && !observer.done && observer.record.restAt === null),
+        issueId: taskId => observers.find(observer => observer.plan.taskId === taskId)?.record.issueId ?? null,
+        runs: issueId => api.get<unknown[]>(`/api/issues/${issueId}/runs`, 5_000),
+        events: (runId, afterSeq, limit) => api.get(`/api/heartbeat-runs/${runId}/events?afterSeq=${afterSeq}&limit=${limit}`, 5_000),
+        record: (kind, data) => timeline.add(kind, data),
+        fire: armed => {
+          faultsQueued += 1;
+          const work = (async () => {
+            const exposed = await exposedAfterLaunch(launching, launched);
+            await Promise.all(exposed.map(candidate => candidate.snapshotBeforeFault()));
+            const queued = faultWork.length;
+            if (outageMs) {
+              outageWindows.push(triggeredOutageWindow(Date.now() - outageClock, outageMs));
+              storageChaos?.tick();
+            }
+            fireFault(armed.kind, armed.holdMs, armed.taskId, exposed, undefined, undefined, armed.restartSteps);
+            await faultWork[queued];
+          })().finally(() => { faultsQueued -= 1; });
+          faultWork.push(work);
+          return work;
+        },
+      });
+    }
 
     supervisor.onCrashPoint = receipt => {
       const owner = pointResults.find(result => result.token === receipt.crashPoint?.token);
@@ -465,8 +503,9 @@ async function main(): Promise<number> {
         errors: check.errors.map(error => redactKnownSecrets(error, knownSecretValues())) });
     };
 
-    while (!interrupted && (pending.length || active.length || storageTrigger?.busy)) {
+    while (!interrupted && (pending.length || active.length || storageTrigger?.busy || nativeTrigger?.busy)) {
       const now = Date.now();
+      await nativeTrigger?.tick(now);
       if (storm?.endIfDue(now)) {
         // Unlaunched pool tasks are not part of the wave; the in-flight ones drain without new faults.
         timeline.add("storm_ended", { faultsFired: storm.state.fired, inFlight: active.length, unlaunched: pending.length });
@@ -483,7 +522,7 @@ async function main(): Promise<number> {
         }
       }
       // Recheck the storm clock per launch: ensureServing or a slow launch can cross the storm's end.
-      while (!crashPoint && active.length < plan.options.concurrency && pending.length && supervisor.serverReady && !supervisor.faultInProgress && !storageTrigger?.busy
+      while (!crashPoint && active.length < plan.options.concurrency && pending.length && supervisor.serverReady && !supervisor.faultInProgress && !storageTrigger?.busy && !nativeTrigger?.busy
         && (!storm || storm.mayLaunch(Date.now()))
         // `--matrix`: no-fault baselines never share the server with a fault cell.
         && (!plan.options.matrix || matrixMayLaunch(pending[0]!.plan, active.filter(observer => !observer.done).map(observer => observer.plan)))) {
@@ -517,6 +556,7 @@ async function main(): Promise<number> {
         const due = observer.faultDue(Date.now());
         if (!due) continue;
         if (observer.record.restAt !== null) { timeline.add("fault_skipped_task_resting", { taskId: observer.plan.taskId, fault: due.kind }); continue; }
+        if (nativeTrigger) { nativeTrigger.arm({ taskId: observer.plan.taskId, kind: due.kind, holdMs: due.holdMs, armedAt: Date.now(), ...(due.restartSteps ? { restartSteps: due.restartSteps } : {}) }); continue; }
         if (storageTrigger) { storageTrigger.arm({ taskId: observer.plan.taskId, kind: due.kind, holdMs: due.holdMs, armedAt: Date.now(), ...(due.restartSteps ? { restartSteps: due.restartSteps } : {}) }); continue; }
         const exposed = active.filter(candidate => !candidate.done);
         await Promise.all(exposed.map(candidate => candidate.snapshotBeforeFault()));
@@ -553,6 +593,12 @@ async function main(): Promise<number> {
       const shortfall = storageTriggerShortfall(storageTrigger.finish(faults));
       storageSection = storageTriggerMarkdown(storageTrigger.receipts);
       timeline.add("storage_trigger_settled", { shortfall, receipts: storageTrigger.receipts.length });
+      if (shortfall) harnessError ??= new Error(shortfall);
+    }
+    if (nativeTrigger) {
+      const shortfall = nativeTriggerShortfall(nativeTrigger.finish(faults));
+      storageSection = [storageSection, nativeTriggerMarkdown(nativeTrigger.receipts)].filter(Boolean).join("\n");
+      timeline.add("native_trigger_settled", { shortfall, receipts: nativeTrigger.receipts.length });
       if (shortfall) harnessError ??= new Error(shortfall);
     }
     await stopPressure();
@@ -610,7 +656,8 @@ async function main(): Promise<number> {
         : { verdict: "fail" as const, checks: [{ name: "artifacts_collected", ok: false, detail: observer.record.launchError ?? "collection failed" }] };
       // A provider-fault task whose fault never happened tested nothing.
       const restart = faults.find(receipt => receipt.requestedBy === observer.plan.taskId && receipt.trigger === "provider");
-      const oracle = withProviderFaultCheck(graded, observer.plan, artifacts?.providerFaultEvents ?? [], restart?.startedAt ?? null);
+      const oracle = withProviderFaultCheck(graded, observer.plan, artifacts?.providerFaultEvents ?? [], restart?.startedAt ?? null,
+        restart?.stoppedAt ?? restart?.startedAt ?? null);
       const grade = gradeTask(observer.record, faults, observer.definition.budgetMs, oracle, universalByIssue ? {
         runMessages: allRunMessages, recoveryActions: universalByIssue.get(observer.record.issueId ?? "")?.recoveryActions ?? [] } : undefined);
       let evidence: string | null = null;
@@ -625,6 +672,18 @@ async function main(): Promise<number> {
       timeline.add("task_graded", { taskId: observer.plan.taskId, pass: grade.pass, crossed: grade.crossed, signature: grade.signature,
         rules: Object.fromEntries(Object.entries(grade.rules).map(([id, rule]) => [id, rule.verdict])), T: grade.T.verdict,
         universal: Object.fromEntries(Object.entries(grade.universal ?? {}).map(([id, rule]) => [id, `${rule.verdict}${rule.enforced ? "" : " (warning)"}`])) });
+    }
+    // MS1–MS3: the cross-server invariant over the whole wave (multi-server.ts).
+    if (faults.some(receipt => receipt.multiServer)) {
+      const crossServer = await readCrossServerEvidence(evidenceDb, lab.companyId)
+        .then(evidence => checkCrossServer({ ...evidence, windows: supervisor.serverWindows }))
+        .catch(error => { harnessError ??= new Error(`Cross-server invariant check failed: ${String(error)}`); return null; });
+      if (crossServer) {
+        await writeFile(path.join(waveDir, "cross-server.json"), `${JSON.stringify(crossServer, null, 2)}\n`, { mode: 0o600 });
+        timeline.add("cross_server_invariant", { violations: crossServer.violations.map(violation => ({ rule: violation.rule, runId: violation.runId,
+          issueId: violation.issueId, detail: violation.detail })), unattributed: crossServer.unattributed.length });
+        if (crossServer.violations.length) anyFailure = true;
+      }
     }
     if (storageAuditor) {
       storageChaos?.stop();
@@ -724,6 +783,7 @@ async function main(): Promise<number> {
     storageChaos?.stop();
     await credentialRotation?.settled();
     if (credentialRotation?.failures.length) harnessError ??= new Error(`ST5R credential rotation failed: ${credentialRotation.failures.join("; ")}`);
+    if (nativeTrigger) await writeFile(path.join(waveDir, "native-trigger.json"), `${JSON.stringify(nativeTrigger.finish(faults), null, 2)}\n`, { mode: 0o600 }).catch(() => undefined);
     if (storageProxy) {
       storageProxy.observe(null);
       if (storageTrigger) await writeFile(path.join(waveDir, "storage-trigger.json"), `${JSON.stringify(storageTrigger.finish(faults), null, 2)}\n`, { mode: 0o600 }).catch(() => undefined);

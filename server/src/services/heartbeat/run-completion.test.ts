@@ -738,6 +738,39 @@ describe.skipIf(!support.supported && !process.env.ANDRECOMP_TEST_DATABASE_URL)(
     expect(f.input.onProviderTraceFinalized).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { runtimeMode: "native" as const, conversation: true, createsFinal: true },
+    { runtimeMode: "native" as const, conversation: false, createsFinal: false },
+    { runtimeMode: "legacy" as const, conversation: true, createsFinal: false },
+  ])("scopes final-response precedence to native standing conversations: %j", async ({ runtimeMode, conversation, createsFinal }) => {
+    const f = await fixture({ runtimeMode });
+    const [issue] = await db.insert(issues).values({ companyId: f.run.companyId, title: "Conversation reply",
+      ...(conversation ? { assigneeAgentId: f.agent.id, conversationAgentId: f.agent.id,
+        conversationUserId: "board-person", conversationState: "active" } : {}),
+    }).returning();
+    const [earlier] = await db.insert(issueComments).values({ companyId: f.run.companyId, issueId: issue.id,
+      authorAgentId: f.agent.id, createdByRunId: f.run.id, body: "Checking the request.",
+    }).returning();
+    f.input.issueId = issue.id;
+    f.input.issueRef = issue;
+    f.input.issueContext = await createHeartbeatRunPreparation(db).getIssueExecutionContext(f.run.companyId, issue.id);
+    f.input.adapterResult.resultJson = { nativeResult: { schema: "andrecomp.run_result.v1", reportedWorkDisposition: "done", summary: "The complete answer" } };
+    f.deps.findRunIssueComment.mockResolvedValue(earlier);
+    f.deps.issuesSvc.addComment.mockImplementation(async (issueId, body) => {
+      const [comment] = await db.insert(issueComments).values({ companyId: f.run.companyId, issueId,
+        authorAgentId: f.agent.id, authorType: "agent", createdByRunId: f.run.id, body }).returning();
+      return { ...comment, authorType: "agent" as const };
+    });
+    await f.completion.completeRun(f.input);
+    const comments = await db.select().from(issueComments).where(eq(issueComments.issueId, issue.id));
+    expect(comments.some(comment => comment.id === earlier.id && comment.body === earlier.body)).toBe(true);
+    expect(comments.filter(comment => comment.body === "The complete answer")).toHaveLength(createsFinal ? 1 : 0);
+    expect((await read(f.run.id)).resultJson).toMatchObject({ presentationDecision: {
+      chosenSource: createsFinal ? "semantic_result_summary" : "existing_issue_comment",
+      commentAction: createsFinal ? "create" : "reuse",
+    } });
+  });
+
   it("keeps completion and session persistence moving after a response comment fails", async () => {
     const f = await fixture();
     f.input.adapterResult.resultJson = { finalResponseDisposition: "final", finalResponse: "Completed the work." };
@@ -1431,6 +1464,110 @@ describe.skipIf(!support.supported && !process.env.ANDRECOMP_TEST_DATABASE_URL)(
     expect(JSON.stringify(failed)).not.toMatch(/heartbeat_runs|secret-run-id|Failed query/);
     const failureLog = logged.mock.calls.find(call => call[1] === "heartbeat execution failed");
     expect(failureLog?.[0]).toMatchObject({ runId: f.run.id, errorCode: "adapter_failed", failureCause: "40001" });
+  });
+
+  describe("a native run that fails before provider work", () => {
+    const contention = () => new AccountingContentionError(Object.assign(new Error("deadlock detected"),
+      { name: "PostgresError", code: "40P01" }), 4);
+    const nativeFixture = async () => {
+      const f = await fixture({ runtimeMode: "native" }, `NPD${randomUUID().slice(0, 6)}`);
+      f.deps.scheduleBoundedRetryForRun.mockResolvedValue({ outcome: "scheduled", run: f.run } as never);
+      return { ...f, preDispatch: (err: unknown, nativeDispatchMayHaveStarted?: boolean) =>
+        ({ ...f.failure(err), legacyAdapterEntered: false, nativeDispatchMayHaveStarted }) };
+    };
+
+    it("records that no provider work started and re-queues itself in the uncharged preparation lane", async () => {
+      const f = await nativeFixture();
+      await f.completion.failRun(f.preDispatch(contention(), false));
+      const failed = await read(f.run.id);
+      expect(failed).toMatchObject({ status: "failed", errorCode: "adapter_failed",
+        resultJson: { failureCause: "40P01", nativePreDispatchFailure: { version: 1, providerWorkStarted: false } } });
+      expect(f.deps.scheduleBoundedRetryForRun).toHaveBeenCalledWith(expect.objectContaining({ id: f.run.id }), f.agent,
+        { retryReason: "interrupted_preparation" });
+      expect(f.deps.releaseIssueExecutionAndPromote).toHaveBeenCalledWith(expect.objectContaining({ id: f.run.id }),
+        expect.objectContaining({ suppressImmediateRecovery: true }));
+    });
+
+    it("re-queues a setup failure on a transient database fault", async () => {
+      const f = await nativeFixture();
+      await f.completion.failRunSetup({ ...f.setup(Object.assign(new Error("could not serialize access"),
+        { name: "PostgresError", code: "40001" })), nativeDispatchMayHaveStarted: false });
+      expect(await read(f.run.id)).toMatchObject({ status: "failed", errorCode: "setup_failed",
+        resultJson: { failureCause: "40001", nativePreDispatchFailure: { version: 1, providerWorkStarted: false } } });
+      expect(f.deps.scheduleBoundedRetryForRun).toHaveBeenCalledWith(expect.objectContaining({ id: f.run.id }), f.agent,
+        { retryReason: "interrupted_preparation" });
+    });
+
+    it("keeps the hold once the run's history shows a native process start", async () => {
+      const f = await nativeFixture();
+      await appendHeartbeatRunEvent(db, { companyId: f.run.companyId, runId: f.run.id, agentId: f.run.agentId,
+        eventType: "native.process_start_requested", stream: "system", level: "info", message: "Native execution requested",
+        payload: { providerAttempt: 1 } });
+      await f.completion.failRun(f.preDispatch(contention(), false));
+      const failed = await read(f.run.id);
+      expect(failed.resultJson).not.toHaveProperty("nativePreDispatchFailure");
+      expect(f.deps.scheduleBoundedRetryForRun).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["a dispatch that may have started", true],
+      ["a caller that does not report dispatch", undefined],
+    ] as const)("keeps the hold for %s", async (_label, mayHaveStarted) => {
+      const f = await nativeFixture();
+      await f.completion.failRun(f.preDispatch(contention(), mayHaveStarted));
+      expect((await read(f.run.id)).resultJson).not.toHaveProperty("nativePreDispatchFailure");
+      expect(f.deps.scheduleBoundedRetryForRun).not.toHaveBeenCalled();
+    });
+
+    it("keeps the hold when a native coordinator was claimed", async () => {
+      const f = await nativeFixture();
+      const [issue] = await db.insert(issues).values({ companyId: f.run.companyId, title: "Claimed native run" }).returning();
+      await db.update(heartbeatRuns).set({ nativeIssueId: issue.id }).where(eq(heartbeatRuns.id, f.run.id));
+      await db.insert(nativeRunFinalizations).values({ runId: f.run.id, companyId: f.run.companyId, issueId: issue.id, phase: "observed", attempt: 1, leaseOwner: "executor-lease" });
+      await f.completion.failRun(f.preDispatch(contention(), false));
+      expect((await read(f.run.id)).resultJson).not.toHaveProperty("nativePreDispatchFailure");
+      expect(f.deps.scheduleBoundedRetryForRun).not.toHaveBeenCalled();
+    });
+
+    it("re-queues when runtime selection created the coordinator but no executor claimed it", async () => {
+      const f = await nativeFixture();
+      const [issue] = await db.insert(issues).values({ companyId: f.run.companyId, title: "Unclaimed native run" }).returning();
+      await db.update(heartbeatRuns).set({ nativeIssueId: issue.id }).where(eq(heartbeatRuns.id, f.run.id));
+      await db.insert(nativeRunFinalizations).values({ runId: f.run.id, companyId: f.run.companyId, issueId: issue.id, phase: "observed" });
+      await f.completion.failRun(f.preDispatch(contention(), false));
+      expect((await read(f.run.id)).resultJson).toMatchObject({ nativePreDispatchFailure: { version: 1, providerWorkStarted: false } });
+      expect(f.deps.scheduleBoundedRetryForRun).toHaveBeenCalledOnce();
+      // The unclaimed coordinator is closed so it cannot hold the successor as pending cleanup.
+      expect((await db.select().from(nativeRunFinalizations).where(eq(nativeRunFinalizations.runId, f.run.id)))[0])
+        .toMatchObject({ phase: "terminal_failure", failureCode: "native_pre_dispatch_failure" });
+    });
+
+    it.each([
+      ["a recorded process", { processPid: 4242 }],
+      ["a provider session", { sessionIdAfter: "provider-session" }],
+    ] as const)("keeps the hold when the run carries %s", async (_label, patch) => {
+      const f = await nativeFixture();
+      await db.update(heartbeatRuns).set(patch).where(eq(heartbeatRuns.id, f.run.id));
+      await f.completion.failRun(f.preDispatch(contention(), false));
+      expect((await read(f.run.id)).resultJson).not.toHaveProperty("nativePreDispatchFailure");
+      expect(f.deps.scheduleBoundedRetryForRun).not.toHaveBeenCalled();
+    });
+
+    it("re-queues a follow-up whose process identity was inherited from its warm predecessor", async () => {
+      const f = await nativeFixture();
+      await db.update(heartbeatRuns).set({ processPid: 4242, runnerProfileJson: { inheritedProcessIdentityRunId: randomUUID() } })
+        .where(eq(heartbeatRuns.id, f.run.id));
+      await f.completion.failRun(f.preDispatch(contention(), false));
+      expect((await read(f.run.id)).resultJson).toMatchObject({ nativePreDispatchFailure: { version: 1, providerWorkStarted: false } });
+      expect(f.deps.scheduleBoundedRetryForRun).toHaveBeenCalledOnce();
+    });
+
+    it("records the proof but does not re-queue a failure that is not a transient database fault", async () => {
+      const f = await nativeFixture();
+      await f.completion.failRun(f.preDispatch(new Error("adapter crashed"), false));
+      expect((await read(f.run.id)).resultJson).toMatchObject({ nativePreDispatchFailure: { version: 1, providerWorkStarted: false } });
+      expect(f.deps.scheduleBoundedRetryForRun).not.toHaveBeenCalled();
+    });
   });
 
   it("records a workspace provider's reason on the run and in the setup failure log without retrying", async () => {
