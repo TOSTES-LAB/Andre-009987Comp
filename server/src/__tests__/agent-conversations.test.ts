@@ -994,6 +994,13 @@ describe("chat prompt policy", () => {
     expect(prompt).toContain("/<prefix>/agents/<urlKey or id>");
   });
 
+  it("tells chat that instruction saves keep no history, so an undo with no listed revision asks instead of reconstructing", () => {
+    expect(AGENT_CHAT_DIRECTIVE).toContain("Saving instructions does not record earlier versions");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("an empty history means no earlier text is retained");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("do not reconstruct it from the current file, its wording, or the activity log");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("say plainly that no earlier version was saved, and ask the person for the text they want");
+  });
+
   it("points chat at the teams catalog for ready-made teams and stops the search there", () => {
     expect(AGENT_CHAT_DIRECTIVE).toContain("Ready-made teams are installable packages in Andrecomp's teams catalog");
     expect(AGENT_CHAT_DIRECTIVE).toContain("list the catalog with GET /api/teams/catalog");
@@ -1014,6 +1021,12 @@ describe("chat prompt policy", () => {
     expect(AGENT_CHAT_DIRECTIVE).toContain("a command whose output is piped cannot open the sign-in prompt");
     const prompt = buildAndrecompTaskMarkdown({ issue: { id: "chat", identifier: "RUN-1", title: "Chat", workMode: "ask", conversationAgentId: "agent" } });
     expect(prompt).toContain("npx andrecomp issue document:get <task id or identifier> <key> --json | jq -r .body > <file name>");
+  });
+
+  it("answers a person's inbox question from their Mine list and links Mine", () => {
+    expect(AGENT_CHAT_DIRECTIVE).toContain("GET /api/agents/me/inbox/mine?userId=<their user id>, using the authorUserId of their message");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("your own queue and a company-wide task search are not their inbox");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("[Mine](/<prefix>/inbox/mine)");
   });
 
   it("tells chat where a person can hire when the agent cannot", () => {
@@ -1082,6 +1095,16 @@ describe("chat prompt policy", () => {
     expect(AGENT_CHAT_DIRECTIVE).toContain("read the agent and name it rather than showing a raw ID");
     const prompt = buildAndrecompTaskMarkdown({ issue: { id: "chat", identifier: null, title: "Chat", workMode: "ask", conversationAgentId: "agent" } });
     expect(prompt).toContain("/<prefix>/agents/<agentId>/runs/<runId>");
+  });
+
+  it("tells chat how to link projects and to link only the workspace pages a tool result gives", () => {
+    const app = readFileSync(new URL("../../../ui/src/App.tsx", import.meta.url), "utf8");
+    expect(app).toMatch(/<Route\s+path="projects\/:projectId"/);
+    expect(AGENT_CHAT_DIRECTIVE).toContain("agent profiles, projects) uses that same prefix");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("For a project, link /<prefix>/projects/<projectId>.");
+    expect(AGENT_CHAT_DIRECTIVE).toContain("When a tool result gives a record's href, such as a project or a workspace, link that href; a workspace without an href has no page on this instance");
+    const prompt = buildAndrecompTaskMarkdown({ issue: { id: "chat", identifier: null, title: "Chat", workMode: "ask", conversationAgentId: "agent" } });
+    expect(prompt).toContain("/<prefix>/projects/<projectId>");
   });
 
   it("says the task-chat lab exists only under pnpm dev in the person's own checkout", () => {

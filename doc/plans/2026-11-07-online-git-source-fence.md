@@ -38,6 +38,10 @@ their existing reconstruction path.
 Preparation, lifecycle, runtime-service, expiration, and reopen owners retain
 the same physical keys before filesystem mutation or lifecycle exclusion. The
 importer holds all cohort task/project and lifecycle keys through publication.
+Each cohort reserves its at most eight members in independent transactions in
+parallel. It joins every reservation before starting capture or releasing the
+source fence, including on failure. Partial journals keep the full exact member
+and operation set for resume; publication stays serial in one transaction.
 It also holds the existing per-run physical finalizer keys for each exact native
 recovery proof. It re-inspects the complete source proof before capture and
 publication. Changed descriptors, allocations, owners, aliases, or Git metadata
@@ -100,6 +104,13 @@ serialized remote function, compare archive bytes and digests, remove every
 original source, restore uncommitted/staged work, and run fsck. No hosted import,
 hold, cancellation, provider call, or shared-cache Git command is part of these
 local tests.
+
+A cohort shares its initial nested-source verification only within its held
+source and finalizer fences, keyed by physical root, Git roots and the exact
+recorded child set (or discovery). After every capture joins, a separate fresh
+verification checks each physical root and child set before publication. A
+changed child still rejects the whole cohort. Singleton imports keep their
+per-import checks. No local-byte proof survives the invocation.
 
 The online migration owner can checkpoint completed immutable nested-snapshot
 verification in the child snapshot ledger. This optional versioned proof binds

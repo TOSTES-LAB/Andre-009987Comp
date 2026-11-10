@@ -1,3 +1,4 @@
+import { currentControllerProcess } from "../controller-process-identity.js";
 import { activeNativeExecutionRunIds } from "./native-active-runs.js";
 import { onRetainedNativeSessionCleanupRelease } from "../retained-native-session-cleanup-notifications.js";
 import { readIdleLocalWork, markIdleStartupComplete, markIdleIngressTracked } from "../idle-local-work.js";
@@ -94,6 +95,7 @@ import {
   NativeProviderSideEffectPendingError,
   NativeProviderStateIncompatibleError,
   NativeProviderTerminalFailure,
+  NativeGovernedWaitSettlementPendingError,
   NativeSessionProtocolIntegrityError,
 } from "../../vendor/andrecomp-runner/index.js";
 import * as issueServiceModule from "../issues.js";
@@ -9810,6 +9812,7 @@ describe("native session execution lease fencing", () => {
     expect(profileWrites).toBe(2);
     expect(nullWrites).toBe(0);
     const claim = updates.find(update => update.table === nativeRunFinalizations && update.values.phase === "observed" && update.values.leaseOwner)!.values;
+    expect(claim.controllerHostHash).toBe((await currentControllerProcess()).hostHash);
     expect(recordAdmission).toHaveBeenCalledExactlyOnceWith(db, { session, identity, waitForClaim: false,
       admissionEpoch: (profile.nativeProviderPackAdmissionState as Record<string, unknown>).admissionEpoch,
       claim: { leaseOwner: claim.leaseOwner, attempt: claim.attempt, controllerGeneration: claim.controllerGeneration, controllerBootId: claim.controllerBootId } });
@@ -20764,6 +20767,19 @@ describe("runnerd provider runtime wiring", () => {
       }),
     );
   });
+});
+
+it("reconciles a saved governed wait with a bounded same-run settlement schedule", () => {
+  const now = new Date("2026-11-09T12:00:00Z");
+  const code = nativeSessionFailureSourceCode(new NativeGovernedWaitSettlementPendingError());
+  expect(code).toBe("native_governed_wait_settlement_pending");
+  expect(nativeSessionFailureDisposition(1, now, code)).toEqual({
+    phase: "retryable_failure", failureCode: code, nextAttemptAt: new Date(now.getTime() + 30_000),
+  });
+  expect(nativeSessionFailureDisposition(3, now, code)).toEqual({
+    phase: "terminal_failure", failureCode: code, nextAttemptAt: null,
+  });
+  expect(requiresExecutionReconciliation(code)).toBe(true);
 });
 
 // Terminal wrapping must never turn an authorization/integrity failure into a safe replacement.

@@ -1,3 +1,4 @@
+import { currentControllerProcess } from "../controller-process-identity.js";
 import { remoteRecoveryLeaseMismatch } from "./remote-recovery-lease-mismatch.js";
 import { isGovernancePauseStop } from "../governance-pause-stop.js";
 import { nativeLeaseHolder, notifyNativeTokenLeaseClaimed } from "./native-token-lease-settlement.js";
@@ -174,6 +175,7 @@ import {
   NativeProviderSideEffectPendingError,
   NativeProviderStateIncompatibleError,
   NativeProviderTerminalFailure,
+  NativeGovernedWaitSettlementPendingError,
   NativeRunnerSourceReconciliationRequiredError,
   NativeSessionCleanupQuarantinedError,
   NativeSessionCloseUnrecoverableError,
@@ -2224,7 +2226,7 @@ export async function unidentifiedLocalRunnerProvenAbsent(input: { runId: string
 
 /** `andrecomp-runnerd` is always launched with `--run-id <runId>`. A failed or
  * slow process listing proves nothing, so it keeps the caller blocked. */
-async function noLocalRunnerProcessForRun(runId: string): Promise<boolean> {
+export async function noLocalRunnerProcessForRun(runId: string): Promise<boolean> {
   const listing = await new Promise<string | null>(resolve => {
     execFile("ps", ["-axww", "-o", "command="], { encoding: "utf8", timeout: 5_000, maxBuffer: 64 * 1024 * 1024 },
       (error, stdout) => resolve(error ? null : stdout));
@@ -8000,7 +8002,7 @@ export function nativeSessionFailureDisposition(
     phase: exhausted
       ? ("terminal_failure" as const)
       : ("retryable_failure" as const),
-    failureCode: permanentFailure || permissionDeclined
+    failureCode: permanentFailure || permissionDeclined || sourceFailureCode === "native_governed_wait_settlement_pending"
       ? sourceFailureCode!
       : exhausted
         ? ("native_session_retry_exhausted" as const)
@@ -8039,6 +8041,7 @@ export function nativeSessionFailureSourceCode(
 ):
   | "native_permission_declined"
   | "native_provider_terminal_failed"
+  | "native_governed_wait_settlement_pending"
   | typeof NATIVE_PROVIDER_STATE_INCOMPATIBLE
   | typeof NATIVE_PROVIDER_SIDE_EFFECT_PENDING
   | "native_provider_approval_required"
@@ -8071,6 +8074,7 @@ export function nativeSessionFailureSourceCode(
   | "local_runtime_api_listener_unavailable"
   | "native_session_interrupted" {
   if (error instanceof NativePermissionDeclinedError) return "native_permission_declined";
+  if (error instanceof NativeGovernedWaitSettlementPendingError) return "native_governed_wait_settlement_pending";
   if (error instanceof NativeProviderStateIncompatibleError) return NATIVE_PROVIDER_STATE_INCOMPATIBLE;
   if (error instanceof NativeProviderSideEffectPendingError) return NATIVE_PROVIDER_SIDE_EFFECT_PENDING;
   if (error instanceof NativeProviderTerminalFailure) {
@@ -9529,9 +9533,10 @@ export async function executeAndrecompNativeSession(input: {
       }
       return preparedInput;
     };
+    const stageAttachments = () => createRunPreparationTiming(runId, "native.controller")("attachment_staging", prepareAttachments);
     return needsWarmRetirement
-      ? await executeAndrecompNativeSessionWithinScope(input, prepareAttachments, false, ownDiagnosticLease)
-      : await executeAndrecompNativeSessionWithinScope(await prepareAttachments(), undefined, false, ownDiagnosticLease);
+      ? await executeAndrecompNativeSessionWithinScope(input, stageAttachments, false, ownDiagnosticLease)
+      : await executeAndrecompNativeSessionWithinScope(await stageAttachments(), undefined, false, ownDiagnosticLease);
   } catch (error) {
     executionFailure = error;
     if (error instanceof NativeControllerRecoveryWaitingError) {
@@ -9688,7 +9693,8 @@ async function executeAndrecompNativeSessionAttempt(
     : null;
   const stagedRestart = input.restartRecovery?.kind === "reattach_remote_runner"
     ? await verifyStagedAttachmentRestart(input) : null;
-  if (input.useRunnerd) await restoreWarmRunnerdController(input);
+  const timeController = createRunPreparationTiming(input.execution.binding.runId, "native.controller");
+  if (input.useRunnerd) await timeController("warm_restore", () => restoreWarmRunnerdController(input));
   const identityRedactor = createAgentIdentityRedactor(input.runnerEnvironment?.ANDRECOMP_AGENT_PRIVATE_KEY);
   const redactIdentityText = (text: string) => redactSensitiveText(
     identityRedactor.chunk("diagnostic", text) + identityRedactor.finish("diagnostic"),
@@ -9714,7 +9720,6 @@ async function executeAndrecompNativeSessionAttempt(
       "andrecomp_runner_provider_unsupported: ACPX candidate requires exact host qualification authorization",
     );
   }
-  const timeController = createRunPreparationTiming(input.execution.binding.runId, "native.controller");
   const preparationSpans = input.preparationSpans ?? [];
   const preparationStarts = nativeRunPreparationStarts(
     preparationSpans,
@@ -9768,20 +9773,22 @@ async function executeAndrecompNativeSessionAttempt(
           startedAtMs: environmentStartedAtMs,
         })
       : null;
-  for (const span of preparationSpans) {
-    const rootMilestone = isNativeRunRootHistoricalSpan(span.name);
-    await trace.record({
-      ...span,
-      parentName: rootMilestone
-        ? "task.provider_session"
-        : environmentSpans.includes(span)
-          ? "environment.startup"
-          : "task.prepare",
-    });
-  }
-  if (environmentScope) {
-    await trace.end(environmentScope, { endedAtMs: environmentEndedAtMs });
-  }
+  await timeController("span_persistence", async () => {
+    for (const span of preparationSpans) {
+      const rootMilestone = isNativeRunRootHistoricalSpan(span.name);
+      await trace.record({
+        ...span,
+        parentName: rootMilestone
+          ? "task.provider_session"
+          : environmentSpans.includes(span)
+            ? "environment.startup"
+            : "task.prepare",
+      });
+    }
+    if (environmentScope) {
+      await trace.end(environmentScope, { endedAtMs: environmentEndedAtMs });
+    }
+  });
   let retainedTransition: VerifiedWarmTransitionBinding | undefined;
   let remoteWarmRecovery: RemoteWarmSessionRecovery | undefined;
   const cachedReleasedOwner = warmNativeSessions.get(nativeSessionScopeKey(input.execution));
@@ -9866,7 +9873,7 @@ async function executeAndrecompNativeSessionAttempt(
     }
   }
   if (input.useRunnerd) {
-    retainedTransition = await migrateRunnerdStateRootForExecution({
+    retainedTransition = await timeController("state_migration", () => migrateRunnerdStateRootForExecution({
       db: input.db,
       execution: input.execution,
       preparedExecutionAdmission: input.preparedExecutionAdmission,
@@ -9877,7 +9884,7 @@ async function executeAndrecompNativeSessionAttempt(
       restartRecovery: input.restartRecovery,
       runnerExecutionTarget: input.runnerExecutionTarget,
       bootstrapRetryLeaseOwner: input.leaseOwner,
-    });
+    }));
   }
   const durableRunnerBinding = input.useRunnerd
     ? loadRunnerdDurableBinding(input.execution, retainedTransition)
@@ -9902,6 +9909,7 @@ async function executeAndrecompNativeSessionAttempt(
   const leaseOwner =
     input.leaseOwner ?? `${effectiveRunnerInstanceId}:${randomUUID()}`;
   const controller = await currentNativeControllerIdentity();
+  const controllerHostHash = (await currentControllerProcess()).hostHash;
   const executionLeaseTtlMs = input.runnerExecutionTarget?.kind === "remote"
     ? REMOTE_CONTROLLER_LEASE_MS : NATIVE_SESSION_EXECUTION_LEASE_TTL_MS;
   let attempt: number;
@@ -10087,8 +10095,8 @@ async function executeAndrecompNativeSessionAttempt(
               // Start the full lease after claim locks and lineage reads finish.
               leaseExpiresAt: sql`clock_timestamp() + ${executionLeaseTtlMs} * interval '1 millisecond'`,
               controllerBootId: controller.bootId,
+              controllerHostHash,
               controllerPid: controller.pid,
-              controllerHostHash: controller.hostHash ?? null,
               controllerProcessStartedAt: controller.processStartedAt,
               controllerGeneration: nextControllerGeneration,
               failureCode: null,
@@ -11895,6 +11903,8 @@ async function executeAndrecompNativeSessionAttempt(
                     ? "The computer provider rejected access. Restore the environment's credentials or permissions before retrying. Automatic retries are stopped."
                   : sourceFailureCode === "native_provider_terminal_failed"
                     ? "The provider session is permanently unusable. Verify stopped execution, completed actions, and task context before starting a linked continuation."
+                  : sourceFailureCode === "native_governed_wait_settlement_pending"
+                    ? "The work and waiting state are saved. Confirm shutdown of the retained execution and settle that same handoff without repeating provider work."
                   : sourceFailureCode === "native_provider_model_rejected" && !recoveryEvidence.providerSessionEstablished
                     ? NATIVE_STARTUP_MODEL_REJECTED_ACTION
                   : sourceFailureCode === NATIVE_PROVIDER_STATE_INCOMPATIBLE

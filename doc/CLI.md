@@ -9,7 +9,9 @@ Andrecomp CLI now supports both:
 ## Browser-approved Board authentication
 
 `npx andrecomp auth login --api-base <instance-url>` creates a ten-minute
-challenge and prints a browser approval link. Sign in to the instance, review
+challenge and prints a browser approval link. The link uses the instance's
+canonical public origin when configured, so reverse proxies do not send the
+browser to an internal upstream hostname. Sign in to the instance, review
 the requesting command and full Board access, then approve. The pending token
 cannot authenticate before approval. The CLI verifies its resulting identity
 before storing its credential in its private auth store. The default Board key
@@ -586,6 +588,8 @@ Agent configuration and runtime endpoints:
 
 ```sh
 npx andrecomp agent permissions:update <agent-id> --payload-json '{"canCreateAgents":true,"canCreateSkills":true,"canAssignTasks":true}'
+npx andrecomp agent permission:grant <agent-id> commentary:view
+npx andrecomp agent permission:revoke <agent-id> commentary:view
 npx andrecomp agent configuration <agent-id>
 npx andrecomp agent config-revisions <agent-id>
 npx andrecomp agent config-revision:get <agent-id> <revision-id>
@@ -602,6 +606,13 @@ npx andrecomp agent instructions-file:get <agent-id> --path AGENTS.md
 npx andrecomp agent instructions-file:put <agent-id> --path AGENTS.md --content-file ./AGENTS.md
 npx andrecomp agent instructions-file:delete <agent-id> --path AGENTS.md --yes
 ```
+
+`permission:grant` and `permission:revoke` require a Board login with
+`users:manage_permissions` in the agent's company. They change one permission
+key and preserve all other grants. A grant applies without starting a new run.
+Granting a key replaces that key's scope with an unscoped company grant;
+revoking removes the key. Use `agent get <agent-id> --json` to inspect
+`access.grants`. These commands do not reactivate an inactive membership.
 
 Agent config, instructions, skills, project env, environment, secret, and workspace edits affect the next run. Active runs finish with the config they started with. When a saved session, reused workspace, or sandbox lease no longer matches the effective next-run config, Andrecomp may start fresh execution and records non-sensitive freshness categories in run result JSON and workspace operation logs.
 

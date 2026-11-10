@@ -13,7 +13,10 @@ import { getHeartbeatRunReadDecisions, redactHeartbeatRunListRow } from "../serv
 import { taskInterruptionPresentation, taskInterruptionPresentations } from "../services/task-interruption-presentation.js";
 import { parseObject } from "../adapters/utils.js";
 import { prepareRestrictedWorkspaceRetry } from "../services/restricted-workspace-retry.js";
-import { issueSummariesQuerySchema, type IssueSummary } from "@andrecomp/shared";
+import { ISSUE_SUMMARIES_MAX_IDS, issueChatBootstrapQuerySchema, issueSummariesQuerySchema, type IssueSummary } from "@andrecomp/shared";
+import { readIssueChatBootstrapItems } from "../services/issue-chat-bootstrap.js";
+import { issueRunPresenceService } from "../services/issue-run-presence.js";
+import { activityService } from "../services/activity.js";
 import { listIssueSummaries } from "../services/issue-summaries.js";
 import { listIssueStatusBlockerAttention } from "../services/issue-status-presentation.js";
 import { assertNoCaseHandoffMutation } from "../services/heartbeat/case-handoff-lifecycle.js";
@@ -38,6 +41,7 @@ import { setIssueTitle } from "../services/issue-title.js";
 import { setIssueTitleSchema } from "@andrecomp/shared";
 import { resolveConfirmationFromComment } from "../services/confirmation-comment-resolution.js";
 import { createIssueReadTiming } from "../services/issue-read-timing.js";
+import { createInboxMineTiming, type InboxMinePhaseDurations } from "../services/inbox-mine-timing.js";
 import { isNativeWorkspaceExportRepairCause } from "@andrecomp/shared";
 import { resumeNativeWorkspaceAfterOwnerStop } from "../services/native-runtime/native-workspace-owner-recovery.js";
 import { confirmNativeControllerStopped, NATIVE_CONTROLLER_HOST_UNVERIFIED } from "../services/native-runtime/native-controller-host-recovery.js";
@@ -128,6 +132,7 @@ import {
   taskRetrySchema,
   resumeWorkspaceFinalizationSchema,
   confirmNativeControllerStoppedSchema,
+  confirmRunStoppedSchema,
   confirmOwnerGoneSchema,
   runnerGoalActionRequestSchema,
   feedbackTargetTypeSchema,
@@ -222,6 +227,7 @@ import {
   issueService,
   type ActivityPublication,
   type IssueFilters,
+  type IssueListOptions,
   clampIssueListLimit,
   documentService,
   documentAnnotationService,
@@ -3039,7 +3045,7 @@ export const ISSUE_LIST_NEXT_OFFSET_HEADER = "X-Andrecomp-Next-Offset";
 export const ISSUE_LIST_NEXT_AFTER_ID_HEADER = "X-Andrecomp-Next-After-Id";
 
 type IssueListPreparedResponse =
-  | { kind: "inbox"; body: unknown }
+  | { kind: "inbox"; body: unknown; serverTimingPhases?: InboxMinePhaseDurations }
   | {
       kind: "compact";
       body: CompactIssue[];
@@ -3572,6 +3578,8 @@ export function issueRoutes(
   const recoveryActionsSvc = issueRecoveryActionService(db);
   const executionWorkspacesSvc = executionWorkspaceServiceDirect(db, { pluginWorkerManager: opts.pluginWorkerManager });
   const workProductsSvc = workProductService(db);
+  const activitySvc = activityService(db);
+  const issueRunPresence = issueRunPresenceService(db, { heartbeat, getAgentById: (id) => agentsSvc.getById(id) });
   const documentsSvc = documentService(db);
   const artifactReviewDocumentsSvc = artifactReviewDocumentService(db, storage);
   const companySkillsSvc = companySkillService(db);
@@ -3706,7 +3714,8 @@ export function issueRoutes(
 
   const issueDetailEtag = privateJsonEtag();
   router.use((req, res, next) => {
-    if (/^\/issues\/[^/]+(?:\/|$)/.test(req.path)) {
+    // The chat bootstrap is `no-store`: always a fresh body, never a 304.
+    if (/^\/issues\/[^/]+(?:\/|$)/.test(req.path) && !/^\/issues\/[^/]+\/chat-bootstrap\/?$/.test(req.path)) {
       issueDetailEtag(req, res, next);
       return;
     }
@@ -8565,13 +8574,13 @@ export function issueRoutes(
     }
     const parsed = issueSummariesQuerySchema.safeParse(req.query);
     if (!parsed.success) {
-      res.status(400).json({ error: "ids must be the only query parameter and contain one to five comma-separated UUIDs" });
+      res.status(400).json({ error: `ids must be the only query parameter and contain one to ${ISSUE_SUMMARIES_MAX_IDS} comma-separated UUIDs` });
       return;
     }
     const rows = await listIssueSummaries(db, companyId, parsed.data.ids, await issueReadSqlCondition(db, req.actor));
     const visible = await filterIssuesForActor(req, rows);
     // Blocked rows carry glyph-only blocker state so every task view resolves
-    // the same glyph (covered → "in queue") as the task pane. At most five IDs.
+    // the same glyph (covered → "in queue") as the task pane. At most ISSUE_SUMMARIES_MAX_IDS IDs.
     const blockerAttention = await listIssueStatusBlockerAttention(db, companyId, visible, async (ids) => new Set(
       (await filterIssuesForActor(req, await listIssueSummaries(db, companyId, ids, await issueReadSqlCondition(db, req.actor))))
         .map((row) => row.id),
@@ -8594,12 +8603,112 @@ export function issueRoutes(
     res.json(summaries);
   });
 
+  /** `GET /issues/:id?view=core`, shared with the chat bootstrap. */
+  async function readIssueCore<T extends Parameters<typeof documentsSvc.getIssueDocumentPayload>[0] & { id: string }>(
+    issue: T,
+    time: <R>(phase: "documents" | "work_products", read: () => Promise<R>) => Promise<R> = (_phase, read) => read(),
+  ) {
+    const [documentPayload, workProducts] = await Promise.all([
+      time("documents", () => documentsSvc.getIssueDocumentPayload(issue)),
+      time("work_products", () => workProductsSvc.listForIssue(issue.id)),
+    ]);
+    return { ...issue, ...documentPayload, workProducts };
+  }
+
+  /**
+   * What the task chat reads before its first frame, for up to ten tasks, in
+   * the exact shapes of the individual task endpoints. Read-only: no activity,
+   * no break-glass. Unreadable tasks are omitted like `/issues/summaries`.
+   */
+  router.get("/companies/:companyId/issues/chat-bootstrap", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    if (isTaskBridgeKeyActor(req)) {
+      res.status(403).json({ error: "Task bridge keys cannot use company-wide issue list APIs" });
+      return;
+    }
+    const parsed = issueChatBootstrapQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: "ids must be the only query parameter and contain one to ten comma-separated task UUIDs or identifiers" });
+      return;
+    }
+    const items = await readIssueChatBootstrapItems({
+      companyId,
+      refs: parsed.data.ids,
+      resolve: (ref) => (isUuidLike(ref) ? svc.getById(ref) : svc.getByIdentifier(ref)),
+      filterReadable: (rows) => filterIssuesForActor(req, rows),
+      read: (issue) => readChatBootstrapPayload(req, issue),
+    });
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ items });
+  });
+
+  /**
+   * The single-task chat bootstrap, for a hard load of a task URL before the
+   * page knows its company. The same item as the batch route; 404 when the
+   * task is missing or unreadable. Read-only and without break-glass. The
+   * issue-detail ETag middleware skips this path, so it is never a 304.
+   */
+  // `:ref`, not `:id`: the `id` param hook rewrites identifiers to UUIDs, and
+  // the item must echo the caller's reference.
+  router.get("/issues/:ref/chat-bootstrap", async (req, res) => {
+    const raw = (req.params.ref as string).trim();
+    const ref = isUuidLike(raw) ? raw.toLowerCase() : normalizeIssueReferenceIdentifier(raw);
+    if (!ref) {
+      res.status(404).json(issueNotFoundBody(req));
+      return;
+    }
+    const issue = await getAccessibleResource(req, res, getIssueById(req, ref), "Issue not found", issueNotFoundBody(req));
+    if (!issue) return;
+    if (!(await assertIssueReadAllowed(req, res, issue, { finalForAgents: true }))) return;
+    const payload = await readChatBootstrapPayload(req, issue);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ ref, ...payload });
+  });
+
+  /**
+   * One task's chat bootstrap payload, shared by the batch and single-task
+   * routes. Each field is the payload of the named single endpoint; the caller
+   * has already resolved the task and authorized the read.
+   */
+  async function readChatBootstrapPayload(req: Request, issue: NonNullable<Awaited<ReturnType<typeof svc.getById>>>) {
+    const viewerUserId = req.actor.type === "board" ? getActorInfo(req).actorId : null;
+    const [issueCore, recentCommentsAndFacts, recentActivity, recentRuns, interactions, attachments, liveRuns, activeRun] = await Promise.all([
+      readIssueCore(issue),
+      readRecentComments(issue).then(async (recentComments) => ({
+        recentComments,
+        // `/activity?view=comment-inputs` for the saved recent comments, as the chat requests them.
+        commentInputFacts: await activitySvc.inputFactsForIssue(
+          issue.companyId,
+          issue.id,
+          recentComments.comments.map((comment) => comment.id).sort(),
+        ),
+      })),
+      activitySvc.forIssue(issue.id, 50),
+      activitySvc.runsForIssue(issue.companyId, issue.id, viewerUserId, 2, undefined, { skipLivenessBackfill: true }),
+      issueThreadInteractionService(db).listForIssue(issue.id),
+      svc.listAttachments(issue.id).then((rows) => rows.map(withContentPath)),
+      issueRunPresence.liveRuns(issue),
+      issueRunPresence.activeRun(issue),
+    ]);
+    return {
+      issue: issueCore,
+      ...recentCommentsAndFacts,
+      recentActivity,
+      recentRuns,
+      interactions,
+      attachments,
+      liveRuns,
+      activeRun,
+    };
+  }
+
   async function prepareIssueListForActor(
     req: Request,
     companyId: string,
     listFilters: IssueFilters,
     view: string | undefined,
-    options: { reportPagination?: boolean } = {},
+    options: { reportPagination?: boolean; listOptions?: IssueListOptions } = {},
   ): Promise<IssueListPreparedResponse> {
     const compactView = view === "compact" || view === "index" || view === "rows";
     const canReadCompanyScope = await actorCanReadCompanyScope(req, companyId);
@@ -8613,6 +8722,7 @@ export function issueRoutes(
     const probedResult = await svc.list(
       companyId,
       pageLimit === null ? listFilters : { ...listFilters, limit: pageLimit + 1 },
+      options.listOptions,
     );
     const hasMore = pageLimit !== null && probedResult.length > pageLimit;
     const rawResult = hasMore ? probedResult.slice(0, pageLimit!) : probedResult;
@@ -8709,6 +8819,7 @@ export function issueRoutes(
 
   router.get("/companies/:companyId/inbox/mine", async (req, res) => {
     const startedAt = Date.now();
+    const timing = createInboxMineTiming();
     const companyId = req.params.companyId as string;
     assertBoard(req);
     assertCompanyAccess(req, companyId);
@@ -8718,35 +8829,34 @@ export function issueRoutes(
     }
     const userId = req.actor.userId;
     if (!userId) throw new HttpError(401, "A signed-in board user is required");
-    const readCondition = await issueReadSqlCondition(db, req.actor);
+    const readCondition = await timing.time("access", () => issueReadSqlCondition(db, req.actor));
     const listFilters: IssueFilters = {
-      readCondition, touchedByUserId: userId, inboxArchivedByUserId: userId,
+      readCondition, touchedByUserId: userId, touchedCandidates: "participation", inboxArchivedByUserId: userId,
       status: INBOX_MINE_ISSUE_STATUS_FILTER, listProjection: "index",
       sortField: "updated", sortDir: "desc", limit: 100,
       includeRoutineExecutions: true, includeLiveDescendantSummary: true,
     };
-    const readCompact = async (filters: IssueFilters, projection: "index" | "rows") => {
-      const prepared = await prepareIssueListForActor(req, companyId, filters, projection);
+    const readCompact = async (filters: IssueFilters, projection: "index" | "rows", listOptions?: IssueListOptions) => {
+      const prepared = await prepareIssueListForActor(req, companyId, filters, projection, { listOptions });
       if (prepared.kind !== "compact") throw new Error("Expected compact inbox rows");
       return prepared.body;
     };
     const requestKey = issueListRequestKey({ req, companyId, normalizedQuery: { view: "mine-snapshot" }, route: "GET /api/companies/:companyId/inbox/mine" });
     const coordinated = await coordinateIssueListGet({
       req, companyId, requestKey, allowTtlCache: false, retireOnCompanyChange: true, diagnostics: opts.issueListDiagnostics,
-      compute: async () => ({
-        kind: "inbox",
-        body: { userId, ...await readInboxMine({
-          loadIssues: () => readCompact(listFilters, "index"),
-          loadFailures: async () => {
+      compute: async () => {
+        const body = { userId, ...await readInboxMine({
+          loadIssues: () => timing.time("issues", () => readCompact(listFilters, "index", { timePhase: timing.listPhases })),
+          loadFailures: () => timing.time("failures", async () => {
             const permission = await access.decide({ actor: req.actor, action: "company_scope:read", resource: { type: "company", companyId } });
             if (!permission.allowed) throw new HttpError(403, "Run telemetry is outside this actor's authorization boundary");
             const runs = latestFailedRunsByAgent(await heartbeat.list(companyId, undefined, 200, { summary: true }));
             const decisions = await getHeartbeatRunReadDecisions(db, access, req.actor, runs);
             return runRedactions.redactForRuns(companyId, runs.map((run, index) => decisions[index] ? run : redactHeartbeatRunListRow(run)), getActorInfo(req).actorId);
-          },
-          loadContext: (ids, projection) => readCompact({
+          }),
+          loadContext: (ids, projection) => timing.time(projection === "index" ? "parents" : "failure_context", () => readCompact({
             readCondition, issueIds: ids, listProjection: projection, limit: 100, includeRoutineExecutions: true,
-          }, projection),
+          }, projection)),
           sourceError: (error, source) => {
             logger.warn({ err: error, companyId, source }, "inbox source read failed");
             return {
@@ -8755,11 +8865,16 @@ export function issueRoutes(
                 : source === "failures" ? "Could not load failed runs" : "Could not load task context",
             };
           },
-        }) },
-      }),
+        }) };
+        // Requests that coalesce onto this read report its phases too.
+        return { kind: "inbox" as const, body, serverTimingPhases: timing.phases() };
+      },
     });
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("X-Andrecomp-Request-Cache", coordinated.cacheStatus);
+    res.setHeader("Server-Timing", timing.header(
+      coordinated.response?.kind === "inbox" ? coordinated.response.serverTimingPhases : undefined,
+    ));
     if (!coordinated.response) {
       res.setHeader("Retry-After", String(coordinated.retryAfterSeconds ?? 1));
       res.status(429).json({ error: "Too many concurrent issue-list requests for this actor/client", retryAfterSeconds: coordinated.retryAfterSeconds ?? 1 });
@@ -9802,12 +9917,9 @@ export function issueRoutes(
     // projection before first paint, independently of slow recovery, workspace
     // and related-task enrichment. This never refreshes external providers.
     if (req.query.view === "core") {
-      const [documentPayload, workProducts] = await Promise.all([
-        timing.time("documents", () => documentsSvc.getIssueDocumentPayload(issue)),
-        timing.time("work_products", () => workProductsSvc.listForIssue(issue.id)),
-      ]);
+      const core = await readIssueCore(issue, timing.time);
       res.setHeader("Server-Timing", timing.header());
-      res.json({ ...issue, ...documentPayload, workProducts });
+      res.json(core);
       return;
     }
     const inboxArchiveFieldsPromise =
@@ -10154,6 +10266,37 @@ export function issueRoutes(
     res.status(202).json(receipt);
   });
 
+  router.post("/issues/:id/recovery-actions/confirm-run-stopped", validate(confirmRunStoppedSchema), async (req, res) => {
+    assertBoard(req);
+    const issue = await getAccessibleResource(req, res, svc.getById(req.params.id as string), "Issue not found");
+    if (!issue || !(await assertIssueReadAllowed(req, res, issue))) return;
+    const decision = await access.decide({ actor: req.actor, action: "runtime:confirm_owner_stop", resource: { type: "company", companyId: issue.companyId } });
+    if (!decision.allowed) throw forbidden(decision.explanation, authorizationDeniedDetails(decision));
+    const { confirmUnidentifiedLocalRunnerStopped, UnidentifiedRunnerStopRefusedError } = await import("../services/native-local-process-stop.js");
+    const actor = getActorInfo(req);
+    let receipt: Awaited<ReturnType<typeof confirmUnidentifiedLocalRunnerStopped>>;
+    try {
+      receipt = await confirmUnidentifiedLocalRunnerStopped(db, { companyId: issue.companyId, issueId: issue.id,
+        runId: req.body.runId, actorId: actor.actorId });
+    } catch (error) {
+      if (error instanceof UnidentifiedRunnerStopRefusedError) throw conflict(error.message, { code: error.code });
+      throw error;
+    }
+    await logActivity(db, { companyId: issue.companyId, actorType: actor.actorType, actorId: actor.actorId,
+      action: "issue.run_stop_confirmed", entityType: "issue", entityId: issue.id, runId: receipt.runId,
+      details: { runId: receipt.runId, alreadyStopped: receipt.alreadyStopped, stopEvidence: req.body.stopEvidence } });
+    const { promoteDeferredWorkIntents } = await import("../services/work-intent-outbox.js");
+    await db.transaction(tx => promoteDeferredWorkIntents(tx, { companyId: issue.companyId, trigger: "lock_released", issueId: issue.id }));
+    const parked = await db.select({ id: agentWakeupRequests.id }).from(agentWakeupRequests).where(and(
+      eq(agentWakeupRequests.companyId, issue.companyId), eq(agentWakeupRequests.status, "deferred_issue_execution"),
+      eq(agentWakeupRequests.reason, "task_retry"), sql`${agentWakeupRequests.payload}->>'issueId' = ${issue.id}`));
+    for (const wake of parked) {
+      await heartbeat.resumeTaskRetry(issue.companyId, wake.id).catch(err =>
+        logger.warn({ err, issueId: issue.id, requestId: wake.id }, "Task Retry remains queued after the stop was confirmed"));
+    }
+    res.json({ ...receipt, presentation: await taskInterruptionPresentation(db, issue) });
+  });
+
   router.post("/issues/:id/recovery-actions/confirm-controller-stopped", validate(confirmNativeControllerStoppedSchema), async (req, res) => {
     assertBoard(req);
     const issue = await getAccessibleResource(req, res, svc.getById(req.params.id as string), "Issue not found");
@@ -10264,6 +10407,12 @@ export function issueRoutes(
         assertBoard(req);
         const decision = await access.decide({ actor: req.actor, action: "runtime:manage", resource: { type: "company", companyId: existing.companyId } });
         if (!decision.allowed) throw forbidden(decision.explanation, authorizationDeniedDetails(decision));
+      }
+      if (executionReconciliation?.controllerStopped !== undefined || executionReconciliation?.controllerAuthorityDigest !== undefined) {
+        assertBoard(req);
+        const permission = await access.decide({ actor: req.actor, action: "runtime:confirm_owner_stop",
+          resource: { type: "company", companyId: existing.companyId } });
+        if (!permission.allowed) throw forbidden(permission.explanation, authorizationDeniedDetails(permission));
       }
       const actor = getActorInfo(req);
       const actionStatus = outcome === "cancelled" ? "cancelled" : "resolved";
@@ -10387,6 +10536,11 @@ export function issueRoutes(
           { source: "recovery_action_resolution" },
         );
 
+        if (activeRecoveryAction.kind === "active_run_watchdog" && activeRecoveryAction.ownerType === "board"
+          && activeRecoveryAction.cause === "native_restart_recovery_blocked"
+          && activeRecoveryAction.evidence.reason === "controller_process_space_unverified"
+          && (!executionReconciliation?.controllerStopped || !executionReconciliation.controllerAuthorityDigest))
+          throw conflict("Confirm the original controller and provider stopped and review their action outcomes before resolving this hold.");
         const workspaceRetry = outcome === "restored" && sourceIssueStatus === "todo"
           ? await prepareRestrictedWorkspaceRetry(tx as unknown as Db, lockedIssue, activeRecoveryAction)
           : null;
@@ -10516,7 +10670,21 @@ export function issueRoutes(
           }
         }
 
-        if (
+        const controllerContainment = executionReconciliation?.controllerStopped === true
+          || executionReconciliation?.controllerAuthorityDigest !== undefined;
+        if (controllerContainment) {
+          assertBoard(req);
+          const permission = await access.decide({ actor: req.actor, action: "runtime:confirm_owner_stop",
+            resource: { type: "company", companyId: lockedIssue.companyId } });
+          if (!permission.allowed) throw forbidden(permission.explanation, authorizationDeniedDetails(permission));
+          if (outcome !== "restored" || sourceIssueStatus !== lockedIssue.status || !actionId
+            || activeRecoveryAction.id !== actionId || workspaceBaseRef || workspaceRetry)
+            throw conflict("Containment only records the original execution. Keep the task unchanged, then use Retry separately.");
+          await validateExecutionReconciliation({ db: tx as unknown as Db, companyId: lockedIssue.companyId,
+            issueId: lockedIssue.id, agentId: lockedIssue.assigneeAgentId,
+            sourceRunId: activeRecoveryAction.evidence.runId, decision: executionReconciliation,
+            controllerContainment: { actionId, actorId: actor.actorId } });
+        } else if (
           sourceIssueStatus === "todo" &&
           requiresExecutionReconciliation(activeRecoveryAction.cause)
         ) {
@@ -10538,7 +10706,7 @@ export function issueRoutes(
         }
 
         let chatRetry: { actionId: string; issueId: string } | null = null;
-        if (outcome === "restored" && sourceIssueStatus === "todo") {
+        if (!controllerContainment && outcome === "restored" && sourceIssueStatus === "todo") {
           const [chatBinding] = await tx
             .select({ id: chatConversations.id })
             .from(chatConversations)
@@ -10593,6 +10761,7 @@ export function issueRoutes(
             chatRetry
               ? { kind: "chat_failed_run_retry", actionId: chatRetry.actionId }
               : undefined,
+            controllerContainment ? { controllerContainmentOnly: true } : undefined,
           );
         }
         let issue = lockedIssue;
@@ -10748,7 +10917,7 @@ export function issueRoutes(
           issue = updatedIssue;
         }
 
-        const recordedOutcome =
+        const recordedOutcome = controllerContainment ? "restored" :
           outcome === "restored" &&
           issue.status === "todo" &&
           activeRecoveryAction.returnOwnerAgentId != null &&
@@ -14379,12 +14548,21 @@ export function issueRoutes(
    * Conversation tasks are excluded: a conversation turn settles from its final
    * reply (nativeConversationReplyResult), not from a runner tool, so a reply
    * that moves the conversation to review still settles without the lock.
+   *
+   * The one status-shaped request a run must be able to send is the active
+   * review/approval participant's approval (`status: "done"` with its decision
+   * comment): no runner tool records a stage decision, so refusing it leaves
+   * the stage pending forever. With `allowStageApproval` the guard returns
+   * "defer_final_status" for that request instead of refusing it. The caller
+   * records the decision and keeps the task (and the run's lock) in review;
+   * the run's own andrecomp_finish report then sets the final status.
    */
   async function assertNativeRunKeepsOwnExecutionLock(
     req: Request,
-    issue: { companyId: string; status: string; parentId: string | null; assigneeAgentId: string | null; assigneeUserId: string | null; checkoutRunId: string | null; executionRunId: string | null; conversationAgentId?: string | null; conversationUserId?: string | null },
+    issue: { companyId: string; status: string; parentId: string | null; assigneeAgentId: string | null; assigneeUserId: string | null; checkoutRunId: string | null; executionRunId: string | null; conversationAgentId?: string | null; conversationUserId?: string | null; executionState?: unknown },
     requestedStatus: unknown = req.body.status,
-  ) {
+    options: { allowStageApproval?: boolean } = {},
+  ): Promise<"defer_final_status" | undefined> {
     const runId = req.actor.type === "agent" ? req.actor.runId : null;
     if (!runId || !req.actor.agentId || req.actor.agentId !== issue.assigneeAgentId) return;
     if (runId !== issue.executionRunId && runId !== issue.checkoutRunId) return;
@@ -14397,6 +14575,10 @@ export function issueRoutes(
     const run = await heartbeat.getRun(runId);
     if (!run || run.runtimeMode !== "native" || run.status !== "running"
       || run.agentId !== req.actor.agentId || run.companyId !== issue.companyId) return;
+    if (options.allowStageApproval && requestedStatus === "done" && issue.status === "in_review" &&
+        activeExecutionParticipantAgentId(issue) === req.actor.agentId) {
+      return "defer_final_status";
+    }
     // A blocker that the dependency rules reject anyway keeps its specific
     // error; otherwise the run reports the block with andrecomp_block.
     if (Array.isArray(req.body.blockedByIssueIds) && req.body.blockedByIssueIds.length > 0) {
@@ -14405,7 +14587,11 @@ export function issueRoutes(
         blockedByIssueIds: req.body.blockedByIssueIds, parentIssueId: issue.parentId,
       });
     }
-    throw conflict(
+    throw nativeRunStatusReportedByFinish(requestedStatus);
+  }
+
+  function nativeRunStatusReportedByFinish(requestedStatus: unknown) {
+    return conflict(
       "This run owns the task's execution, so it cannot change the task status directly; doing so would end its access to the task before it reports. " +
         "Report the outcome with andrecomp_finish instead: reportedWorkDisposition \"needs_review\" for review, \"done\" when complete, or \"yielded\" with continuation.kind \"monitor\" to wait on a scheduled monitor. " +
         "Use andrecomp_block for a blocker. Andrecomp sets the task status from that report.",
@@ -14521,7 +14707,7 @@ export function issueRoutes(
       );
       if (!existing) return;
       if (!(await assertIssueReadAllowed(req, res, existing))) return;
-      await assertNativeRunKeepsOwnExecutionLock(req, existing);
+      const nativeStageApproval = await assertNativeRunKeepsOwnExecutionLock(req, existing, req.body.status, { allowStageApproval: true });
       if (req.body.expectedStatusVersion !== undefined && (
         existing.statusVersion !== req.body.expectedStatusVersion || existing.status !== "backlog"
       )) {
@@ -15072,6 +15258,18 @@ export function issueRoutes(
         throw unprocessable("Snapshot-guarded policy updates cannot change task status or ownership");
       }
       Object.assign(updateFields, transition.patch);
+      let deferredNativeStageApproval = false;
+      if (nativeStageApproval === "defer_final_status") {
+        // Only the final stage's approval is deferred. Anything else this
+        // request would do (an intermediate approval that hands the task to the
+        // next participant, or no decision at all) keeps the ordinary refusal.
+        const finalApproval = transition.decision?.outcome === "approved" && updateFields.status === "done" &&
+          (transition.patch.assigneeAgentId === undefined || transition.patch.assigneeAgentId === existing.assigneeAgentId) &&
+          transition.patch.assigneeUserId === undefined;
+        if (!finalApproval) throw nativeRunStatusReportedByFinish(req.body.status);
+        delete updateFields.status;
+        deferredNativeStageApproval = true;
+      }
 
       const nextStatus = updateFields.status ?? existing.status;
       if (updateFields.unblockDescriptor && nextStatus !== "blocked") {
@@ -15498,10 +15696,13 @@ export function issueRoutes(
         const lockedPolicyChangeRequested =
           req.body.reviewPolicy !== undefined &&
           req.body.reviewPolicy !== lockedExisting.reviewPolicy;
+        // A deferred native approval is still a review verdict even though
+        // its status write is left to the run's finish report.
         const lockedReviewVerdictRequested =
           lockedExisting.status === "in_review" &&
           (updateFields.status === "done" ||
-            updateFields.status === "cancelled");
+            updateFields.status === "cancelled" ||
+            deferredNativeStageApproval);
         if (
           (lockedReviewVerdictRequested || lockedPolicyChangeRequested) &&
           lockedExisting.reviewPolicy != null &&
@@ -17193,19 +17394,22 @@ export function issueRoutes(
     res.json(result);
   });
 
-  router.get("/issues/:id/recent-comments", async (req, res) => {
-    const issue = await getAccessibleResource(req, res, getIssueById(req, req.params.id as string), "Issue not found");
-    if (!issue || !(await assertIssueReadAllowed(req, res, issue))) return;
+  /** `GET /issues/:id/recent-comments`, shared with the chat bootstrap. */
+  async function readRecentComments(issue: {
+    id: string;
+    companyId: string;
+    description?: string | null;
+    conversationAgentId?: string | null;
+  }) {
     if (issue.conversationAgentId) {
       const recent = await svc.listComments(issue.id, { companyId: issue.companyId, order: "desc", limit: 21 });
       const comments = recent.slice(0, 20);
-      res.json(await runRedactions.redactForIssue(issue.companyId, issue.id, {
+      return runRedactions.redactForIssue(issue.companyId, issue.id, {
         comments,
         latestCommentId: comments[0]?.id ?? null,
         oldestCommentId: comments.at(-1)?.id ?? null,
         hasMore: recent.length > 20,
-      }));
-      return;
+      });
     }
     const [recent, human, firstInstruction] = await Promise.all([
       svc.listComments(issue.id, { companyId: issue.companyId, order: "desc", limit: 5 }),
@@ -17215,11 +17419,17 @@ export function issueRoutes(
         : svc.listComments(issue.id, { companyId: issue.companyId, order: "asc", limit: 1, humanOnly: true }),
     ]);
     const comments = [...new Map([...firstInstruction, ...human, ...recent.slice(0, 4)].map((comment) => [comment.id, comment])).values()];
-    res.json(await runRedactions.redactForIssue(issue.companyId, issue.id, {
+    return runRedactions.redactForIssue(issue.companyId, issue.id, {
       comments,
       latestCommentId: recent[0]?.id ?? null,
       hasMore: recent.length > 4,
-    }));
+    });
+  }
+
+  router.get("/issues/:id/recent-comments", async (req, res) => {
+    const issue = await getAccessibleResource(req, res, getIssueById(req, req.params.id as string), "Issue not found");
+    if (!issue || !(await assertIssueReadAllowed(req, res, issue))) return;
+    res.json(await readRecentComments(issue));
   });
 
   router.get("/issues/:id/comments", async (req, res) => {

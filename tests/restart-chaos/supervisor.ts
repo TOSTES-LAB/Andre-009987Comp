@@ -214,7 +214,9 @@ export class ChaosSupervisor {
       ...extraEnvironment,
     };
     const environment = buildAndrecompServerEnvironment(source, overrides);
-    assertIsolatedServerEnvironment(environment, { temporaryRoot, andrecompHome: home, configPath });
+    const workspaceStorage = extraEnvironment.ANDRECOMP_STORAGE_PROVIDER === "s3"
+      ? Object.fromEntries(Object.entries(extraEnvironment).filter(([key]) => key.startsWith("ANDRECOMP_STORAGE_"))) : undefined;
+    assertIsolatedServerEnvironment(environment, { temporaryRoot, andrecompHome: home, configPath, ...(workspaceStorage ? { workspaceStorage } : {}) });
     this.environment = Object.fromEntries(Object.entries(environment).filter((entry): entry is [string, string] => entry[1] !== undefined));
     await prepareSourceServerDependencies(root, this.environment, false);
   }

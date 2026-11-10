@@ -1,4 +1,6 @@
+import { STORAGE_UNAVAILABLE_WAIT_RETRY_REASON } from "../storage/storage-unavailable.js";
 import { and, desc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
+import { unidentifiedLocalLaunchRefusals } from "./native-local-process-stop.js";
 import { agents, agentWakeupRequests, approvals, chatActions, companies, heartbeatRuns, issueApprovals, issueRecoveryActions,
   issues, issueTreeHoldMembers, issueTreeHolds, nativeRunFinalizations, projects, type Db } from "@andrecomp/db";
 import { unionAll } from "drizzle-orm/pg-core";
@@ -24,7 +26,7 @@ import { AI_CONNECTION_BUSY_RETRY_REASON, AI_CONNECTION_POOL_WAIT_RETRY_REASON, 
 // attempt. Their dispatcher re-checks the resource, so the run can stay
 // scheduled past its retry time. Retry cannot free the resource either.
 const resourceWaitRetryReasons = new Set<string>([WORKSPACE_BUSY_RETRY_REASON, AI_CONNECTION_BUSY_RETRY_REASON,
-  AI_CONNECTION_POOL_WAIT_RETRY_REASON, RUNNER_REVISION_WAIT_RETRY_REASON]);
+  AI_CONNECTION_POOL_WAIT_RETRY_REASON, RUNNER_REVISION_WAIT_RETRY_REASON, STORAGE_UNAVAILABLE_WAIT_RETRY_REASON]);
 
 // A due same-run resume dispatches within seconds; past this, offer Retry.
 const NATIVE_RESUME_DISPATCH_GRACE_MS = 2 * 60_000;
@@ -36,7 +38,7 @@ type ProjectionIssue = Pick<typeof issues.$inferSelect, "id" | "companyId" | "st
 type ProjectionRun = Pick<typeof heartbeatRuns.$inferSelect,
   "id" | "status" | "scheduledRetryAt" | "errorCode" | "livenessState" | "resultJson"> &
   Partial<Pick<typeof heartbeatRuns.$inferSelect, "agentId" | "error" | "companyId" | "nativeIssueId" | "runtimeMode" | "startedAt"
-    | "scheduledRetryReason" | "createdAt" | "finishedAt">> & {
+    | "scheduledRetryReason" | "createdAt" | "finishedAt" | "processPid" | "processGroupId">> & {
   /** Due time of the native coordinator's own same-run resume, if one is pending. */
   nativeResumeAt?: Date | null;
   /** When the native coordinator saved this run's terminal failure, if it did. */
@@ -63,6 +65,7 @@ type ProjectionState = {
   approval: boolean;
   /** A board-owned workspace-owner fence on this run that no automatic proof has released. */
   ownerStopRequired?: boolean;
+  unidentifiedLaunchConfirmable?: boolean;
   /** The latest wake for a task with no run yet, when admission refused it. */
   admissionWait?: { id: string; status: string; reason: string | null; agentId: string };
   retryDependencies?: RetryDependencies;
@@ -135,6 +138,9 @@ const retryWaitMessages: Record<string, string> = {
   // An edited saved message can never be replayed; only new input continues.
   retry_source_changed: "Retry cannot continue because its saved message changed. Send a new message to continue from saved work.",
 };
+
+const UNIDENTIFIED_RUNNER_STOP_MESSAGE = "Andrecomp can't confirm that the previous run stopped. The server restarted after it started the agent but before it recorded the agent's process. "
+  + "If no agent is still working on this task, a board operator can confirm that it stopped, and your Retry starts right away. Your message is saved.";
 
 type RetryDependencies = { count: number; blocked: boolean; cancelled: boolean; savingFilesOnly: boolean };
 
@@ -256,6 +262,13 @@ export function projectTaskInterruption(issue: ProjectionIssue, input: Projectio
   // dispatch runs. A resume that never ran falls through to one Retry.
   const nativeResumeAt = run.nativeResumeAt?.getTime();
   const retryAt = system?.nextAttemptAt ?? nativeResumeAt ?? run.scheduledRetryAt?.getTime();
+  if (run.runtimeMode === "native" && run.errorCode === "native_governed_wait_settlement_pending") {
+    const settling = recoveryRunning || Boolean(retryAt && now - retryAt < NATIVE_RESUME_DISPATCH_GRACE_MS);
+    return { ...base, state: settling ? "working" : "failed", canRetry: false,
+      retryWait: { reason: "governed_wait_settlement", message: settling
+        ? "Your work is saved. Andrecomp is finishing shutdown."
+        : "Andrecomp couldn’t confirm shutdown. Your work is saved; continuation is paused." } };
+  }
   if (retryAt && retryAt > now) return { ...base, state: "retry_scheduled",
     nextRetryAt: new Date(retryAt).toISOString(), canRetry: !preparationPending && !nativeResumeAt,
     ...(system?.nextAttemptAt && recoveryStep ? { recoveryStep } : {}) };
@@ -266,6 +279,10 @@ export function projectTaskInterruption(issue: ProjectionIssue, input: Projectio
   if (retryWait?.sourceRunId === run.id && !retryWait.executionWaitReason && !retryWait.preparationStatus && dependencies?.count)
     return { ...base, intentId: retryWait.id, state: "working",
       retryWait: { reason: "dependency_blocked", message: dependencyRetryWaitMessage(dependencies) } };
+  if (retryWait?.sourceRunId === run.id && retryWait.executionWaitReason === "process_identity_missing"
+      && input.unidentifiedLaunchConfirmable)
+    return { ...base, responsibility: "user", state: "waiting_for_user", canRetry: false, userAction: "confirm_run_stopped",
+      retryWait: { reason: "process_identity_missing", message: UNIDENTIFIED_RUNNER_STOP_MESSAGE } };
   if (retryWait?.sourceRunId === run.id && retryWait.executionWaitReason) {
     const reason = Object.hasOwn(retryWaitMessages, retryWait.executionWaitReason) ? retryWait.executionWaitReason : "execution_recovery";
     // Keep the latest input receipt so message submission can settle independently.
@@ -311,6 +328,7 @@ export async function taskInterruptionPresentations(db: Db, companyId: string, i
     db.select({ issueId: requestedIssueId, id: heartbeatRuns.id, status: heartbeatRuns.status,
       createdAt: heartbeatRuns.createdAt, finishedAt: heartbeatRuns.finishedAt, agentId: heartbeatRuns.agentId, companyId: heartbeatRuns.companyId,
       nativeIssueId: heartbeatRuns.nativeIssueId, runtimeMode: heartbeatRuns.runtimeMode, startedAt: heartbeatRuns.startedAt,
+      processPid: heartbeatRuns.processPid, processGroupId: heartbeatRuns.processGroupId,
       agentAdapter: agents.adapterType,
       error: sql<string | null>`case when ${heartbeatRuns.errorCode} = 'setup_failed'
         and ${heartbeatRuns.error} = 'Project is outside this low-trust boundary.'
@@ -460,7 +478,11 @@ export async function taskInterruptionPresentations(db: Db, companyId: string, i
   const ownerStopRequired = new Set(ownerStops.map(row => `${row.issueId}:${row.runId}`));
   const byIssue = <T extends { issueId: string }>(rows: T[]) => new Map(rows.map(row => [row.issueId, row]));
   const runMap = byIssue(runs), waitMap = new Map<string, typeof waits[number]>();
-  const retryWaitMap = byIssue(waits.filter(wait => wait.sourceRunId));
+  // A Retry belongs to the run it observed. New conversation work supersedes
+  // that authority, even before dispatch retires the old receipt. Retained
+  // ordinary input is independent and must still be shown as waiting.
+  const currentWaits = waits.filter(wait => !wait.sourceRunId || wait.sourceRunId === runMap.get(wait.issueId)?.id);
+  const retryWaitMap = byIssue(currentWaits.filter(wait => wait.sourceRunId));
   const retryIssueIds = [...retryWaitMap.keys()];
   const retryDependencyMap = new Map<string, RetryDependencies>();
   if (retryIssueIds.length) {
@@ -480,7 +502,7 @@ export async function taskInterruptionPresentations(db: Db, companyId: string, i
         savingFilesOnly: ids.every(id => saving.has(id)) });
     }
   }
-  for (const wait of waits) {
+  for (const wait of currentWaits) {
     const current = waitMap.get(wait.issueId);
     if (!current || wait.requestedAt > current.requestedAt ||
         (wait.requestedAt.getTime() === current.requestedAt.getTime() && wait.id > current.id)) waitMap.set(wait.issueId, wait);
@@ -518,6 +540,12 @@ export async function taskInterruptionPresentations(db: Db, companyId: string, i
   const projectMap = new Map(projectRows.map(project => [project.id, project]));
   const pauses = new Set(pauseRows.map(row => row.issueId)), approvalsSet = new Set(approvalRows.map(row => row.issueId));
   const admissionWaitMap = byIssue(admissionWaits);
+  const launchWaits = [...retryWaitMap].flatMap(([issueId, wait]) => {
+    const run = runMap.get(issueId);
+    return run && wait.sourceRunId === run.id && wait.executionWaitReason === "process_identity_missing" ? [{ issueId, run }] : [];
+  });
+  const launchRefusals = await unidentifiedLocalLaunchRefusals(db, launchWaits.map(entry => entry.run));
+  const confirmableLaunches = new Set(launchWaits.filter(entry => launchRefusals.get(entry.run.id) === null).map(entry => entry.issueId));
   const now = Date.now();
   for (const issue of selected) {
     const required = requirements.get(issue.id);
@@ -532,6 +560,7 @@ export async function taskInterruptionPresentations(db: Db, companyId: string, i
       agent: agentMap.get(issue.assigneeAgentId ?? ""), project: projectMap.get(issue.projectId ?? ""),
       company: companyRows[0], paused: pauses.has(issue.id), approval: approvalsSet.has(issue.id),
       ownerStopRequired: ownerStopRequired.has(`${issue.id}:${facts.run?.id}`),
+      unidentifiedLaunchConfirmable: confirmableLaunches.has(issue.id),
       admissionWait: admissionWaitMap.get(issue.id),
       retryDependencies: retryDependencyMap.get(issue.id),
     }, now);
