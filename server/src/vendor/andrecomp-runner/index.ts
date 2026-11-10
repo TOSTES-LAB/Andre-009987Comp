@@ -117,6 +117,9 @@ export const NativeSessionProtocolIntegrityError =
   runner.NativeSessionProtocolIntegrityError;
 export const NativeEnvironmentProbeCleanupError = runner.NativeEnvironmentProbeCleanupError;
 export const SemanticToolOutcomeUnknownError = runner.SemanticToolOutcomeUnknownError;
+export const dispatchToolCallback = runner.dispatchToolCallback;
+export const recoverToolCallback = runner.recoverToolCallback;
+export type SemanticInputAdmission = import("@andrecomp/andrecomp-runner").SemanticInputAdmission;
 export const AndrecompSemanticDispatcher = runner.AndrecompSemanticDispatcher;
 export const CAPABILITY_SEMANTIC_TOOL_CATALOG =
   runner.CAPABILITY_SEMANTIC_TOOL_CATALOG;

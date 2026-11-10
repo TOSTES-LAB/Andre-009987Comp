@@ -1,3 +1,4 @@
+import type { NativeSession } from "../../vendor/andrecomp-runner/index.js";
 import { currentControllerProcess } from "../controller-process-identity.js";
 import { activeNativeExecutionRunIds } from "./native-active-runs.js";
 import { onRetainedNativeSessionCleanupRelease } from "../retained-native-session-cleanup-notifications.js";
@@ -125,6 +126,10 @@ import { canonicalProviderPackJson } from "./remote-provider-pack-verification.j
 import * as providerPackAdmission from "./native-provider-pack-admission.js";
 import * as providerArtifactStorage from "./native-provider-artifacts.js";
 import * as providerArtifactCapture from "./native-provider-artifact-capture.js";
+import * as nativeCredentialEvents from "./native-credential-updates.js";
+import * as nativeCredentialStores from "./native-credential-store.js";
+import * as managedCredentialWriteback from "../managed-ai-credential-writeback.js";
+import { completeManagedNativeCredentialTurn } from "./managed-native-credentials.js";
 import * as nativeExecutionDriver from "./native-runner-execution-driver.js";
 
 vi.mock("node:fs", async (importOriginal) => {
@@ -180,6 +185,7 @@ type BackendFactoryOptions = {
 type RunnerTransportOptions = {
   authorityRunId?: string;
   onAccountingEvent?: (event: PrpEvent) => Promise<void>;
+  onCredentialsUpdated?: (event: PrpEvent) => Promise<void>;
   onRecoveryAccountingEvent?: (event: PrpEvent, identity: import("../../vendor/andrecomp-runner/index.js").DurableRecoveryIdentity) => Promise<void>;
   environment?: NodeJS.ProcessEnv;
   acpxRuntimeDirectory?: string;
@@ -2430,6 +2436,7 @@ describe("remote provider pack manifest", () => {
         runnerArtifact?: { version: string; digest: string };
       };
       expect(transport.runnerBinary).toBe(state.bundledRunnerBinary);
+      expect(transport.onCredentialsUpdated).toBeUndefined();
       if (opencode) {
         expect(state.createAssignedMcpTools).toHaveBeenCalledWith(expect.objectContaining({ gatewayPublicId: "assigned-fixture", bearerToken: "private-fixture", delivery: "on_demand" }));
         for (const name of ["ANDRECOMP_NATIVE_MCP_NAME", "ANDRECOMP_NATIVE_MCP_URL", "ANDRECOMP_NATIVE_MCP_TOKEN"]) expect(transport.environment?.[name]).toBeUndefined();
@@ -3156,6 +3163,8 @@ describe("native harness persistence profiles", () => {
         ".tmp",
         "auth.json",
         "config.toml",
+        "auth-refresh.json",
+        "auth-refresh.json.tmp",
         ".remote-plugin-install-staging",
         "cache/remote_plugin_catalog",
         "plugins/.remote-plugin-install-staging",
@@ -3202,6 +3211,8 @@ describe("native harness persistence profiles", () => {
         `acpx/${sessionDirectory}/codex-home/.tmp`,
         `acpx/${sessionDirectory}/codex-home/auth.json`,
         `acpx/${sessionDirectory}/codex-home/config.toml`,
+        `acpx/${sessionDirectory}/codex-home/auth-refresh.json`,
+        `acpx/${sessionDirectory}/codex-home/auth-refresh.json.tmp`,
         `acpx/${sessionDirectory}/codex-home/.remote-plugin-install-staging`,
         `acpx/${sessionDirectory}/codex-home/cache/remote_plugin_catalog`,
         `acpx/${sessionDirectory}/codex-home/plugins/.remote-plugin-install-staging`,
@@ -3913,22 +3924,23 @@ describe("split durable provider checkpoint identity", () => {
 });
 
 describe("remote provider checkpoint snapshots", () => {
-  it("excludes Grok credentials and diagnostic logs from real checkpoint copies while retaining sessions", async () => {
-    const root = await mkdtemp(join(tmpdir(), "grok-checkpoint-"));
+  it.each(["codex", "grok"] as const)("excludes %s credentials and handoffs from real checkpoint copies while retaining sessions", async provider => {
+    const root = await mkdtemp(join(tmpdir(), `${provider}-checkpoint-`));
     try {
       const source = join(root, "source");
       const target = join(root, "backup");
       const sessionDirectory = acpxRuntimeSessionDirectoryName("session");
-      const relativeHome = join("acpx", sessionDirectory, "grok-home");
+      const relativeHome = join("acpx", sessionDirectory, `${provider}-home`);
       const home = join(source, relativeHome);
       await mkdir(join(home, "logs"), { recursive: true });
       await mkdir(join(home, "sessions"));
       await writeFile(join(home, "logs", "unified.jsonl"), "AUTH_SENTINEL");
       await writeFile(join(home, "auth.json"), "AUTH_SENTINEL");
       await writeFile(join(home, "auth-refresh.json"), "AUTH_SENTINEL");
+      await writeFile(join(home, "auth-refresh.json.tmp"), "AUTH_SENTINEL");
       await writeFile(join(home, "sessions", "session.json"), "resume-state");
       const profile = resolveNativeHarnessPersistenceProfile({
-        provider: { kind: "acpx", agent: "grok" },
+        provider: { kind: "acpx", agent: provider },
         session: { normalizedSessionId: "session", driverKind: "acpx_runtime" },
       } as unknown as NativeExecutionInputV1);
       const execute = async ({ command, args }: { command: string; args: string[] }) => ({
@@ -3941,7 +3953,7 @@ describe("remote provider checkpoint snapshots", () => {
       await syncRemoteRunnerDirectoryOut({ runner: { execute, syncOut } as never,
         sourcePath: source, targetPath: target, mode: 0o700,
         excludeEntries: profile.directories.find(directory => directory.name === "acpx")!.excludeEntries });
-      for (const entry of ["auth.json", "auth-refresh.json", "logs"])
+      for (const entry of ["auth.json", "auth-refresh.json", "auth-refresh.json.tmp", ...(provider === "grok" ? ["logs"] : [])])
         await expect(access(join(target, relativeHome, entry))).rejects.toMatchObject({ code: "ENOENT" });
       expect(await readFile(join(target, relativeHome, "sessions", "session.json"), "utf8")).toBe("resume-state");
       expect(await readFile(join(home, "logs", "unified.jsonl"), "utf8")).toBe("AUTH_SENTINEL");
@@ -4047,6 +4059,8 @@ describe("remote provider checkpoint snapshots", () => {
       const source = join(root, "codex-home");
       const target = join(root, "backup");
       const files: Record<string, string> = {
+        "auth-refresh.json": "AUTH_SENTINEL",
+        "auth-refresh.json.tmp": "AUTH_SENTINEL",
         "sessions/2026/10/20/rollout.jsonl": "resume-state",
         "state_5.sqlite": "state",
         "cache/codex_apps_tools/tools.json": "apps",
@@ -4079,7 +4093,7 @@ describe("remote provider checkpoint snapshots", () => {
       for (const kept of ["sessions/2026/10/20/rollout.jsonl", "state_5.sqlite", "cache/codex_apps_tools/tools.json",
         "plugins/data/sites/data.json", "plugins/cache/openai-bundled/browser/1.0.0/plugin.json"])
         expect(await readFile(join(target, kept), "utf8")).toBe(files[kept]);
-      for (const omitted of ["cache/remote_plugin_catalog", "plugins/cache/openai-curated-remote",
+      for (const omitted of ["auth-refresh.json", "auth-refresh.json.tmp", "cache/remote_plugin_catalog", "plugins/cache/openai-curated-remote",
         "plugins/cache/workspace-shared-with-me", "plugins/.remote-plugin-install-staging", ".remote-plugin-install-staging"])
         await expect(access(join(target, omitted))).rejects.toMatchObject({ code: "ENOENT" });
       expect(await readFile(join(source, "plugins/cache/openai-curated-remote/sites/1.0.2/plugin.json"), "utf8")).toBe("remote");
@@ -16824,6 +16838,74 @@ describe("runnerd provider runtime wiring", () => {
     expect(task.mock.calls.some(([op]) => ["prepare", "submit", "stop"].includes(op.kind))).toBe(false);
   });
 
+  it.each(["codex", "acpx-codex", "grok"] as const)("writes managed %s events through the current warm exporter without per-turn reads", async provider => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), "native-managed-refresh-")));
+    const previousRoot = process.env.ANDRECOMP_RUNNER_STATE_DIR;
+    process.env.ANDRECOMP_RUNNER_STATE_DIR = join(root, "runner");
+    const firstHome = join(root, "first"), nextHome = join(root, "next");
+    await mkdir(firstHome); await mkdir(nextHome);
+    for (const home of [firstHome, nextHome]) await writeFile(join(home, "auth.json"), "{}", { mode: 0o600 });
+    const current = scopedNativeExecution(`managed-refresh-${provider}`);
+    current.session.lifecyclePolicy = { mode: "warm", idleTimeoutMs: 60_000 };
+    if (provider !== "codex") {
+      current.provider = { kind: "acpx", agent: provider === "grok" ? "grok" : "codex", model: null, permissionMode: "deny-all" } as never;
+      current.session.driverKind = "acpx_runtime";
+    }
+    const firstStore = { read: vi.fn(async () => "first-refresh"), remove: vi.fn(async () => {}) };
+    const nextStore = { read: vi.fn(async () => "next-refresh"), remove: vi.fn(async () => {}) };
+    const stores = vi.spyOn(nativeCredentialStores, "createNativeCredentialStore").mockReturnValueOnce(firstStore).mockReturnValueOnce(nextStore);
+    const persist = vi.spyOn(managedCredentialWriteback, "syncManagedAiCredentials").mockImplementation(async (_db, _company, _binding, _provider, read) => {
+      await read(); return "rotated";
+    });
+    const append = vi.spyOn(nativeCredentialEvents, "appendNativeCredentialUpdate").mockImplementation(async (_db, input) => { await input.synchronizeCredentials?.(); });
+    const binding = { grantId: "10000000-0000-4000-8000-000000000001", secretId: "10000000-0000-4000-8000-000000000002", sessionEpoch: 1, versionSelector: "latest" as const };
+    const session = { close: vi.fn(async () => {}) } as unknown as NativeSession;
+    try {
+      const backend = await createRunnerdBackend({ db: leaseDb(current), execution: current, runnerInstanceId: "managed-runner",
+        managedAiCredentialHome: firstHome, managedAiCredentialWriteback: binding });
+      state.createBackend.mock.calls.at(-1)![1].codexTransportFactory!();
+      const retainedHook = state.createTransport.mock.calls.at(-1)![0].onCredentialsUpdated!;
+      backend.bindManagedSession(session);
+      await completeManagedNativeCredentialTurn(session);
+      expect(persist).not.toHaveBeenCalled(); expect(firstStore.read).not.toHaveBeenCalled();
+      await rm(firstHome, { recursive: true, force: true });
+      const notification: PrpEvent = {
+        schema: "andrecomp.prp.event.v3", schemaVersion: 3, eventType: "auth.credentials.updated", sourceKind: "runner",
+        sourceInstanceId: "managed-runner", sourceEventId: "refresh", sourceSeq: 1, runId: current.binding.runId,
+        normalizedSessionId: current.session.normalizedSessionId!, priority: 0, emittedAt: "2020-01-01T00:00:00Z",
+        payload: { schema: "andrecomp.auth.credentials.updated.v1", bindingId: "harness-auth", revision: 1,
+          detection: "credential_store", provider: provider === "grok" ? "grok" : "codex" },
+      };
+      await retainedHook(notification);
+      expect(firstStore.read).toHaveBeenCalledOnce();
+      // The mocked transport does not publish a durable Runner identity.
+      await rm(state.createTransport.mock.calls.at(-1)![0].stateDirectory!, { recursive: true, force: true });
+      const next = { ...current, binding: { ...current.binding, runId: `${current.binding.runId}-next` } };
+      const nextBinding = { ...binding };
+      const successor = await createRunnerdBackend({ db: leaseDb(next), execution: next, runnerInstanceId: "managed-runner",
+        managedAiCredentialHome: nextHome, managedAiCredentialWriteback: nextBinding });
+      successor.bindManagedSession(session);
+      await completeManagedNativeCredentialTurn(session);
+      await rm(nextHome, { recursive: true, force: true });
+      await retainedHook(notification);
+      expect(persist).toHaveBeenLastCalledWith(expect.anything(), current.binding.companyId, nextBinding,
+        provider === "grok" ? "grok" : "codex", nextStore.read);
+      expect(persist.mock.calls.at(-1)![2]).toBe(nextBinding);
+      await session.close({ reason: "idle retirement" });
+      expect(nextStore.read).toHaveBeenCalledTimes(2);
+      expect(firstStore.remove).not.toHaveBeenCalled(); expect(nextStore.remove).toHaveBeenCalledOnce();
+      expect(stores.mock.calls[0]![0].localHome).toContain(provider === "grok" ? "grok-home" : "codex-home");
+      persist.mockClear();
+      await expect(retainedHook({ ...notification, payload: { provider: "unexpected" } })).rejects.toThrow("provider_mismatch");
+      expect(persist).not.toHaveBeenCalled();
+    } finally {
+      stores.mockRestore(); persist.mockRestore(); append.mockRestore();
+      if (previousRoot === undefined) delete process.env.ANDRECOMP_RUNNER_STATE_DIR;
+      else process.env.ANDRECOMP_RUNNER_STATE_DIR = previousRoot;
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it.each(["codex", "opencode", "acpx"] as const)("uses a task-only %s driver without exposing Core paths or transferring the agent home", async (kind) => {
     const taskExecution = { ...execution, provider: kind === "codex" ? execution.provider
       : kind === "opencode" ? { kind, model: "openai/test", permissionMode: "deny" }
@@ -16836,7 +16918,7 @@ describe("runnerd provider runtime wiring", () => {
     state.toolAuthorityDefinitions.mockImplementation(async binding => binding.readRemoteTaskFile ? [{ name: "register_deliverable" }] as never : []);
     const readWorkspaceFile = vi.fn(async () => Buffer.from("proof"));
     const release = vi.fn(async () => {}), resume = vi.fn(async () => "resumed" as const);
-    const owner = vi.spyOn(pluginTaskRuntime, "createPluginRunnerTaskOwner").mockReturnValue({ launcher, registration, driver, readWorkspaceFile, release, resume, isRetired: () => false, retiredBeforeClaim: () => false, rebind:vi.fn() });
+    const owner = vi.spyOn(pluginTaskRuntime, "createPluginRunnerTaskOwner").mockReturnValue({ launcher, registration, driver, readWorkspaceFile, release, resume, isRetired: () => false, retiredBeforeClaim: () => false, credentialsUpdated: vi.fn(), rebind:vi.fn() });
     const task = vi.fn(async (operation: unknown) => {
       environmentTaskOperationSchema.parse(operation);
       return { kind: "description", launchPreparationVersion: 1, projectAuthCheckVersion: 1, releaseResumeVersion: 1, ...(kind === "codex" ? { workspaceFileReadVersion: 1 } : {}), taskId: "task", runner: { version: "fixture", digest: `sha256:${"a".repeat(64)}` } };
@@ -16863,6 +16945,9 @@ describe("runnerd provider runtime wiring", () => {
       const expectedTools = kind === "codex" ? [{ name: "register_deliverable" }] : [];
       expect(state.createBackend.mock.calls.at(-1)![1]).toMatchObject({ dynamicTools: expectedTools });
       expect(options).toMatchObject({ resumeDynamicTools: expectedTools });
+      const notification = { eventType: "auth.credentials.updated" } as never;
+      await options.onCredentialsUpdated!(notification);
+      expect(owner.mock.results.at(-1)!.value.credentialsUpdated).toHaveBeenCalledWith(notification);
       expect(options).toMatchObject({ ...driver, runnerArtifact: { version: "fixture" },
         prpIdentity: { environmentLeaseId: "plugin-task-lease" } });
       if (kind === "acpx") expect(options).toMatchObject({ acpxAgent: "claude", claudeEffort: "high" });
@@ -19911,7 +19996,26 @@ describe("runnerd provider runtime wiring", () => {
     ["a settled restore hold retained the stopped source", "stopped", "matching", false, true, "settled_hold"],
     ["a settled restore hold names another backup", "stopped", "foreign", false, false, "settled_hold"],
     ["a restore hold has no stop-and-retain receipt", "stopped", "matching", false, false, "unconfirmed_hold"],
-  ] as const)("restores a warm backup into a created lease only when %s", async (_label, terminationState, stampKind, laterProviderWork, restores, hold?: "settled_hold" | "unconfirmed_hold") => {
+    // Regression: the previous run succeeded and left its warm
+    // sandbox `retained` for reuse, but its workspace export was still saving when
+    // the monitor wake acquired a lease, so reuse skipped it and created a new one.
+    // The export finished before the harness prepared; the idle source held exactly
+    // the backup, yet the run failed backup_without_reusable_lease and blocked.
+    ["an idle warm source finished its run and its export", "none", "matching", false, true, "idle_warm"],
+    ["an idle warm source still has a workspace export pending", "none", "matching", false, false, "idle_warm_export_pending"],
+    ["the warm source's run is still running", "none", "matching", false, false, "idle_warm_run_active"],
+    ["an idle warm source had provider work after the backup", "none", "matching", true, false, "idle_warm"],
+    ["an idle warm source stamp names another backup", "none", "foreign", false, false, "idle_warm"],
+    ["another run claimed the idle warm source first", "none", "matching", false, false, "idle_warm_claim_lost"],
+    // Old-saved/new-resumed: the next run resumes the created lease that the failed
+    // run left without any harness state. It takes the backup under the same proof.
+    ["a resumed lease never held the session and the warm source is idle", "none", "matching", false, true, "resumed_idle_warm"],
+    ["a resumed lease lost the state the backup came from", "none", "matching", false, false, "resumed_own_source"],
+  ] as const)("restores a warm backup into a created lease only when %s", async (_label, terminationState, stampKind, laterProviderWork, restores, hold?: "settled_hold" | "unconfirmed_hold" | "idle_warm" | "idle_warm_export_pending" | "idle_warm_run_active" | "idle_warm_claim_lost" | "resumed_idle_warm" | "resumed_own_source") => {
+    const restoreHold = hold === "settled_hold" || hold === "unconfirmed_hold";
+    const idleWarm = !!hold && !restoreHold;
+    const resumed = hold === "resumed_idle_warm" || hold === "resumed_own_source";
+    const targetProviderLeaseId = hold === "resumed_own_source" ? "prior-sandbox" : "sandbox-created";
     // Regression: a legacy follow-up retired the warm sandbox as an obsolete lease, so the
     // next reply got a created lease. The backup was the newest checkpoint, yet
     // every reply failed backup_without_reusable_lease and asked for another reply.
@@ -19926,18 +20030,21 @@ describe("runnerd provider runtime wiring", () => {
     const confirmedAt = new Date().toISOString();
     const sourceLease = (manifestSha256: string) => ({
       id: "source-lease", companyId: current.binding.companyId, heartbeatRunId: "source-run", provider: "daytona",
-      providerLeaseId: "prior-sandbox", status: hold ? "released" : "expired", cleanupStatus: "success",
-      leasePolicy: hold ? "retain_on_failure" : "reuse_by_environment",
-      acquiredAt: new Date(Date.now() - 60_000), releasedAt: new Date(Date.now() + 1_000), expiresAt: null,
+      providerLeaseId: "prior-sandbox", status: idleWarm ? "retained" : restoreHold ? "released" : "expired", cleanupStatus: "success",
+      leasePolicy: restoreHold ? "retain_on_failure" : "reuse_by_environment",
+      acquiredAt: new Date(Date.now() - 60_000), releasedAt: idleWarm ? null : new Date(Date.now() + 1_000), expiresAt: null,
       metadata: {
         nativeHarnessBackup: { schema: "andrecomp.native-harness-backup-stamp.v2", normalizedSessionId: current.session.normalizedSessionId,
           runnerInstanceId, sessionScopeSha256: "a".repeat(64), sourceProviderLeaseId: "prior-sandbox",
           authorizedProviderLeaseId: "prior-sandbox", manifestSha256, completedAt },
-        remoteExecutionTermination: { schema: "andrecomp.remote-termination.v1", companyId: current.binding.companyId,
-          runId: "source-run", leaseId: "source-lease", provider: "daytona", providerLeaseId: "prior-sandbox",
-          state: terminationState, confirmedAt },
+        // The idle warm source has no termination receipt: its sandbox is still running.
+        ...(terminationState === "none" ? { pluginId: "daytona-plugin", sandboxState: "started",
+          reusableSandboxLease: { version: 1, executionWorkspaceId: current.binding.executionWorkspaceId } } : {
+          remoteExecutionTermination: { schema: "andrecomp.remote-termination.v1", companyId: current.binding.companyId,
+            runId: "source-run", leaseId: "source-lease", provider: "daytona", providerLeaseId: "prior-sandbox",
+            state: terminationState, confirmedAt } }),
         // The exact row the hold left: marker, stop-and-retain receipt, no reuse.
-        ...(hold ? { pluginId: "daytona-plugin",
+        ...(restoreHold ? { pluginId: "daytona-plugin",
           workspaceRestoreRecovery: { schema: "andrecomp.workspace-restore-recovery.v1", runId: "source-run" } } : {}),
         ...(hold === "settled_hold" ? { sandboxStopAndRetainReceipt: { schema: "andrecomp.sandbox-stop-and-retain-receipt.v1",
           requestId: "stop-request", companyId: current.binding.companyId, runId: "source-run", leaseId: "source-lease",
@@ -19948,19 +20055,32 @@ describe("runnerd provider runtime wiring", () => {
     const updates: Array<{ table: unknown; values: Record<string, unknown> }> = [];
     const db = leaseDb(current, {}, {}, updates), ordinarySelect = db.select.bind(db);
     db.select = ((fields?: Record<string, unknown>) => ({ from: (table: unknown) => {
-      if (table !== executionWorkspaces && table !== environmentLeases && table !== heartbeatRunEvents)
+      const sourceRunQuery = Boolean(table === heartbeatRuns && fields && "sourceRunStatus" in fields);
+      if (table !== executionWorkspaces && table !== environmentLeases && table !== heartbeatRunEvents && !sourceRunQuery)
         return ordinarySelect(fields as never).from(table as never);
       const manifest = backupDirectory.root ? readFileSync(join(backupDirectory.root, "manifest.json")) : "";
       const sha = `sha256:${createHash("sha256").update(stampKind === "matching" ? manifest : "other").digest("hex")}`;
-      // No unsaved remote writer is bound to the held allocation.
-      const rows = table === executionWorkspaces || fields?.run ? []
+      // No unsaved remote writer is bound to the held allocation, unless the
+      // previous run's workspace export is still observed on the warm sandbox.
+      const rows = sourceRunQuery ? [{ sourceRunStatus: hold === "idle_warm_run_active" ? "running" : "succeeded" }]
+        : fields?.run ? (hold === "idle_warm_export_pending" ? [{ lease: sourceLease(sha),
+          run: { id: "source-run", runtimeMode: "native", observedRemoteWorkspace: true, reference: null }, workspace: null }] : [])
+        : table === executionWorkspaces ? []
         : table === heartbeatRunEvents ? (laterProviderWork ? [{ runId: "later-run" }] : [])
-          : [{ metadata: {}, providerLeaseId: "sandbox-created", companyId: current.binding.companyId,
+          : [{ metadata: {}, providerLeaseId: targetProviderLeaseId, companyId: current.binding.companyId,
             heartbeatRunId: current.binding.runId }, sourceLease(sha)];
       const query = { then: Promise.resolve(rows).then.bind(Promise.resolve(rows)),
         leftJoin: () => query, innerJoin: () => query, where: () => query, limit: () => query };
       return query;
     } })) as unknown as Db["select"];
+    if (hold === "idle_warm_claim_lost") {
+      // A run resumed the warm source between the proof and the claim; the
+      // compare-and-swap matches no row and the backup stays unrestored.
+      db.update = ((table: unknown) => ({ set: () => ({ where: () => ({ returning: async () => {
+        expect(table).toBe(environmentLeases);
+        return [];
+      } }) }) })) as unknown as Db["update"];
+    }
     const remoteExecute = vi.fn(async (command: { command: string; args?: string[] }) => {
       if (command.args?.[0] === "--build-metadata") return { exitCode: 0, timedOut: false, stderr: "", stdout: JSON.stringify({
         schema: "andrecomp-runner/runnerd-build-metadata/v1", binaryName: "andrecomp-runnerd",
@@ -19984,7 +20104,7 @@ describe("runnerd provider runtime wiring", () => {
       runnerExecutionTarget: { kind: "remote", transport: "sandbox", remoteCwd, environmentId: "environment",
         leaseId: "lease-created", providerKey: "daytona", reusableLeaseConfigured: true,
         effectiveCapabilities: { runnerWebSocketIngress: true },
-        sandboxLeaseAcquisition: { outcome: "created", providerLeaseId: "sandbox-created" },
+        sandboxLeaseAcquisition: { outcome: resumed ? "resumed" : "created", providerLeaseId: targetProviderLeaseId },
         runner: { execute: remoteExecute, syncIn },
       } as never,
     });
@@ -20012,13 +20132,22 @@ describe("runnerd provider runtime wiring", () => {
         createHash("sha256").update(current.session.normalizedSessionId!).digest("hex"));
       expect(JSON.parse(await readFile(join(remoteSession, "runner/runner-state.json"), "utf8"))).toEqual(runnerState);
       expect(await readFile(join(remoteSession, "filesystem/codex-home/sentinel.txt"), "utf8")).toBe("retained provider home");
-      expect(updates.filter(update => update.table === environmentLeases)).toEqual([expect.objectContaining({
-        values: expect.objectContaining({ metadata: { nativeHarnessBackup: expect.objectContaining({
-          normalizedSessionId: current.session.normalizedSessionId, sourceProviderLeaseId: "prior-sandbox",
-          authorizedProviderLeaseId: "sandbox-created" }) } }),
-      })]);
+      expect(updates.filter(update => update.table === environmentLeases)).toEqual([
+        // The idle source is claimed first: its reuse scope moves into a superseded
+        // receipt, so it is never resumed with the older state again.
+        ...(idleWarm ? [expect.objectContaining({ values: expect.objectContaining({
+          metadata: expect.not.objectContaining({ reusableSandboxLease: expect.anything() }) }) })] : []),
+        expect.objectContaining({
+          values: expect.objectContaining({ metadata: { nativeHarnessBackup: expect.objectContaining({
+            normalizedSessionId: current.session.normalizedSessionId, sourceProviderLeaseId: "prior-sandbox",
+            authorizedProviderLeaseId: "sandbox-created" }) } }),
+        })]);
+      if (idleWarm) expect(updates.filter(update => update.table === environmentLeases)[0]!.values.metadata).toEqual(
+        expect.objectContaining({ reusableSandboxLeaseSuperseded: expect.objectContaining({
+          supersededByRunId: current.binding.runId, supersededByProviderLeaseId: "sandbox-created",
+          reusableSandboxLease: { version: 1, executionWorkspaceId: current.binding.executionWorkspaceId } }) }));
     } else {
-      await expect(options.prepareExternalRunnerState()).rejects.toThrow("backup_without_reusable_lease");
+      await expect(options.prepareExternalRunnerState()).rejects.toThrow(resumed ? "resumed_unavailable" : "backup_without_reusable_lease");
       expect(syncIn).not.toHaveBeenCalled();
       expect(updates.filter(update => update.table === environmentLeases)).toEqual([]);
     }

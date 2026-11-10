@@ -2,7 +2,7 @@
 
 Status: design report, not a V1 commitment
 
-Andrecomp V1 explicitly excludes a plugin framework in [doc/SPEC-implementation.md](../SPEC-implementation.md), but the long-horizon spec says the architecture should leave room for extensions. This report studies the `opencode` plugin system and translates the useful patterns into a Andrecomp-shaped design.
+Andrecomp V1 originally excluded a plugin framework, but the long-horizon plan left room for extensions. This report studies the `opencode` plugin system and translates the useful patterns into a Andrecomp-shaped design.
 
 Assumption for this document: Andrecomp is a single-tenant operator-controlled instance. Plugin installation should therefore be global across the instance. "Companies" are still first-class Andrecomp objects, but they are organizational records, not tenant-isolation boundaries for plugin trust or installation.
 
@@ -62,8 +62,6 @@ Relevant Andrecomp files reviewed for current extension seams:
 - [server/src/secrets/provider-registry.ts](../../server/src/secrets/provider-registry.ts)
 - [server/src/services/run-log-store.ts](../../server/src/services/run-log-store.ts)
 - [server/src/services/activity-log.ts](../../server/src/services/activity-log.ts)
-- [doc/SPEC.md](../SPEC.md)
-- [doc/SPEC-implementation.md](../SPEC-implementation.md)
 
 ## What OpenCode Actually Implements
 
