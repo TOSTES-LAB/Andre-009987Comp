@@ -27,7 +27,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { recordLegacyWorkspaceRestoreFailure, terminalizeLegacyExecution } from "../services/legacy-execution-recovery.js";
 import { issueService } from "../services/issues.js";
 import { getExecutionBlocker } from "../services/execution-blocker.js";
+import { executionProjectionForRun } from "../services/execution-projection.js";
 import { JsonRpcCallError } from "@andrecomp/plugin-sdk";
+import { leaseFaultError } from "../services/environment-lease-fault-injection.js";
 import { taskInterruptionPresentation } from "../services/task-interruption-presentation.js";
 import { requestTaskRetry } from "../services/task-retry.js";
 import { adapterExecutionControls, createAdapterExecutionControl } from "../services/adapter-execution-control.js";
@@ -5903,7 +5905,20 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
       message: "Daytona sandbox creation failed (HTTP 502); cleanup could not be confirmed for andrecomp-create-05f81d77",
       data: { schema: "andrecomp/environment-acquire-error/v1", providerDiagnostic: { httpStatus: 502 } } });
 
-    function failLeaseAcquisition(times: number) {
+    // EP1: Daytona's own acquisition deadline expired while the provisional
+    // sandbox was still being created, as staging recorded at 14:00-14:45Z when
+    // concurrent runs rose from about 8 to about 20. The environment runtime
+    // records the validated acquisition diagnostic for this run before rethrowing.
+    // The chaos fault EP1 injects these same shapes (environment-lease-fault-injection.ts).
+    type LeaseFault = (input: { companyId: string; environment: { id: string }; heartbeatRunId?: string | null }) => Error;
+    const daytonaAcquisitionDeadline: LeaseFault = input => leaseFaultError("timeout",
+      { companyId: input.companyId, environmentId: input.environment.id, heartbeatRunId: input.heartbeatRunId! });
+    // EP1 database: a control-plane query failed while the lease was being
+    // recorded (staging: "Database query failed (lease_acquire_failed)").
+    const leaseRecordQueryFailure: LeaseFault = input => leaseFaultError("database",
+      { companyId: input.companyId, environmentId: input.environment.id, heartbeatRunId: input.heartbeatRunId! });
+
+    function failLeaseAcquisition(times: number, fault: LeaseFault = daytonaCreate502) {
       let remaining = times;
       const acquisitions = { refused: 0, delegated: 0 };
       const originalFactory = environmentOrchestrator.environmentRunOrchestrator;
@@ -5913,7 +5928,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
           if (remaining > 0) {
             remaining -= 1;
             acquisitions.refused += 1;
-            throw daytonaCreate502();
+            throw fault(input);
           }
           acquisitions.delegated += 1;
           return runtime.acquireRunLease(input);
@@ -6022,6 +6037,81 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
         const retried = await waitForValue(async () => (await runsFor(agentId)).find(run => run.status === "succeeded") ?? null, 10_000);
         expect(retried).not.toBeNull();
         expect(mockAdapterExecute).toHaveBeenCalledTimes(1);
+        expect(lease.acquisitions.delegated).toBe(1);
+      } finally {
+        lease.restore();
+        mockAdapterExecute.mockClear();
+      }
+    }, 90_000);
+    it.each([
+      ["a provider acquisition deadline", daytonaAcquisitionDeadline, "timeout"],
+      ["a database error while recording the lease", leaseRecordQueryFailure, "overloaded"],
+    ] as const)("retries %s before provider work with a bounded, visible backoff", async (_label, fault, category) => {
+      const { companyId, agentId, runId, issueId } = await seedQueuedIssueRunFixture();
+      const lease = failLeaseAcquisition(1, fault);
+      try {
+        const heartbeat = heartbeatService(db);
+        await heartbeat.resumeQueuedRuns();
+        await heartbeat.drainActiveRunExecutions();
+
+        const afterFailure = await runsFor(agentId);
+        expect(afterFailure.map(run => [run.status, run.errorCode])).toEqual([
+          ["failed", "environment_provider_unavailable"], ["scheduled_retry", null]]);
+        expect(afterFailure[0]!.resultJson).toMatchObject({ providerFailure: { phase: "startup", category, retryability: "transient" },
+          executionRecovery: { kind: "bootstrap", providerWorkStarted: false } });
+        expect(afterFailure[1]).toMatchObject({ retryOfRunId: runId, scheduledRetryAttempt: 1, scheduledRetryReason: "transient_failure" });
+        const [waiting] = await db.select().from(issues).where(eq(issues.id, issueId));
+        expect(waiting).toMatchObject({ status: "in_progress", executionRunId: afterFailure[1]!.id });
+        expect(await taskInterruptionPresentation(db, waiting!)).toMatchObject({ state: "retry_scheduled", responsibility: "system" });
+        expect(await getExecutionBlocker(db, companyId, issueId)).toBeNull();
+
+        await promoteLatestScheduledRetry(heartbeat, agentId);
+        const successors = (await runsFor(agentId)).filter(run => run.retryOfRunId === runId);
+        expect(successors).toHaveLength(1);
+        expect(successors[0]).toMatchObject({ status: "succeeded" });
+        expect(lease.acquisitions.refused).toBe(1);
+        // The mock adapter's later disposition repair is unrelated; no setup failure reached recovery.
+        expect((await selectRecoveryActionsForIssue(issueId)).filter(action => action.kind === "stranded_assigned_issue")).toEqual([]);
+      } finally {
+        lease.restore();
+        mockAdapterExecute.mockClear();
+      }
+    }, 60_000);
+
+    it("rests a provider deadline that never clears on a working Retry, never on a board recovery action", async () => {
+      const { companyId, agentId, issueId } = await seedQueuedIssueRunFixture();
+      const lease = failLeaseAcquisition(BOUNDED_TRANSIENT_HEARTBEAT_RETRY_MAX_ATTEMPTS + 1, daytonaAcquisitionDeadline);
+      try {
+        const heartbeat = heartbeatService(db);
+        await heartbeat.resumeQueuedRuns();
+        await heartbeat.drainActiveRunExecutions();
+        for (let attempt = 0; attempt < BOUNDED_TRANSIENT_HEARTBEAT_RETRY_MAX_ATTEMPTS; attempt += 1) {
+          await promoteLatestScheduledRetry(heartbeat, agentId);
+        }
+        const exhausted = await runsFor(agentId);
+        expect(exhausted.map(run => run.errorCode)).toEqual(
+          Array(BOUNDED_TRANSIENT_HEARTBEAT_RETRY_MAX_ATTEMPTS + 1).fill("environment_provider_unavailable"));
+        expect(mockAdapterExecute).not.toHaveBeenCalled();
+
+        const blocked = await waitForValue(async () => {
+          const [row] = await db.select().from(issues).where(eq(issues.id, issueId));
+          return row?.status === "blocked" ? row : null;
+        });
+        const presentation = await taskInterruptionPresentation(db, blocked!);
+        expect(presentation).toMatchObject({ state: "failed", responsibility: "system", canRetry: true,
+          observedRunId: exhausted.at(-1)!.id, providerFailure: { category: "timeout", retryability: "transient" } });
+        expect(await getExecutionBlocker(db, companyId, issueId)).toBeNull();
+        // The task rests on a system-owned action and Retry; nothing waits on the board.
+        expect((await selectRecoveryActionsForIssue(issueId)).map(action => [action.ownerType, action.cause]))
+          .toEqual([["system", "environment_provider_unavailable"]]);
+
+        const receipt = await requestTaskRetry({ db, companyId, issueId, actorId: "responsible-user",
+          idempotencyKey: randomUUID(), observedRunId: presentation!.observedRunId });
+        expect(receipt.accepted).toBe(true);
+        await heartbeat.resumeTaskRetry(companyId, receipt.requestId!);
+        await heartbeat.drainActiveRunExecutions();
+        expect(await waitForValue(async () => (await runsFor(agentId)).find(run => run.status === "succeeded") ?? null, 10_000))
+          .not.toBeNull();
         expect(lease.acquisitions.delegated).toBe(1);
       } finally {
         lease.restore();
@@ -14864,7 +14954,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
   async function seedNativePassiveBoardResponse(
     continuationKind:
       "response_wake" | "same_agent" | "retry" = "response_wake",
-    options: { blockingWork?: boolean; repairUsed?: boolean } = {},
+    options: { blockingWork?: boolean; repairUsed?: boolean; assignmentWake?: boolean } = {},
   ) {
     const fixture = await seedStrandedIssueFixture({
       status: "in_progress",
@@ -14894,7 +14984,12 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     });
     await db
       .update(agentWakeupRequests)
-      .set({
+      .set(options.assignmentWake ? {
+        status: "completed",
+        requestedByActorType: "system",
+        requestedByActorId: "issue-assignment",
+        payload: { issueId },
+      } : {
         source: "automation",
         reason: "issue_commented",
         status: "completed",
@@ -15038,6 +15133,74 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     expect(mockAdapterExecute).not.toHaveBeenCalled();
   });
 
+  it("parks a native response_wake that no response admitted instead of waking the same agent again", async () => {
+    const fixture = await seedNativePassiveBoardResponse("response_wake", { assignmentWake: true });
+    expect(await readNativeBoardResponseWaitSource(db, fixture)).toBeNull();
+    await finalizeNativeRun({ db, runId: fixture.runId, workspaceFinalizeStatus: "succeeded", projectRunStatus: true });
+    const heartbeat = heartbeatService(db);
+    for (let sweep = 0; sweep < 3; sweep += 1) {
+      await heartbeat.dispatchPendingNativeStatusWakeups({ companyId: fixture.companyId });
+      const recovery = await heartbeat.reconcileStrandedAssignedIssues();
+      expect(recovery.continuationRequeued + recovery.escalated).toBe(0);
+    }
+    expect(await db.select().from(statusDecisions).where(eq(statusDecisions.runId, fixture.runId))).toEqual([
+      expect.objectContaining({ reasonCode: "response_wake_waiting_for_input", toStatus: "in_progress", applicationState: "applied" }),
+    ]);
+    expect(await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.companyId, fixture.companyId))).toHaveLength(1);
+    expect(await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.companyId, fixture.companyId))).toHaveLength(1);
+    expect(await db.select().from(issueRecoveryActions).where(eq(issueRecoveryActions.sourceIssueId, fixture.issueId))).toHaveLength(0);
+    expect(await db.select().from(issues).where(eq(issues.id, fixture.issueId))).toEqual([
+      expect.objectContaining({ status: "in_progress", assigneeAgentId: fixture.agentId }),
+    ]);
+    expect(await executionProjectionForRun(db, fixture.companyId, fixture.runId))
+      .toMatchObject({ phase: "waiting_for_answer", label: "Waiting for a reply" });
+    expect(mockAdapterExecute).not.toHaveBeenCalled();
+    await db.update(issues).set({ status: "done" }).where(eq(issues.id, fixture.issueId));
+    expect(await executionProjectionForRun(db, fixture.companyId, fixture.runId))
+      .toMatchObject({ phase: "completed", label: "Completed" });
+  });
+
+  it("delays a no-progress native continuation until the rewake cooldown instead of dropping it", async () => {
+    const fixture = await seedNativePassiveBoardResponse("same_agent", { assignmentWake: true });
+    const finishedAt = new Date(Date.now() - 30_000);
+    const priorRunId = randomUUID();
+    await db.insert(heartbeatRuns).values({ id: priorRunId, companyId: fixture.companyId, agentId: fixture.agentId,
+      invocationSource: "assignment", status: "succeeded", startedAt: new Date(finishedAt.getTime() - 5_000), finishedAt,
+      contextSnapshot: { issueId: fixture.issueId } });
+    await finalizeNativeRun({ db, runId: fixture.runId, workspaceFinalizeStatus: "succeeded", projectRunStatus: true });
+    const [intent] = await db.select().from(agentWakeupRequests).where(and(
+      eq(agentWakeupRequests.companyId, fixture.companyId), eq(agentWakeupRequests.requestedByActorId, "native-status-committer")));
+    expect(intent?.payload).toMatchObject({ continuationKind: "same_agent" });
+    const heartbeat = heartbeatService(db);
+    const deadlines: number[] = [];
+    const dispatch = () => heartbeat.dispatchPendingNativeStatusWakeups({
+      companyId: fixture.companyId, requestId: intent!.id, onDeferredDeadline: (at) => deadlines.push(at),
+    });
+    const throttled = () => db.select().from(agentWakeupRequests).where(and(
+      eq(agentWakeupRequests.companyId, fixture.companyId), eq(agentWakeupRequests.reason, "issue_rewake_throttled")));
+    const runCount = async () => (await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.companyId, fixture.companyId))).length;
+
+    await dispatch();
+    await dispatch();
+    const [receipt] = await throttled();
+    const nextAllowedAt = Date.parse(String((receipt?.payload as { heartbeatSkip?: { nextAllowedAt?: string } } | null)?.heartbeatSkip?.nextAllowedAt));
+    expect(deadlines).toEqual([nextAllowedAt, nextAllowedAt]);
+    expect(await throttled()).toHaveLength(1);
+    expect(await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.id, intent!.id)))
+      .toEqual([expect.objectContaining({ status: "queued", runId: null })]);
+    expect(await runCount()).toBe(2);
+
+    const past = new Date(Date.now() - 30 * 60_000);
+    await db.update(heartbeatRuns).set({ finishedAt: past }).where(eq(heartbeatRuns.companyId, fixture.companyId));
+    await db.update(agentWakeupRequests).set({
+      payload: sql`jsonb_set(${agentWakeupRequests.payload}, '{heartbeatSkip,nextAllowedAt}', to_jsonb(${past.toISOString()}::text))`,
+    }).where(eq(agentWakeupRequests.id, receipt!.id));
+    await dispatch();
+    expect(await runCount()).toBe(3);
+    expect(await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.id, intent!.id)))
+      .toEqual([expect.objectContaining({ status: "coalesced", runId: expect.any(String) })]);
+  });
+
   it("rejects an unfinished native response wait while the finish report is still correctable", async () => {
     const fixture = await seedNativePassiveBoardResponse("response_wake", { blockingWork: true });
     const [stored] = await db.select().from(nativeRunResults).where(eq(nativeRunResults.runId, fixture.runId));
@@ -15113,7 +15276,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     await commitNativeStatusDecision({ db, companyId: fixture.companyId, issueId: fixture.issueId, runId: fixture.runId,
       assessmentId: coordinator!.assessmentId!, priorStatus: issue!.status, priorStatusVersion: issue!.statusVersion,
       priorDecisionId: issue!.lastStatusDecisionId,
-      decision: { policyVersion: "phase6-v13", statusAction: "in_progress", toStatus: "in_progress",
+      decision: { policyVersion: "phase6-v14", statusAction: "in_progress", toStatus: "in_progress",
         reasonCode: "board_response_waiting", unblockDescriptor: null, effects: [] },
       requireBoardResponseWaitSource: source!.source, requireBoardResponseWaitOrigin: origin!,
     });
@@ -15737,7 +15900,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
         priorStatusVersion: issue!.statusVersion,
         priorDecisionId: issue!.lastStatusDecisionId,
         decision: {
-          policyVersion: "phase6-v13",
+          policyVersion: "phase6-v14",
           statusAction: reasonCode === "prior_status_preserved_no_live_path" ? "preserve" : "in_progress",
           toStatus: "in_progress",
           reasonCode,
@@ -16946,7 +17109,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     await db.update(issueQuestionResponseDeliveries).set({ payloadSha256: "changed" }).where(eq(issueQuestionResponseDeliveries.id, f.deliveryId));
     await expect(commitNativeStatusDecision({ db, companyId: f.companyId, issueId: f.issueId, runId: f.runId, assessmentId: coordinator!.assessmentId!,
       priorStatus: issue!.status, priorStatusVersion: issue!.statusVersion, priorDecisionId: issue!.lastStatusDecisionId,
-      decision: { policyVersion: "phase6-v13", statusAction: "in_progress", toStatus: "in_progress", reasonCode: "native_plan_accepted_waiting_for_continuation", unblockDescriptor: null, effects: [] },
+      decision: { policyVersion: "phase6-v14", statusAction: "in_progress", toStatus: "in_progress", reasonCode: "native_plan_accepted_waiting_for_continuation", unblockDescriptor: null, effects: [] },
       requirePlanWaitSource: f.proof.source })).rejects.toBeInstanceOf(NativeStatusRaceError);
     expect(await db.select().from(statusDecisions).where(eq(statusDecisions.runId, f.runId))).toHaveLength(0);
     expect(await db.select().from(issueComments).where(eq(issueComments.createdByRunId, f.runId))).toHaveLength(0);

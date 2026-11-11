@@ -3781,9 +3781,10 @@ boundary. `managed-skill-content.test.ts` covers the focused domain behavior;
 `ephemeral-skills-process.test.ts` requires independent disposable Postgres and
 S3 fixtures and starts separate Node processes. The optional
 `ANDRECOMP_TEST_POSTGRES_ADMIN_URL` creates a random test database per suite.
-On hosts with unavailable Tailscale, set `ANDRECOMP_TAILNET_BIND_HOST=127.0.0.1`
-for local fixtures to avoid repeated CLI discovery. Do not use fixture timings
-collected during builds as hosted performance evidence.
+The server starts the `tailscale` command only when the bind configuration reads
+a tailnet address, and at most one time per process, so local fixtures need no
+`ANDRECOMP_TAILNET_BIND_HOST`. Do not use fixture timings collected during
+builds as hosted performance evidence.
 
 ## App-Shipped Skills Catalog
 
@@ -5157,6 +5158,15 @@ lease and save baseline remain unchanged; current canonical files are never
 uploaded over the retained execution. Remote collection and cleanup serialize
 through Postgres across controller homes. A missing remote collector retains a
 pending save instead of treating an empty local cache as the agent's files.
+A run whose instruction preparation finds another operation on the same
+agent's directory holding that lock does not fail. Before native admission it
+is cancelled as an expected wait and a `agent_directory_busy` retry is
+scheduled 5 to 15 seconds later; this lane spends no failure retries and stops
+after 30 attempts. A native run resuming on its own saved state instead stays
+on the same run and is rescheduled through the same-run retry schedule; its
+count is kept on the run's context so a resume claim does not reset it, and a
+Stop, a lost lease or a moved task leave it to normal settlement. A busy lock
+met while collecting files after a turn is not deferred this way.
 
 ## Cloud startup configuration
 

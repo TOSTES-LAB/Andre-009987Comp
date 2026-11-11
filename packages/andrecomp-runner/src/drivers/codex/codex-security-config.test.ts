@@ -551,4 +551,44 @@ describe("Codex security configuration", () => {
       "--dangerously-bypass-approvals-and-sandbox",
     );
   });
+
+  it("keeps planning read-only inside an external sandbox without Codex's network-isolated helpers", () => {
+    const planningArgs = (source: NodeJS.ProcessEnv) => {
+      const args = createIsolatedCodexAppServerArgs(source);
+      return {
+        filesystem: args.find(arg => arg.startsWith("permissions.andrecomp-runner-workspace-read-only.filesystem=")),
+        network: args.find(arg => arg.startsWith("permissions.andrecomp-runner-workspace-read-only.network.enabled=")),
+      };
+    };
+    const external = planningArgs({
+      ANDRECOMP_RUNNER_EXTERNAL_SANDBOX: "1",
+      ANDRECOMP_RUNNER_NETWORK_ACCESS: "enabled",
+      HOME: "/home/daytona/.andrecomp/codex-home",
+      CODEX_HOME: "/home/daytona/.andrecomp/codex-home",
+      ANDRECOMP_GITHUB_BROKER_TOKEN: "broker-capability",
+      GH_CONFIG_DIR: "/home/daytona/.andrecomp/gh",
+    });
+    expect(external).toEqual({
+      filesystem: 'permissions.andrecomp-runner-workspace-read-only.filesystem={":root"="read","/home/daytona/.andrecomp/gh"="write"}',
+      network: "permissions.andrecomp-runner-workspace-read-only.network.enabled=true",
+    });
+    expect(external.filesystem).not.toContain('="none"');
+    expect(external.filesystem).not.toContain(":workspace_roots");
+    expect(planningArgs({
+      ANDRECOMP_RUNNER_EXTERNAL_SANDBOX: "1",
+      ANDRECOMP_RUNNER_NETWORK_ACCESS: "disabled",
+      CODEX_HOME: "/home/daytona/.andrecomp/codex-home",
+    })).toEqual({
+      filesystem: 'permissions.andrecomp-runner-workspace-read-only.filesystem={":root"="read"}',
+      network: "permissions.andrecomp-runner-workspace-read-only.network.enabled=false",
+    });
+
+    const local = planningArgs({ HOME: "/home/user", CODEX_HOME: "/home/user/.codex" });
+    expect(local.filesystem).toContain('":root"="none"');
+    expect(local.filesystem).toContain('"/home/user/.codex"="none"');
+    expect(local.filesystem).toContain('":workspace_roots"={"."="read"}');
+    expect(local.network).toBe("permissions.andrecomp-runner-workspace-read-only.network.enabled=false");
+    expect(planningArgs({ ANDRECOMP_RUNNER_NETWORK_ACCESS: "enabled" }).network)
+      .toBe("permissions.andrecomp-runner-workspace-read-only.network.enabled=true");
+  });
 });

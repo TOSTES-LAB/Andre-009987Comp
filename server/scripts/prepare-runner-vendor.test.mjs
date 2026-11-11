@@ -49,7 +49,7 @@ function makeRepo() {
     "pnpm-lock.yaml": "lockfileVersion: 9\n",
     "pnpm-workspace.yaml": "packages:\n  - packages/*\n  - server\n",
     "tsconfig.base.json": "{}\n",
-    "patches/acpx@0.13.1.patch": "--- a\n+++ b\n",
+    "patches/acpx@0.22.0.patch": "--- a\n+++ b\n",
     "server/package.json": '{"name":"@andrecomp/server"}\n',
     "packages/andrecomp-runner/package.json": '{"name":"@andrecomp/andrecomp-runner"}\n',
     "packages/andrecomp-runner/src/index.ts": "export const one = 1;\n",

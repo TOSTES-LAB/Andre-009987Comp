@@ -721,6 +721,7 @@ export interface AndrecompPluginManifestV1 {
   workspaceProvider?: {
     /** Supports bounded run completion separately from removal-safety inspection. */
     finalizationVersion?: 1;
+    workspaceVerificationVersion?: 1;
     supportsMergeAncestry?: boolean;
     recoveryPullRequestVersion?: 1;
     freshWorkspaceVersion?: 1;
