@@ -32,6 +32,31 @@ import {
 
 const repositoryYieldCorrection = 'This task has a saved repository preparation for its next admission. This is routine setup, not a blocker. Call andrecomp_finish with reportedWorkDisposition="yielded" and omit continuation (or use null); Andrecomp will select the saved workspace continuation. Preserve the completed work and explain what remains. Do not repeat setup, set a timer, or ask the user to restart.';
 
+// A Andrecomp stall or restart leaves the agent's Andrecomp tool calls
+// unanswered until the server is back; they then return together. The agent can
+// read that silence as an outage and report it as a blocker. This report reached
+// the server and is being answered, which is the server's own proof that its
+// control plane is reachable now. Ask once per run to re-check with fresh
+// Andrecomp calls instead of resting the task blocked on a past stall.
+const andrecompServiceRecheckCorrection = "Andrecomp answered this report, so its control plane is reachable now. Andrecomp tool calls that did not return earlier were most likely delayed by a Andrecomp restart or pause, and their results may have arrived since. Do not report this as a blocker. Re-read the current Andrecomp state (for example read_document) before writing again; when a write is still needed, repeat it with the same idempotencyKey so it cannot apply twice. Then continue the task and report its real outcome. Report blocked only if a fresh Andrecomp call fails now.";
+const ANDRECOMP_SERVICE_RECHECK_LIMIT = 1_000;
+const andrecompServiceRechecked = new Set<string>();
+
+function isAndrecompServiceOutageBlocker(result: PrpStructuredRunResult) {
+  const blocker = result.blocker;
+  return result.reportedWorkDisposition === "blocked" && blocker?.owner.kind === "system"
+    && blocker.reasonCode === "external_service_unavailable" && (blocker.owner.name ?? "").toLowerCase().includes("andrecomp");
+}
+
+/** Once per run (per server process), so a real persistent failure still rests blocked. */
+function claimAndrecompServiceRecheck(runId: string) {
+  if (andrecompServiceRechecked.has(runId)) return false;
+  if (andrecompServiceRechecked.size >= ANDRECOMP_SERVICE_RECHECK_LIMIT)
+    andrecompServiceRechecked.delete(andrecompServiceRechecked.values().next().value!);
+  andrecompServiceRechecked.add(runId);
+  return true;
+}
+
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown> : {};
@@ -322,6 +347,10 @@ export async function nativeCompletionFeedback(
         !(await issueTreeControlService(db).getActivePauseHoldGate(run.companyId, issue.id))) {
       throw new Error(repositoryYieldCorrection);
     }
+  }
+  if (isAndrecompServiceOutageBlocker(result) && issue.executionRunId === run.id && run.status === "running"
+      && claimAndrecompServiceRecheck(run.id)) {
+    throw new Error(andrecompServiceRecheckCorrection);
   }
   if (result.reportedWorkDisposition === "yielded" && result.continuation?.kind === "monitor") {
     return `Monitor wait accepted. The task remains active and Andrecomp will wake its assignee at or after ${issue.monitorNextCheckAt!.toISOString()} with issue_monitor_due. End this turn; do not poll or mark the task done.`;

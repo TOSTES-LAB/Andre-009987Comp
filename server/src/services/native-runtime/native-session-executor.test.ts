@@ -390,7 +390,11 @@ vi.mock("../issue-recovery-actions.js", () => ({
 
 vi.mock("./native-codex-runner.js", () => ({
   resolveAndrecompRunnerBinary: state.resolveRunnerBinary,
+  resolveAndrecompRunnerBinaryAsync: async (...args: unknown[]) => state.resolveRunnerBinary(...(args as [])),
   resolveRemoteAndrecompRunnerBinary: state.resolveRemoteRunnerBinary,
+  // Resolves through the (mocked) vendor bundle, like the production checks.
+  verifiedBundledRemoteRunnerBinary: async () =>
+    (await import("../../vendor/andrecomp-runner/index.js")).bundledRemoteRunnerBinary(),
 }));
 
 import {
@@ -398,6 +402,7 @@ import {
   buildNativeProviderEnvironment,
   resolveNativeProviderEnvironment,
   buildNativeHarnessBackupManifest,
+  buildNativeHarnessBackupManifestStreamed,
   cancelNativeSession,
   closeWarmNativeSessionsForEnvironment,
   claimWarmNativeInstructionCopy,
@@ -430,6 +435,8 @@ import {
   nativeProviderUsageLimitFromEvent,
   nativeSessionFailureSourceCode,
   NATIVE_PROVIDER_SESSION_CLOSED,
+  NATIVE_PROVIDER_STARTUP_REJECTED,
+  nativeRemoteStartupRejectionCode,
   nativeSessionRecoveryProjection,
   nativeGovernedWaitResult,
   nativeConversationReplyResult,
@@ -448,6 +455,7 @@ import {
   stopStaleRemoteRunnerBeforeBootstrap,
   verifyRemoteRunnerOrSettledExit,
   readRemoteProviderPackManifest,
+  verifyRemoteProviderPackManifest,
   prepareRemoteProviderPackOnTarget,
   resolveRemoteProviderPackSource,
   readBundledRemoteProviderPackManifest,
@@ -474,6 +482,7 @@ import {
   remoteProviderStateUnreadable,
   retryTransientRemoteCheckpointRead,
   verifyNativeHarnessBackup,
+  verifyNativeHarnessBackupStreamed,
   shouldRestoreNativeHarnessBackupIntoSandbox,
   remoteProviderStateNeverOpened,
 } from "./native-session-executor.js";
@@ -2920,6 +2929,8 @@ describe("remote provider pack manifest", () => {
     Object.assign(payload, { providers: { cursor } });
     await writeManifest();
     expect(readRemoteProviderPackManifest(root).payload.providers?.cursor?.version).toBe(QUALIFIED_ACPX_PROFILES.cursor.agentServerVersion);
+    // The run path streams the same checks off the event loop.
+    await expect(verifyRemoteProviderPackManifest(root)).resolves.toEqual(readRemoteProviderPackManifest(root));
     const releaseMetadata = await mkdtemp(join(tmpdir(), "andrecomp-image-identity-"));
     const manifestPath = join(releaseMetadata, "provider-pack.json");
     await cp(join(root, "provider-pack.json"), manifestPath);
@@ -2944,6 +2955,7 @@ describe("remote provider pack manifest", () => {
     await rm(releaseMetadata, { recursive: true, force: true });
     await writeFile(join(root, cursorPath, "runtime"), "substitute Cursor runtime");
     expect(() => readRemoteProviderPackManifest(root)).toThrow("asset tree digest mismatch");
+    await expect(verifyRemoteProviderPackManifest(root)).rejects.toThrow("asset tree digest mismatch");
     await writeFile(join(root, cursorPath, "runtime"), "pinned Cursor runtime");
     const kimiPath = "provider-assets/kimi/linux-x64";
     await mkdir(join(root, kimiPath), { recursive: true });
@@ -3507,7 +3519,22 @@ describe("verified native harness backups", () => {
         sourceProviderLeaseId: "sandbox-1",
         completedAt: "2026-08-26T00:00:00.000Z",
       });
+      // The run path builds and verifies the same manifest by streaming.
+      await expect(buildNativeHarnessBackupManifestStreamed({
+        backupRoot: current,
+        execution: backupExecution,
+        runnerInstanceId: "runner-1",
+        providerSessionIdentity: {
+          providerSessionId: "thread-1",
+          providerBackendSessionId: "session-1",
+          providerSessionIdentity: null,
+        },
+        sourceProviderLeaseId: "sandbox-1",
+        completedAt: "2026-08-26T00:00:00.000Z",
+      })).resolves.toEqual(manifest);
       await writeFile(join(current, "manifest.json"), JSON.stringify(manifest));
+      await expect(verifyNativeHarnessBackupStreamed({ root, execution: backupExecution, runnerInstanceId: "runner-1" }))
+        .resolves.toEqual(verifyNativeHarnessBackup({ root, execution: backupExecution, runnerInstanceId: "runner-1" }));
 
       expect(
         verifyNativeHarnessBackup({
@@ -3553,6 +3580,8 @@ describe("verified native harness backups", () => {
           runnerInstanceId: "runner-1",
         }),
       ).toBeNull();
+      await expect(verifyNativeHarnessBackupStreamed({ root, execution: backupExecution, runnerInstanceId: "runner-1" }))
+        .resolves.toBeNull();
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -13962,6 +13991,16 @@ describe("native session bounded recovery", () => {
     },
   );
 
+  it("stops same-run retries when the execution provider proves task admission was rejected", () => {
+    for (const prefix of ["", "runner_ingress_unavailable: runnerd exited unexpectedly with code 1: "]) {
+      const code = nativeSessionFailureSourceCode(new Error(`${prefix}runner_task_admission_rejected: session_state_unavailable`));
+      expect(code).toBe("runner_task_admission_rejected");
+      expect(nativeSessionFailureDisposition(1, new Date(), code)).toEqual({
+        phase: "terminal_failure", failureCode: code, nextAttemptAt: null,
+      });
+    }
+  });
+
   it("stops same-run retries when the runner proves the saved provider session incompatible", () => {
     const failure = new NativeProviderStateIncompatibleError(
       "Error: PRP command run.attach failed: ACPX durable launch profile digest does not match runner startup",
@@ -14020,6 +14059,62 @@ describe("native session bounded recovery", () => {
       const other = Object.defineProperty(new Error("PRP command session.open failed"), "runnerCommandResult",
         { value: { commandType: "session.open", result: { classification: "provider_session_closed" } }, enumerable: false });
       expect(nativeSessionFailureSourceCode(other)).not.toBe(NATIVE_PROVIDER_SESSION_CLOSED);
+    });
+  });
+
+  describe("a session.open the provider itself rejected before any provider work", () => {
+    const sessionOpenFailure = (providerFailure: Record<string, unknown>) => {
+      const commandResult = { commandId: "command_prp_00000002", commandType: "session.open", controllerSeq: 2,
+        result: { code: "command_execution_failed", message: String(providerFailure.message), providerFailure }, status: "failed" };
+      const reported = { ...commandResult, result: { code: "command_execution_failed", message: "Provider request failed" } };
+      return Object.defineProperty(new Error(`PRP command session.open failed: ${JSON.stringify(reported)}`),
+        "runnerCommandResult", { value: commandResult, enumerable: false });
+    };
+    const startupFailure = (fields: Record<string, unknown>) => ({ schema: "andrecomp.provider-failure.v1", provider: "openai",
+      phase: "startup", category: "unknown", retryability: "unknown",
+      message: "error creating thread: failed to load AGENTS.md instructions for environment `local`: fs sandbox helper failed with status exit status: 1: bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted",
+      ...fields });
+
+    it.each(["authentication", "permission", "invalid_request"])("stops on the first %s rejection and hands the run to the board", (category) => {
+      const code = nativeSessionFailureSourceCode(sessionOpenFailure(startupFailure({ category, retryability: "requires_action" })));
+      expect(code).toBe(NATIVE_PROVIDER_STARTUP_REJECTED);
+      const disposition = nativeSessionFailureDisposition(1, new Date(), code);
+      expect(disposition).toEqual({ phase: "terminal_failure", failureCode: NATIVE_PROVIDER_STARTUP_REJECTED, nextAttemptAt: null });
+      expect(nativeSessionRecoveryProjection({ ...disposition, agentId: "agent" })).toMatchObject({
+        issueStatus: "blocked", recoveryOwner: { kind: "board" },
+      });
+    });
+
+    it("keeps bounded same-run retries for a local startup failure without a definite permanent cause", () => {
+      for (const fields of [
+        {},
+        { message: "Query closed before response received" },
+        { category: "overloaded", retryability: "transient", httpStatus: 503 },
+        { category: "timeout", retryability: "transient", httpStatus: 504 },
+        { category: "rate_limit", httpStatus: 429 },
+        { category: "quota_exhausted", retryability: "requires_action", providerCode: "usageLimitExceeded" },
+        { category: "model_unavailable", retryability: "requires_action" },
+        { phase: "turn", category: "authentication", retryability: "requires_action" },
+      ]) {
+        const failure = sessionOpenFailure(startupFailure(fields));
+        const code = nativeSessionFailureSourceCode(failure);
+        expect(code).toBe("provider_session_open_rejected");
+        expect(nativeRemoteStartupRejectionCode(code, failure, false)).toBe("provider_session_open_rejected");
+      }
+      expect(nativeSessionFailureDisposition(2, new Date(), "provider_session_open_rejected")).toMatchObject({ phase: "retryable_failure" });
+      expect(nativeSessionFailureDisposition(3, new Date(), "provider_session_open_rejected")).toEqual({
+        phase: "terminal_failure", failureCode: "native_session_retry_exhausted", nextAttemptAt: null,
+      });
+    });
+
+    it("stops a remote startup rejection at once because a remote same-run bootstrap cannot be verified", () => {
+      const failure = sessionOpenFailure(startupFailure({ message: "Query closed before response received" }));
+      expect(nativeRemoteStartupRejectionCode(nativeSessionFailureSourceCode(failure), failure, true))
+        .toBe(NATIVE_PROVIDER_STARTUP_REJECTED);
+      const unreported = new Error(`PRP command session.open failed: {"result":{"code":"command_execution_failed","message":"Provider request failed"},"status":"failed"}`);
+      expect(nativeRemoteStartupRejectionCode(nativeSessionFailureSourceCode(unreported), unreported, true))
+        .toBe("provider_session_open_rejected");
+      expect(nativeRemoteStartupRejectionCode("native_session_interrupted", failure, true)).toBe("native_session_interrupted");
     });
   });
 

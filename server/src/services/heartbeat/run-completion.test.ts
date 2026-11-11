@@ -64,7 +64,11 @@ const diagnosticNativeFixture = vi.hoisted(() => ({
 }));
 vi.mock("../native-runtime/native-codex-runner.js", async importOriginal => {
   const actual = await importOriginal<typeof import("../native-runtime/native-codex-runner.js")>();
-  return { ...actual, resolveAndrecompRunnerBinary: () => diagnosticNativeFixture.enabled ? process.execPath : actual.resolveAndrecompRunnerBinary() };
+  return {
+    ...actual,
+    resolveAndrecompRunnerBinary: () => diagnosticNativeFixture.enabled ? process.execPath : actual.resolveAndrecompRunnerBinary(),
+    resolveAndrecompRunnerBinaryAsync: async () => diagnosticNativeFixture.enabled ? process.execPath : actual.resolveAndrecompRunnerBinaryAsync(),
+  };
 });
 vi.mock("../../vendor/andrecomp-runner/index.js", async importOriginal => {
   const actual = await importOriginal<typeof import("../../vendor/andrecomp-runner/index.js")>();
