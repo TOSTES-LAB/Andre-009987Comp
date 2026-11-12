@@ -105,6 +105,7 @@ const commandTypes = new Set([
   "interaction.receipt",
   "semantic_tool.result",
   "external_provider.operation",
+  "runner.attachment.download",
   "session.snapshot",
   "session.goal.get",
   "session.goal.set",
@@ -2469,6 +2470,10 @@ export class DurablePrpControlPlane {
     for (const connection of connections) connection.close();
   }
 
+  activeRunnerProtocolVersion(): number | null {
+    return this.#eventOwner?.lease?.protocolVersion ?? null;
+  }
+
   activeRunnerConnectionCount(): number {
     return [...this.#connections].filter(
       (connection) => connection.secureChannel !== null,
@@ -2917,9 +2922,11 @@ export class DurablePrpControlPlane {
     }
     const controllerSeq = this.#store.state.commands.length + 1;
     const command: DurableRecoveryCoreCommand = {
-      schema: type === "external_provider.operation" ? "andrecomp.prp.command.v3" : type.startsWith("session.goal.")
-        ? "andrecomp.prp.command.v2"
-        : "andrecomp.prp.command.v1",
+      schema: type === "external_provider.operation" || type === "runner.attachment.download"
+        ? "andrecomp.prp.command.v3"
+        : type.startsWith("session.goal.")
+          ? "andrecomp.prp.command.v2"
+          : "andrecomp.prp.command.v1",
       commandId:
         commandId ?? `command_prp_${controllerSeq.toString().padStart(8, "0")}`,
       controllerSeq,

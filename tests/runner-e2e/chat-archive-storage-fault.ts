@@ -69,7 +69,7 @@ $fault$`,
   };
 }
 
-async function ownedDatabaseUrl(env: NodeJS.ProcessEnv) {
+export async function ownedDatabaseUrl(env: NodeJS.ProcessEnv) {
   const temporary = env.ANDRECOMP_RUNNER_E2E_TEMP_ROOT, config = env.ANDRECOMP_CONFIG, home = env.ANDRECOMP_HOME, instance = env.ANDRECOMP_INSTANCE_ID;
   if (!(temporary && config && home && instance && path.isAbsolute(temporary) && path.isAbsolute(config) && path.isAbsolute(home) && /^[A-Za-z0-9_-]+$/.test(instance))) throw new Error("Archive storage fault requires the owned runner instance");
   const [root, actualConfig, actualHome] = await Promise.all([realpath(temporary), realpath(config), realpath(home)]);

@@ -257,6 +257,7 @@ export function assertIsolatedServerEnvironment(
     andrecompHome: string;
     configPath: string;
     workspaceStorage?: NodeJS.ProcessEnv;
+    generatedSecretsMasterKey?: string;
   },
 ) {
   const home = env.ANDRECOMP_HOME;
@@ -285,6 +286,7 @@ export function assertIsolatedServerEnvironment(
     ...AMBIENT_ANDRECOMP_CREDENTIAL_KEYS,
     ...AMBIENT_EXTERNAL_STATE_KEYS,
   ]) {
+    if (key === "ANDRECOMP_SECRETS_MASTER_KEY" && expected.generatedSecretsMasterKey && env[key] === expected.generatedSecretsMasterKey) continue;
     if (env[key] && !(AMBIENT_EXTERNAL_STATE_KEYS.includes(key as typeof AMBIENT_EXTERNAL_STATE_KEYS[number])
       && expected.workspaceStorage?.[key] === env[key] && expected.workspaceStorage?.ANDRECOMP_STORAGE_PROVIDER === "s3"))
       throw new Error(

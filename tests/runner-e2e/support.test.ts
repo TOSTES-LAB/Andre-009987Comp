@@ -990,6 +990,32 @@ describe("runner E2E server isolation", () => {
     ).not.toThrow();
   });
 
+  it("admits only the wave's own generated secrets master key", () => {
+    const expected = {
+      temporaryRoot: "/tmp/cell",
+      andrecompHome: "/tmp/cell/andrecomp-home",
+      configPath: "/tmp/cell/andrecomp-home/instances/e2e/config.json",
+    };
+    const env = (extra: NodeJS.ProcessEnv) => ({
+      ANDRECOMP_HOME: expected.andrecompHome,
+      ANDRECOMP_CONFIG: expected.configPath,
+      XDG_CACHE_HOME: "/tmp/cell/xdg-cache",
+      ANDRECOMP_AGENT_JWT_SECRET: "generated-agent-jwt",
+      ANDRECOMP_DECISION_SIGNING_SECRET: "generated-decision-key",
+      ANDRECOMP_TOOL_ACTION_SIGNING_SECRET: "generated-tool-key",
+      BETTER_AUTH_SECRET: "generated-auth-key",
+      ...extra,
+    });
+    expect(() => assertIsolatedServerEnvironment(env({ ANDRECOMP_SECRETS_MASTER_KEY: "wave-key" }),
+      { ...expected, generatedSecretsMasterKey: "wave-key" })).not.toThrow();
+    expect(() => assertIsolatedServerEnvironment(env({ ANDRECOMP_SECRETS_MASTER_KEY: "ambient-key" }), expected))
+      .toThrow("ANDRECOMP_SECRETS_MASTER_KEY");
+    expect(() => assertIsolatedServerEnvironment(env({ ANDRECOMP_SECRETS_MASTER_KEY: "ambient-key" }),
+      { ...expected, generatedSecretsMasterKey: "wave-key" })).toThrow("ANDRECOMP_SECRETS_MASTER_KEY");
+    expect(() => assertIsolatedServerEnvironment(env({ ANDRECOMP_SECRETS_MASTER_KEY: "wave-key", ANDRECOMP_SECRETS_MASTER_KEY_FILE: "/tmp/cell/key" }),
+      { ...expected, generatedSecretsMasterKey: "wave-key" })).toThrow("ANDRECOMP_SECRETS_MASTER_KEY_FILE");
+  });
+
   it("uses absolute repository paths for the Playwright web server", () => {
     const command = runnerE2EWebServerCommand("/workspace/andrecomp");
     expect(command).toContain(
