@@ -118,7 +118,10 @@ describe("Standard image remote provider pack", () => {
     expect(pack).toContain("Skipping remote provider pack");
     expect(production).toContain("--from=runner-provider-pack /provider-pack /opt/andrecomp-runner/provider-pack");
     expect(production).not.toContain("--chown=node:node --from=runner-provider-pack");
-    expect(production).toContain("chmod -R a+rX /opt/andrecomp-runner/provider-pack");
+    // Modes are granted in the layer that writes the pack. A recursive chmod
+    // after the COPY duplicates every changed file into another image layer.
+    expect(pack).toMatch(/build-provider-pack\.mjs[\s\S]*&& chmod -R a\+rX \/provider-pack$/m);
+    expect(production).not.toMatch(/chmod -R [^\n]*\/opt\/andrecomp-runner\/provider-pack/);
     expect(production).toContain("gosu 65534:65534 node");
     expect(production).toContain("Object.values(manifest.payload.artifacts)");
     expect(production).toContain("ANDRECOMP_RUNNER_REMOTE_PROVIDER_PACK_PATH=/opt/andrecomp-runner/provider-pack");
