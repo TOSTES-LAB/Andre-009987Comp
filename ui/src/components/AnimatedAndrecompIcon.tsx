@@ -1,5 +1,6 @@
 import type { SVGProps } from "react";
 import { cn } from "../lib/utils";
+import { useBlockingPageGate } from "../hooks/usePageContentReady";
 
 export function AnimatedAndrecompIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
@@ -24,6 +25,8 @@ export function AnimatedAndrecompIcon({ className, ...props }: SVGProps<SVGSVGEl
 
 /** Full-page loading state: a large, centered, gray animated andrecomp. */
 export function AndrecompLoading({ className }: { className?: string }) {
+  // While a full-page loading state is on screen the page has not loaded.
+  useBlockingPageGate();
   return (
     <div
       role="status"

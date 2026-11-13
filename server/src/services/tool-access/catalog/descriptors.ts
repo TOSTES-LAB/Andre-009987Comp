@@ -3,6 +3,7 @@ import { restConnectorFor } from "../../connectors/rest-registry.js";
 import { googleWorkspaceToolTarget } from "@andrecomp/shared";
 import { BROWSER_USE_TOOLS } from "@andrecomp/shared";
 import { isMemoryConnectorId } from "@andrecomp/shared";
+import { readMcpAppToolUi, type McpAppToolUi } from "@andrecomp/shared";
 import { toolConnections } from "@andrecomp/db";
 import type { ToolRiskLevel } from "@andrecomp/shared";
 import { GOOGLE_WORKSPACE_CONNECTOR_PROFILES, type GoogleWorkspaceConnectorProfileId } from "@andrecomp/shared";
@@ -20,6 +21,8 @@ export type McpToolDescriptor = {
   description?: string | null;
   inputSchema?: Record<string, unknown>;
   annotations?: Record<string, unknown>;
+  /** MCP Apps view declaration from the tool's `_meta.ui`. */
+  ui?: McpAppToolUi | null;
 };
 
 export function normalizeToolDescriptor(tool: unknown): McpToolDescriptor | null {
@@ -33,6 +36,7 @@ export function normalizeToolDescriptor(tool: unknown): McpToolDescriptor | null
       typeof record.description === "string" ? record.description : null,
     inputSchema: asRecord(record.inputSchema ?? record.input_schema),
     annotations: asRecord(record.annotations),
+    ui: readMcpAppToolUi(record._meta),
   };
 }
 

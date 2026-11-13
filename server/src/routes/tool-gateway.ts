@@ -100,8 +100,8 @@ async function handleMcpGatewayProtocol(
           capabilities: { tools: {}, resources: {}, prompts: {} },
           serverInfo: { name: "Andrecomp MCP Gateway", version: "1.0.0" },
           _meta: {
-            "andrecomp/mcp-app-ui": "unsupported",
-            "andrecomp/mcp-app-ui-detail": "Interactive ui:// iframe hosting is not available in Andrecomp Runner.",
+            "andrecomp/mcp-app-ui": "host_rendered",
+            "andrecomp/mcp-app-ui-detail": "Andrecomp renders MCP Apps ui:// views in the task chat. The gateway does not forward them to clients.",
           },
         },
       });
