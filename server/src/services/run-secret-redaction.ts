@@ -25,6 +25,10 @@ const REGISTRY_KEY = "andrecompSecretRedactions";
 // Project only the registry: run contexts can contain megabytes of prompt data.
 const registrySnapshot = sql`jsonb_build_object('andrecompSecretRedactions', ${heartbeatRuns.contextSnapshot} -> 'andrecompSecretRedactions')`;
 
+export function runSecretRedactionVersionSql() {
+  return sql<string>`md5(coalesce((${heartbeatRuns.contextSnapshot}->${REGISTRY_KEY})::text, ''))`;
+}
+
 type RegistryEntry = {
   fingerprintSha256: string;
   material: StoredSecretVersionMaterial;

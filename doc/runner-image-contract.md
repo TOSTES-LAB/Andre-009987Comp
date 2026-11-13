@@ -2,9 +2,10 @@
 
 The Runner image is the Runner built alone, as a plain file tree with no
 entrypoint and no operating system. An image build copies paths out of it
-instead of compiling the Runner again. Nothing in this repository consumes it
-yet. Its name is `ghcr.io/andrecomp/andrecomp-runner`, and one build makes
-two variants:
+instead of compiling the Runner again. The application image of this
+repository takes its Runner from the stage that builds it (see "The
+application image"); no build reads the published image yet. Its name is
+`ghcr.io/andrecomp/andrecomp-runner`, and one build makes two variants:
 
 - full, the `runner-artifacts` target of the `Dockerfile`: every path below;
 - slim, the `runner-artifacts-slim` target: the same without the two paths
@@ -95,6 +96,21 @@ build reads (the root one, `packages/andrecomp-runner` and
 pull-request runs resolve it first. For a local build, run
 `pnpm install --resolution-only --ignore-scripts --no-frozen-lockfile`.
 
+Three places ask pnpm the same question, with the same arguments
+(`runnerLockState` in `scripts/runner-image-publish.mjs`):
+
+- the publication workflow, which publishes nothing for a lockfile that is
+  behind;
+- the `runner-lockfile` stage of the `Dockerfile`, which fails an application
+  image build and prints the command above. The application's dependency
+  install starts from that stage, so it cannot start before the check passes.
+  The Runner's toolchain and daemon stages do not depend on it, so they can
+  already be running, and the failed check cancels them.
+- `scripts/check-release-runner-lockfile.mjs`, which `scripts/release.sh`
+  runs for a beta and for a stable release. It checks the committed files of
+  the release commit, so a beta or stable tag always builds with a plain
+  `docker build`. A canary or a nightly is not checked.
+
 ## Checks
 
 CI builds each variant as an OCI archive and nothing else.
@@ -131,7 +147,8 @@ uses it.
 
 ## Consuming the image
 
-Read the image only with `COPY --from`, and pin it by digest:
+Read the image only with `COPY --from` or a read-only bind mount
+(`RUN --mount=type=bind,from=`), and pin it by digest:
 
 ```dockerfile
 FROM ghcr.io/andrecomp/andrecomp-runner@sha256:<digest> AS runner-artifacts
@@ -143,6 +160,45 @@ A Dockerfile with a `runner-artifacts` or `runner-artifacts-slim` stage of
 its own, as in this repository, can take a built image or tree in its place
 with `--build-context <stage>=<image or directory>`. The stage is then not
 built.
+
+### The application image
+
+The `production` and `cloud` targets of the `Dockerfile` read only the
+`runner-artifacts` stage, in two stages:
+
+- `build` copies `/runner-package/dist` and the build stamp into
+  `packages/andrecomp-runner` and sets
+  `ANDRECOMP_RUNNER_VENDOR_REQUIRE_CURRENT=1`. The server build then vendors
+  that output, and fails when the stamp does not match the Runner inputs of
+  the tree it builds. The lockfile is one of those inputs.
+- `runner-provider-pack` copies `/provider-pack`, the receipt and the
+  archives, and moves each pack file of 1 MiB or more to a tree of its own.
+  `production` copies the three trees with the same three instructions as
+  before, so the paths under `/opt/andrecomp-runner/` and the layers are the
+  same. A deployed server finds the transport layer of an application image
+  by the text of the instruction
+  `COPY --from=runner-provider-pack /provider-pack-transport/ /opt/andrecomp-runner/`
+  in the image history (`retained-provider-pack-oci.ts`). Do not change it.
+
+No workflow replaces the stage yet, so every application image build runs
+the Runner stages itself: an inline Runner. An inline Runner is not this
+image, and an application image says so in three ways:
+
+- its pack names the build commit of the application image as
+  `payload.runnerSourceRevision`, the value of `ANDRECOMP_BUILD_COMMIT`;
+- its pack has no `payload.runnerInputsDigest`;
+- the image has neither label of "Choosing the Runner for an image build".
+
+A build without `ANDRECOMP_BUILD_COMMIT` has no pack, as before.
+
+`build` also declares the build argument
+`ANDRECOMP_RUNNER_EXPECT_INPUTS_DIGEST`, which no build sets yet. It is for
+a build that replaces the stage with a published image. When the argument is
+set, `scripts/check-runner-image-expectation.mjs` reads `/runner-image.json`
+of the `runner-artifacts` the build was given, and the build fails unless
+that file has `publication: true` and names exactly those inputs. An inline
+Runner is never a publication, so the argument without the image fails too.
+The check runs before the server build vendors the Runner.
 
 ### Choosing the Runner for an image build
 
@@ -170,16 +226,55 @@ the committed files, before any step that rewrites `pnpm-lock.yaml`.
 - `build_contexts`: one `--build-context` value on each line, which replace
   the `runner-artifacts` and `runner-artifacts-slim` stages;
 - `labels`: `io.andrecomp.runner.image` and
-  `io.andrecomp.runner.inputs-digest`, for the image that copies the Runner.
+  `io.andrecomp.runner.inputs-digest`, for the image that copies the Runner;
+- `build_args`: `ANDRECOMP_RUNNER_EXPECT_INPUTS_DIGEST=<digest>`, the build
+  argument with which a build checks the Runner it is given.
 
 `published` needs a complete publication whose full index names these inputs
-and both platforms. Every other answer is `inline`, with the last four values
+and both platforms. Every other answer is `inline`, with the last five values
 empty: the lockfile is behind the Runner's manifests (`lock-behind`), the
 image does not exist (`absent`), a publication is `incomplete` or `broken`,
 the full index does not match (`mismatch`), or the registry refused, failed
-or could not be reached (`unknown`). An inline build runs the Runner stages
-itself and carries neither label. The command does not wait for a publication
-and does not verify the attestation of the image.
+or could not be reached (`unknown`). A tree whose `Dockerfile` declares no
+`ANDRECOMP_RUNNER_EXPECT_INPUTS_DIGEST` argument is `inline` too
+(`unsupported`): its build could not refuse a Runner of other inputs, so
+`inputs` runs no build for it. An inline build runs the Runner stages itself
+and carries neither label. For an `inline` answer `resolve` prints a notice
+with the reason. The command does not verify the attestation of the image:
+the workflow that uses the answer does.
+
+### Waiting for a publication
+
+A `master` push starts its own run of `.github/workflows/runner-image.yml`,
+which may still be publishing when an image build of the same commit asks.
+`resolve --dir "$dir" --wait` is for that build. When the first answer is
+`absent` or `incomplete`, it lists the runs of that workflow for the push of
+`GITHUB_SHA` to `master` (the Actions API, with `GITHUB_TOKEN` and
+`actions: read`) and looks again when they end. Only a run of the `push`
+event on `master` in this repository counts: a run of the same commit for a
+pull request, for the weekly schedule or from a manual start publishes
+nothing and is never waited for. Every other first answer is final and starts
+no wait.
+
+- **A run, not a time.** When every run of the commit has completed, the
+  command looks up the image once more, and that answer is final. A run that
+  failed, was cancelled, or published nothing because the lockfile is behind
+  ends the wait as soon as it ends.
+- **Published before the run ends.** While a run is in progress the command
+  looks up the image every 30 seconds. The wait ends when the image is
+  published, not when the last job of the run ends.
+- **Not listed yet.** A run can be missing from the list just after the push.
+  The command looks for it for two minutes, measured from the start of the
+  wait. A commit with no run by then is not the head of a `master` push.
+- **Limit.** The wait ends 40 minutes after the push
+  (`RUNNER_IMAGE_WAIT_MINUTES` in the script). The push is the creation time
+  of the oldest run of the commit, so a build that starts late waits less, and
+  one that starts after the limit looks once and does not wait.
+- **Actions API.** Three failed requests in a row end the wait. Without a
+  token or a full commit SHA there is no wait.
+- **Never an error.** After every ending the command looks up the image one
+  last time. Without an image the answer is `inline`, with the reason of that
+  lookup and what the wait saw.
 
 ## Publication
 

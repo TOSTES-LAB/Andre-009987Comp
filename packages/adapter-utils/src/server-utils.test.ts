@@ -1324,6 +1324,13 @@ describe("renderAndrecompWakePrompt", () => {
     ).toBe(false);
   });
 
+  it("asks Slack for brief public progress without adding a reporting tool", () => {
+    const prompt = renderAndrecompWakePrompt({ ...ordinaryExternalChatWake, externalChatProvider: "slack" });
+    expect(prompt).toContain("Give a brief public update when you change approach or learn something useful");
+    expect(prompt).toContain("current conversation's audience");
+    expect(renderAndrecompWakePrompt(ordinaryExternalChatWake)).not.toContain("Slack can show this public commentary");
+  });
+
   it("renders one authoritative direct-response contract for fresh and resumed external-chat turns", () => {
     for (const prompt of [
       renderAndrecompWakePrompt(ordinaryExternalChatWake),
