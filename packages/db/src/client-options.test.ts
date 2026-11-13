@@ -93,6 +93,12 @@ describe("databaseClientOptionsFromEnv", () => {
       connection: { application_name: "andrecomp-web" },
     });
   });
+
+  it("sends a dedicated pool's statement timeout as a startup parameter", () => {
+    expect(postgresJsOptions({ applicationName: "andrecomp-controller-instance-lease", statementTimeoutMs: 8_000 })).toEqual({
+      connection: { application_name: "andrecomp-controller-instance-lease", statement_timeout: "8000" },
+    });
+  });
 });
 
 describe("resolveDatabaseClientOptions", () => {

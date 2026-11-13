@@ -9,6 +9,17 @@ export type DeferredReceiptRecoveryOptions = {
   onError?: (error: unknown) => void;
 };
 
+const ASSIGNMENT_WAKE_REASON = "issue_assigned";
+
+export const assignmentWakePayloadSql =
+  sql`${agentWakeupRequests.payload}#>>'{_andrecompWakeContext,wakeReason}' = ${ASSIGNMENT_WAKE_REASON}`;
+
+export function isAssignmentWakePayload(payload: Record<string, unknown> | null | undefined): boolean {
+  const context = payload?._andrecompWakeContext;
+  return context !== null && typeof context === "object" && !Array.isArray(context)
+    && (context as Record<string, unknown>).wakeReason === ASSIGNMENT_WAKE_REASON;
+}
+
 function hint(scope: DeferredExecutionScope) {
   return JSON.stringify({ companyId: scope.companyId, requestId: scope.requestId });
 }

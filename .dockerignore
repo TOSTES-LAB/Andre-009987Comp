@@ -9,6 +9,8 @@ data
 tmp
 *.log
 packages/andrecomp-runner/dist
+packages/andrecomp-runner/dist-*
+packages/andrecomp-eval-kernel/dist
 packages/andrecomp-runner/runner/target
 packages/andrecomp-runner/devtools
 packages/andrecomp-runner/docs
