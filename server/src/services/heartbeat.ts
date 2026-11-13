@@ -281,6 +281,7 @@ import {
 } from "./native-runtime/native-cancellation-request.js";
 import {
   prepareChatCompletionTurn,
+  chatCompletionAlreadyReported,
 } from "./chat-completion-delivery.js";
 
 import {
@@ -407,6 +408,8 @@ import {
 
 import { nativeChatWorkspaceCwd } from "./native-runtime/native-chat-workspace.js";
 import {
+  configuredEnvironmentProjection,
+  configuredSecretEnvironment,
   type NativeExecutionInput,
   type NativeSessionBackend,
 } from "../vendor/andrecomp-runner/index.js";
@@ -2195,6 +2198,14 @@ export function heartbeatService(
         conversation: isConversation(conversationIdentity),
       })) return;
       run = await timePreparation("chat_completion", () => prepareChatCompletionTurn(db, run));
+      if (chatCompletionAlreadyReported(run)) {
+        // An earlier reply in this conversation already reported each completion.
+        await setRunStatus(run.id, "succeeded", { finishedAt: new Date(), resultJson: { chatCompletionAlreadyReported: true }, issueCommentStatus: "not_applicable" });
+        await setWakeupStatus(run.wakeupRequestId, "completed", { finishedAt: new Date() });
+        await releaseIssueExecutionAndPromote((await getRun(run.id))!, { suppressImmediateRecovery: true });
+        await finalizeAgentStatus(agent.id, "succeeded");
+        return;
+      }
       const preparedConversation = await timePreparation("conversation", () => prepareConversationTurn(db, run));
       run = { ...run, contextSnapshot: preparedConversation.context };
       if (preparedConversation.reset) {
@@ -3576,6 +3587,9 @@ export function heartbeatService(
             runtimeConfig,
             runtimeSkillEntries,
             runScopedMentionedSkillKeys,
+            configuredSecretNames: configuredSecretEnvironment(
+              configuredEnvironmentProjection(configuredTaskEnvironment, secretKeys),
+            ).map(secret => secret.name),
             instructionCopy: preparedInstructions.instructionCopy,
             agentIdentity,
             issueAssigneeOverrides,
@@ -3644,6 +3658,7 @@ export function heartbeatService(
             resolvedConfig,
             resolvedInstanceSettings,
             configuredTaskEnvironment,
+            secretKeys,
             adapterEnv,
             agentIdentity,
             observability,

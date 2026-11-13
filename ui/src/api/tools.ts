@@ -1,4 +1,5 @@
 import type { AggregatorAppsResponse, ArcadeDiscoverySetupInput } from "@andrecomp/shared/aggregator-apps";
+import type { ProviderToolIconsResponse } from "@andrecomp/shared";
 import type { ComposioAppAccountInput, ComposioAppSetupInput, ComposioAppSetupResult, ComposioAppSnapshot, ComposioAppsResponse } from "@andrecomp/shared";
 import type {
   ToolApplication,
@@ -430,6 +431,8 @@ export const toolsApi = {
     }),
   refreshCatalog: (connectionId: string) =>
     api.post<ToolCatalogRefreshResult>(`/tool-connections/${connectionId}/catalog/refresh`, {}),
+  listProviderToolIcons: (companyId: string) =>
+    api.get<ProviderToolIconsResponse>(`/companies/${companyId}/tool-icons`),
   listCatalog: (connectionId: string) =>
     api.get<ToolCatalogResponse>(`/tool-connections/${connectionId}/catalog`),
   listConnectionActivity: (connectionId: string, limit = 20) =>
