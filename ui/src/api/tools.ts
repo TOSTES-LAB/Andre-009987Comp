@@ -306,6 +306,16 @@ export const toolsApi = {
   },
   connectApp: (companyId: string, input: ConnectToolApp) =>
     api.post<ConnectToolAppResult>(`/companies/${companyId}/tools/apps/connect`, input),
+  createMachineSignIn: (companyId: string, input: import("@andrecomp/shared").CreateMachineSignIn) =>
+    api.post<import("@andrecomp/shared").MachineSignInSetupResult>(`/companies/${companyId}/tools/machine-sign-in`, input),
+  getMachineSignIn: (connectionId: string) =>
+    api.get<import("@andrecomp/shared").MachineSignInStatus>(`/tool-connections/${connectionId}/machine-sign-in`),
+  testMachineSignIn: (connectionId: string, input: import("@andrecomp/shared").TestMachineSignIn) =>
+    api.post<ConnectToolAppResult>(`/tool-connections/${connectionId}/machine-sign-in/test`, input),
+  rotateMachineSignIn: (connectionId: string, input: import("@andrecomp/shared").RotateMachineSignIn) =>
+    api.post<import("@andrecomp/shared").MachineSignInSetupResult & { completed: boolean }>(`/tool-connections/${connectionId}/machine-sign-in/rotate`, input),
+  completeMachineSignInRotation: (connectionId: string) =>
+    api.post<import("@andrecomp/shared").MachineSignInSetupResult>(`/tool-connections/${connectionId}/machine-sign-in/rotate/complete`, {}),
   startOAuth: (
     connectionId: string,
     input: {

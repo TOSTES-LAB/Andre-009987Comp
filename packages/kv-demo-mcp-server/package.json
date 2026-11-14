@@ -13,7 +13,8 @@
   },
   "type": "module",
   "bin": {
-    "andrecomp-kv-demo-mcp-server": "./dist/main.js"
+    "andrecomp-kv-demo-mcp-server": "./dist/main.js",
+    "andrecomp-tasks-demo-mcp-server": "./dist/tasks/main.js"
   },
   "exports": {
     ".": "./src/index.ts"
@@ -21,7 +22,8 @@
   "publishConfig": {
     "access": "public",
     "bin": {
-      "andrecomp-kv-demo-mcp-server": "./dist/main.js"
+      "andrecomp-kv-demo-mcp-server": "./dist/main.js",
+      "andrecomp-tasks-demo-mcp-server": "./dist/tasks/main.js"
     },
     "exports": {
       ".": {
