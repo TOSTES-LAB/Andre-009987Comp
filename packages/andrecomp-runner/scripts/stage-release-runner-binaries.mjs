@@ -31,7 +31,7 @@ function regularFile(path, maximumSize) {
   return readFileSync(path);
 }
 
-async function metadataContract() {
+export async function metadataContract() {
   const { ANDRECOMP_RUNNER_BUILD_METADATA } = await import("../dist/evals/build-metadata.js");
   const { parseAndrecompRunnerdBuildMetadata } = await import("../dist/evals/runnerd-artifact.js");
   return metadata => verifyReleaseRunnerMetadata(parseAndrecompRunnerdBuildMetadata(metadata), ANDRECOMP_RUNNER_BUILD_METADATA);
