@@ -66,6 +66,8 @@ import {
   GOOGLE_WORKSPACE_CONNECTOR_PROFILES,
   googleWorkspaceProfileWithinSubmittedScopes,
   googleWorkspaceSelectedScopes,
+  googleWorkspaceGrantedScopes,
+  googleWorkspaceSelectionForScopes,
   GOOGLE_WORKSPACE_DEFAULT_SELECTION,
   getAvailableConnectionMethod,
   getConnectableAppDefinition,
@@ -192,7 +194,7 @@ function fakeGoogleWorkspaceConnector(
     })),
     claim: vi.fn(async () => credentials),
     refresh: vi.fn(async () => credentials),
-    revoke: vi.fn(async () => undefined),
+    revoke: vi.fn(async () => ({})),
   } satisfies Partial<AndrecompCloudConnector> as unknown as AndrecompCloudConnector;
 }
 
@@ -231,7 +233,7 @@ function fakeGitHubConnector(
     })),
     claim: vi.fn(async () => credentials),
     refresh: vi.fn(async () => credentials),
-    revoke: vi.fn(async () => undefined),
+    revoke: vi.fn(async () => ({})),
     setWebhookBinding: vi.fn(async () => undefined),
     leaseEvents: vi.fn(async () => null),
     acknowledgeEvents: vi.fn(async () => 0),
@@ -2991,6 +2993,42 @@ describeEmbeddedPostgres("tool access service", () => {
     await expect(service.startOAuth(company.id, connected.connectionId, {
       redirectUri: "https://andrecomp.example.test/api/tools/oauth/callback", actor, workspaceServices: {},
     })).rejects.toMatchObject({ status: 400 });
+  });
+
+  it.each([
+    ["with", ["calendar.calendarlist.readonly", "calendar.events", "calendar.events.freebusy"]],
+    ["without", ["calendar.calendarlist.readonly", "calendar.events"]],
+  ] as const)("asks for free/busy with read and write Calendar and keeps Calendar working %s it", async (_label, granted) => {
+    const company = await createCompany(db);
+    const userId = `workspace-calendar-${randomUUID()}`;
+    await grantBoardUser(db, company.id, userId, [], "owner");
+    const actor = { actorType: "user" as const, actorId: userId };
+    const service = createTestToolAccessService(db);
+    const connected = await service.connectGalleryApp(company.id, {
+      galleryKey: "google-workspace", connectionMethodKey: "customer-workspace-oauth", grantKind: "user",
+      oauthClient: { clientId: "test-workspace-client", clientSecret: "test-workspace-secret" },
+    }, actor);
+    const redirectUri = "https://andrecomp.example.test/api/tools/oauth/callback";
+    const started = await service.startOAuth(company.id, connected.connectionId, { redirectUri, actor, workspaceServices: { calendar: "write" } });
+    const authorization = new URL(started.authorizationUrl);
+    const google = (value: string) => `https://www.googleapis.com/auth/${value}`;
+    expect(authorization.searchParams.get("scope")?.split(" "))
+      .toEqual(["calendar.calendarlist.readonly", "calendar.events", "calendar.events.freebusy"].map(google));
+    const tools = ["list_calendars", "list_events", "suggest_time", "create_event"];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      if (String(url) === "https://oauth2.googleapis.com/token") return Response.json({
+        access_token: "fixture-calendar-access", refresh_token: "fixture-calendar-refresh", expires_in: 3600, token_type: "Bearer",
+        scope: granted.map(google).join(" "),
+      });
+      expect(String(url)).toBe("https://calendarmcp.googleapis.com/mcp/v1");
+      return mcpHttpResponse({ jsonrpc: "2.0", id: "andrecomp-catalog-refresh", result: { tools: tools.map(name => ({ name })) } });
+    });
+    const completed = await service.completeOAuthCallback({ state: authorization.searchParams.get("state")!, code: "fixture-code", redirectUri, actor });
+    expect(completed.connection.status).toBe("active");
+    expect(completed.catalog.map((entry) => entry.toolName).sort()).toEqual(tools.map(name => `calendar__${name}`).sort());
+    const [grant] = await db.select().from(connectionGrants).where(eq(connectionGrants.connectionId, connected.connectionId));
+    expect(googleWorkspaceGrantedScopes(grant!)).toEqual([...granted].map(google).sort());
+    expect(googleWorkspaceSelectionForScopes(googleWorkspaceGrantedScopes(grant!))).toEqual({ calendar: "write" });
   });
 
   it.each(["https://www.googleapis.com/auth/documents.readonly", undefined, "", "https://www.googleapis.com/auth/gmail.send"])(
@@ -8226,7 +8264,10 @@ describeEmbeddedPostgres("tool access service", () => {
       await expect(
         service.revokeConnectionGrant(connected.connectionId, grant!.id, actor),
       ).resolves.toMatchObject({ status: "revoked" });
-      expect(connector.revoke).not.toHaveBeenCalled();
+      expect(connector.revoke).toHaveBeenCalledTimes(1);
+      expect(connector.revoke).toHaveBeenCalledWith(expect.objectContaining({
+        subject: userId, profile: "gmail.draft", token: "gmail-refresh-token",
+      }));
     } finally {
       if (deadline) clearTimeout(deadline);
       await callbackDb.$client.end({ timeout: 0 }).catch(() => undefined);
@@ -14361,7 +14402,7 @@ describeEmbeddedPostgres("tool access service", () => {
         expiresAt: new Date(Date.now() + 600_000).toISOString(),
       })),
       claim: vi.fn(async () => credentials), refresh: vi.fn(async () => credentials),
-      revoke: vi.fn(async () => undefined),
+      revoke: vi.fn(async () => ({})),
     } satisfies Partial<AndrecompCloudConnector> as unknown as AndrecompCloudConnector;
     const service = createTestToolAccessService(db, { andrecompCloudConnector: connector });
     const custom = await service.connectGalleryApp(company.id, {

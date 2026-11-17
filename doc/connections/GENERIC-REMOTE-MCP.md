@@ -79,6 +79,37 @@ Optional assigned apps do not emit run-start connection warnings, including
 unavailable shared apps. Their health state and reconnect controls remain in
 Apps. An unrelated run does not need to act on that state.
 
+### Connecting another Andrecomp instance
+
+Every Andrecomp serves its assistant connection at `/mcp/andrecomp` (see
+[Public Andrecomp MCP connection](../public-mcp.md)). Pasting that address
+connects your agents to another instance — for example a colleague's — so they
+can file and follow tasks there. Andrecomp recognizes the address and, using
+only the address you typed (nothing the other server says):
+
+- names the connection after that instance with its distinctive part first —
+  `acme Andrecomp` for `acme.andrecomp.app`, `localhost-3101 Andrecomp` for a
+  local instance — and prefixes its tools with the same host-derived label,
+  so agents see
+  `mcp.acme-andrecomp-<id>:andrecomp-create-task` (native runners:
+  `app_mcp_acme_andrecomp_…_andrecomp_create_task_…`), never a bare
+  `create_task` that looks like their own. Other address-based connections
+  keep their existing tool names. Setup records the prefix on the connection
+  (`andrecompPeerToolNamespace`) when it is created, so renaming or
+  reconnecting never changes tool names that saved tool-name rules, agents or
+  pending approvals refer to. Andrecomp connections created before this keep
+  their original names;
+- adds agent instructions (template `andrecomp.peer`, editable and
+  resettable under **Agent instructions** on the connection's Permissions page)
+  saying these tools act on a different
+  Andrecomp, that agents keep using their own Andrecomp tools for their own
+  work, and that links from the other instance must be quoted in full;
+- refuses the address of this same instance (`andrecomp_self_connection`,
+  422), because its tools are already built in.
+
+Actions start on, as for any other connection. A name or instructions you
+supply yourself are kept.
+
 ### Slack app access
 
 If Slack reports that MCP access is disabled for the app, ask the Slack app

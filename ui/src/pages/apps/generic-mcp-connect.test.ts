@@ -73,6 +73,11 @@ describe("defaultGenericMcpName", () => {
     expect(defaultGenericMcpName("https://www.example.test/mcp?token=secret"))
       .toBe("example.test/mcp");
   });
+
+  it("names another Andrecomp after the instance it reaches, distinctive part first", () => {
+    expect(defaultGenericMcpName("https://acme.andrecomp.app/mcp/andrecomp")).toBe("acme Andrecomp");
+    expect(defaultGenericMcpName("http://localhost:3101/mcp/andrecomp")).toBe("localhost-3101 Andrecomp");
+  });
 });
 
 describe("genericConnectGuidance", () => {

@@ -33,7 +33,7 @@ export function gradeInvitation(value: InvitationEvidence | null) {
 /** Fail closed when the catalog grows: only known read operations count as read-only. */
 export function isReadOnlyMcpCall(call: { name: string; arguments: Record<string, unknown> }): boolean {
   if (call.name === "andrecomp_call_api") return isReadOnlyMcpCall({ name: String(call.arguments.operationId), arguments: {} });
-  return ["andrecomp_connection", "andrecomp_list_agents", "andrecomp_list_projects", "andrecomp_search_tasks", "andrecomp_read_task", "andrecomp_read_document", "andrecomp_list_deliverables", "andrecomp_pending_approvals", "andrecomp_list_document_revisions", "andrecomp_get_download_url", "andrecomp_get_agent", "andrecomp_read_agent_instructions", "andrecomp_list_agent_instruction_revisions", "andrecomp_get_project", "andrecomp_list_project_repositories", "andrecomp_list_skills", "andrecomp_get_skill", "andrecomp_read_skill_file", "andrecomp_search_api"].includes(call.name);
+  return ["andrecomp_connection", "andrecomp_list_agents", "andrecomp_list_people", "andrecomp_list_projects", "andrecomp_search_tasks", "andrecomp_read_task", "andrecomp_read_document", "andrecomp_list_deliverables", "andrecomp_pending_approvals", "andrecomp_list_document_revisions", "andrecomp_get_download_url", "andrecomp_get_agent", "andrecomp_read_agent_instructions", "andrecomp_list_agent_instruction_revisions", "andrecomp_get_project", "andrecomp_list_project_repositories", "andrecomp_list_skills", "andrecomp_get_skill", "andrecomp_read_skill_file", "andrecomp_search_api"].includes(call.name);
 }
 
 /** Both public retrieval operations return document bodies. Grade the returned

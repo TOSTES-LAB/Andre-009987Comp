@@ -1,4 +1,4 @@
-import { checkMcpRemoteHeaderName, checkMcpRemoteHeaderValue, mcpRemoteHeaderRejectionMessage } from "@andrecomp/shared";
+import { checkMcpRemoteHeaderName, checkMcpRemoteHeaderValue, mcpRemoteHeaderRejectionMessage, andrecompPeerFromMcpUrl } from "@andrecomp/shared";
 import type { GenericMcpAuthMode } from "@andrecomp/shared";
 
 /**
@@ -67,6 +67,8 @@ export function oauthCallbackUrlForBrowser(
  * excluded because remote MCP URLs can carry credentials there.
  */
 export function defaultGenericMcpName(url: string): string | null {
+  const peer = andrecompPeerFromMcpUrl(url);
+  if (peer) return peer.name;
   try {
     const parsed = new URL(url);
     const host = parsed.host.replace(/^www\./, "");

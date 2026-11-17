@@ -142,10 +142,10 @@ describe("instanceSettingsService managed overlay", () => {
       expect((await service.get()).experimental).toMatchObject(features);
       expect((await service.getExperimental()).managedKeys).toMatchObject(
         Object.fromEntries(Object.keys(features)
-          .filter((key) => key !== "enableApps" && key !== "enableMcpAggregators")
+          .filter((key) => key !== "enableApps" && key !== "enableMcpAggregators" && key !== "enablePublicMcp")
           .map((key) => [key, { managed: true, managedBy: "andrecomp-cloud" }])),
       );
-      for (const key of Object.keys(features)) {
+      for (const key of Object.keys(features).filter((key) => key !== "enablePublicMcp")) {
         await expect(service.updateExperimental({ [key]: false })).rejects.toMatchObject({
           status: 403,
           details: { code: "settings_operator_managed" },
@@ -155,6 +155,17 @@ describe("instanceSettingsService managed overlay", () => {
       expect(await instanceSettingsService(db, { runtimeEnv }).getExperimental()).toMatchObject(features);
     },
   );
+
+  it("accepts an old client's write of the retired assistant connections key while Cloud manages it", async () => {
+    const { db } = stubDb(settingsRow({}));
+    const runtimeEnv = managedEnv(JSON.stringify({
+      v: 1, mode: "cloud", catalogVersion: "test",
+      features: { enablePublicMcp: true, enableStatusCards: true }, plugins: { autoInstall: [] },
+    }));
+    const service = instanceSettingsService(db, { runtimeEnv });
+    const updated = await service.updateExperimental({ enablePublicMcp: false, enableAndrecompNotebook: true });
+    expect(updated.experimental).toMatchObject({ enablePublicMcp: true, enableAndrecompNotebook: true });
+  });
 
   it("keeps sandbox policy enforced on staging after a tenant tries to disable it", async () => {
     const row = settingsRow({ enableManagedSandboxOnly: false });
