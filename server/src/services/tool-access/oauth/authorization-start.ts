@@ -14,7 +14,7 @@ import { companies, agents, connectionGrants, issueThreadInteractions, toolConne
 import type { ConnectionGrantKind, ToolOAuthStartResult } from "@andrecomp/shared";
 import { getConnectableAppDefinition } from "@andrecomp/shared";
 import { badRequest, conflict, forbidden, notFound, unprocessable } from "../../../errors.js";
-import { isAndrecompCloudConnectorStrategy, type AndrecompCloudConnector } from "../../andrecomp-cloud-connector.js";
+import { isAndrecompCloudConnectorStrategy, andrecompCloudConnectorConsentAllowed, type AndrecompCloudConnector } from "../../andrecomp-cloud-connector.js";
 import { deriveVercelConnectSubject, vercelConnectCallbackUrl, VercelConnectClientError, type VercelConnectClient } from "../../vercel-connect.js";
 
 import type { ConnectionSetupPolicy } from "../connections/setup-policy.js";
@@ -348,6 +348,12 @@ export function createOAuthAuthorizationStart(db: Db, dependencies: Dependencies
       if (!managedProfile)
         throw badRequest("This app has an invalid managed connector profile");
       const providerName = galleryEntry?.name ?? "Google Workspace";
+      if (!andrecompCloudConnectorConsentAllowed(managedProfile.id)) {
+        throw unprocessable(
+          `${providerName} can no longer be connected through Andrecomp with these permissions. Connect Google Workspace, or set up ${providerName} with your own Google OAuth app.`,
+          { code: "andrecomp_cloud_connector_scope_not_offered" },
+        );
+      }
       const cloudConnector = currentCloudConnector();
       if (!cloudConnector) {
         throw unprocessable(

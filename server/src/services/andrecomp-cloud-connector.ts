@@ -20,6 +20,8 @@ import {
   isGitHubConnectorProfileId,
   isGoogleWorkspaceConnectorProfileId,
   isGoogleWorkspaceScopeGrant,
+  googleWorkspaceProfileWithinSubmittedScopes,
+  googleWorkspaceSubmittedScopesIn,
   type GitHubConnectorProfileId,
   type GoogleWorkspaceConnectorProfileId,
 } from "@andrecomp/shared";
@@ -396,6 +398,7 @@ export function createAndrecompCloudConnector(input: {
     if (credentials.profile !== profile) {
       throw new AndrecompCloudConnectorError("Andrecomp Cloud connector profile binding did not match", "CONNECTOR_BINDING_MISMATCH");
     }
+    if (profile === "workspace.all") credentials.scopes = googleWorkspaceSubmittedScopesIn(credentials.scopes);
     if (!(profile === "workspace.all" ? isGoogleWorkspaceScopeGrant(credentials.scopes) : sameStringSet(credentials.scopes, definition.scopes))) {
       throw new AndrecompCloudConnectorError("Andrecomp Cloud scope grant did not match", "REAUTHORIZATION_REQUIRED");
     }
@@ -521,6 +524,9 @@ export function createAndrecompCloudConnector(input: {
     },
     async startAuthorization(values: { subject: string; companyId: string; profile?: AndrecompCloudConnectorProfileId; scopes?: string[]; returnUri: string; returnState: string }) {
       const profile = values.profile ?? "gmail.draft";
+      if (!andrecompCloudConnectorConsentAllowed(profile)) {
+        throw new AndrecompCloudConnectorError("This permission set is not offered through Andrecomp's Google app", "CONNECTOR_CONFIG_INVALID");
+      }
       const response = await call("session", { ...values, profile });
       if (typeof response.confirmationUrl !== "string" || typeof response.expiresAt !== "string") {
         throw new AndrecompCloudConnectorError("Andrecomp Cloud connector returned an invalid session", "CONNECTOR_BAD_RESPONSE");
@@ -735,7 +741,8 @@ export function appWithAndrecompCloudConnectorAvailability(
   const enabledProfiles = new Set(profiles);
   const methods = app.methods.filter((method) =>
     !isAndrecompCloudConnectorStrategy(method.oauthStrategy)
-    || Boolean(method.connectorProfile && enabledProfiles.has(method.connectorProfile))
+    || Boolean(method.connectorProfile && enabledProfiles.has(method.connectorProfile)
+      && andrecompCloudConnectorConsentAllowed(method.connectorProfile))
   );
   return {
     ...app,
@@ -746,6 +753,10 @@ export function appWithAndrecompCloudConnectorAvailability(
       platform_shared: methods.some((method) => isAndrecompCloudConnectorStrategy(method.oauthStrategy)),
     },
   };
+}
+
+export function andrecompCloudConnectorConsentAllowed(profile: string): boolean {
+  return !isGoogleWorkspaceConnectorProfileId(profile) || googleWorkspaceProfileWithinSubmittedScopes(profile);
 }
 
 let capabilityCache: { key: string; expiresAt: number; profiles: AndrecompCloudConnectorProfileId[] } | null = null;
