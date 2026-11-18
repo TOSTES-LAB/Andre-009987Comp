@@ -49,7 +49,8 @@ const {
   prepareRuntimeMock,
 } = mocks;
 
-vi.mock("@andrecomp/adapter-utils/execution-target", () => ({
+vi.mock("@andrecomp/adapter-utils/execution-target", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@andrecomp/adapter-utils/execution-target")>(),
   adapterExecutionTargetIsRemote: () => mocks.state.isRemote,
   adapterExecutionTargetRemoteCwd: (_target: unknown, cwd: string) =>
     mocks.state.isRemote ? "/remote/workspace" : cwd,

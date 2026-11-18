@@ -19,6 +19,7 @@ import {
   adapterExecutionTargetUsesAndrecompBridge,
   describeAdapterExecutionTarget,
   ensureAdapterExecutionTargetCommandResolvable,
+  ensureAdapterExecutionTargetLocalWorkspace,
   ensureAdapterExecutionTargetRuntimeCommandInstalled,
   prepareAdapterExecutionTargetRuntime,
   adapterExecutionTargetDuplexObservabilityRecorder,
@@ -44,7 +45,6 @@ import {
   readAndrecompIssueWorkModeFromContext,
   joinPromptSections,
   buildInvocationEnvForLogs,
-  ensureAbsoluteDirectory,
   ensurePathInEnv,
   isForbiddenConfigEnvKey,
   isAndrecompRuntimeEnvKey,
@@ -222,7 +222,7 @@ async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<Cl
     executionTargetIsRemote,
     executionCwd: effectiveExecutionCwd,
   });
-  await ensureAbsoluteDirectory(cwd, { createIfMissing: true });
+  await ensureAdapterExecutionTargetLocalWorkspace(executionTarget, cwd);
 
   const envConfig = parseObject(config.env);
   const env: Record<string, string> = { ...buildAndrecompEnv(agent, input.agentIdentity) };

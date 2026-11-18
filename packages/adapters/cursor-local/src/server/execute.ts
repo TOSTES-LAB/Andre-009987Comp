@@ -16,6 +16,7 @@ import {
   adapterExecutionTargetUsesAndrecompBridge,
   describeAdapterExecutionTarget,
   ensureAdapterExecutionTargetCommandResolvable,
+  ensureAdapterExecutionTargetLocalWorkspace,
   ensureAdapterExecutionTargetRuntimeCommandInstalled,
   prepareAdapterExecutionTargetRuntime,
   adapterExecutionTargetDuplexObservabilityRecorder,
@@ -36,7 +37,6 @@ import {
   buildAndrecompEnv,
   buildRuntimeToolsEnv,
   buildInvocationEnvForLogs,
-  ensureAbsoluteDirectory,
   ensureAndrecompSkillSymlink,
   ensurePathInEnv,
   refreshAndrecompWorkspaceEnvForExecution,
@@ -228,7 +228,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const effectiveWorkspaceCwd = useConfiguredInsteadOfAgentHome ? "" : workspaceCwd;
   const cwd = effectiveWorkspaceCwd || configuredCwd || process.cwd();
   let effectiveExecutionCwd = adapterExecutionTargetRemoteCwd(executionTarget, cwd);
-  await ensureAbsoluteDirectory(cwd, { createIfMissing: true });
+  await ensureAdapterExecutionTargetLocalWorkspace(executionTarget, cwd);
   const cursorSkillEntries = await readAndrecompRuntimeSkillEntries(config, __moduleDir);
   const desiredCursorSkillNames = resolveLegacyAndrecompDesiredSkillNames(config, cursorSkillEntries);
   if (!executionTargetIsRemote) {

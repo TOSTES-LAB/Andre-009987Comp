@@ -14,7 +14,7 @@ import {
   companies, environmentLeases, executionWorkspaces, executionWorkspaceSnapshots, heartbeatRuns, issues, workspaceOperations, type Db,
 } from "@andrecomp/db";
 import {
-  readRemoteWorkspaceAuthority, remoteWorkspaceSourceSchema,
+  adapterSupportsRemoteManagedEnvironments, readRemoteWorkspaceAuthority, remoteWorkspaceSourceSchema,
   type RemoteWorkspaceAuthority, type RemoteWorkspaceRunReference, type RemoteWorkspaceSource,
   type EnvironmentLease,
 } from "@andrecomp/shared";
@@ -95,7 +95,7 @@ function sameExportLocation(value: unknown, location: NonNullable<RemoteWorkspac
 }
 
 export function supportsSshRemoteWorkspace(adapterType: string, environmentDriver: string | null | undefined) {
-  return environmentDriver === "ssh" && ["claude_local", "codex_local", "andrecomp_runner"].includes(adapterType);
+  return environmentDriver === "ssh" && adapterSupportsRemoteManagedEnvironments(adapterType);
 }
 
 export function shouldUseRemoteWorkspaces(input: {
