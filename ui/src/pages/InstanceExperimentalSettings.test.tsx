@@ -97,6 +97,7 @@ function defaultExperimentalSettings(): InstanceExperimentalSettingsPayload {
     enableGitHubReviewBots: false,
     enableMemoryConnectors: false,
     enableGoogleWorkspaceConnector: false,
+    enableAwsConnector: false,
     enableAndrecompNotebook: false,
     enableCases: false,
     enableAgentChat: false,
