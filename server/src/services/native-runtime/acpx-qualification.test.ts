@@ -88,6 +88,34 @@ describe("host ACPX qualification admission", () => {
     expect(resolveAndrecompRunnerNativeProviderInput({ backend: "acpx_runtime", adapterConfig }))
       .toMatchObject({ acpxAgent, model: "explicit-new-model" });
   });
+  it("names the Claude Code gap when the bundled SDK predates the model's minimum", () => {
+    expect(QUALIFIED_ACPX_PROFILES.claude.agentRuntimeVersion).toBe("0.3.286");
+    for (const model of ["claude-fable-5-2", "claude-fable-5-2[1m]"]) {
+      expect(() => resolveAndrecompRunnerProviderProfile({ provider: "acpx", acpxAgent: "claude", model }))
+        .toThrow(expect.objectContaining({
+          code: "andrecomp_runner_claude_cli_version_incompatible",
+          message: expect.stringContaining("requires Claude Code 2.1.321 or newer; this Andrecomp Runner bundles Claude Code 2.1.286"),
+        }));
+    }
+    for (const model of ["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1"]) {
+      expect(resolveAndrecompRunnerProviderProfile({ provider: "acpx", acpxAgent: "claude", model }))
+        .toMatchObject({ acpxAgent: "claude", model });
+    }
+  });
+  it("names the Codex gap when the qualified ACPX runtime predates the model's minimum", () => {
+    expect(QUALIFIED_ACPX_PROFILES.codex.agentRuntimeVersion).toBe("0.160.0");
+    for (const model of ["gpt-6.2-sol", "gpt-6.2-astra"]) {
+      expect(() => resolveAndrecompRunnerProviderProfile({ provider: "acpx", acpxAgent: "codex", model }))
+        .toThrow(expect.objectContaining({
+          code: "andrecomp_runner_codex_cli_version_incompatible",
+          message: expect.stringContaining("requires Codex 0.169.1 or newer; this Andrecomp Runner bundles Codex 0.160.0"),
+        }));
+    }
+    for (const model of ["gpt-6.1-sol", "gpt-6-astra"]) {
+      expect(resolveAndrecompRunnerProviderProfile({ provider: "acpx", acpxAgent: "codex", model }))
+        .toMatchObject({ acpxAgent: "codex", model });
+    }
+  });
   it("requires an explicit Codex ACP selection", () => {
     for (const model of [undefined, "", " "]) {
       expect(() => resolveAndrecompRunnerProviderProfile({ provider: "acpx", acpxAgent: "codex", model }))

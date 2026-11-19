@@ -11,8 +11,10 @@ import {
   type AndrecompRunnerProvider,
 } from "@andrecomp/adapter-utils";
 import {
+  codexCliVersionAtLeast,
   codexLocalReasoningEffortsForModel,
   isCodexLocalKnownModel,
+  minimumCodexCliVersionForModel,
 } from "@andrecomp/adapter-codex-local";
 import {
   AGENTCORE_QUALIFIED_MODEL,
@@ -20,6 +22,11 @@ import {
 } from "../provider-profile-qualification.js";
 import { resolveAcpxQualification, resolveAntigravityCandidateAdmission, resolveKimiCandidateAdmission, type AcpxQualificationCandidate } from "./acpx-qualification.js";
 import { compatibleCodexModel } from "./codex-model-fallback.js";
+import {
+  claudeCliVersionAtLeast,
+  claudeCodeVersionForAgentSdk,
+  minimumClaudeCliVersionForModel,
+} from "@andrecomp/adapter-claude-local/server";
 import { parseNativeCursorCloudConfig, type NativeCursorCloudConfig } from "../../vendor/andrecomp-runner/index.js";
 
 export const QUALIFIED_OPENCODE_RUNNER_VERSION = "1.18.34" as const;
@@ -642,13 +649,37 @@ export function resolveAndrecompRunnerProviderProfile(
   const selectedModel = acpxAgent === "grok" && model === "grok-build"
     ? DEFAULT_ACPX_RUNNER_MODELS.grok
     : model || DEFAULT_ACPX_RUNNER_MODELS[acpxAgent] || "";
+  let qualifiedProfile: ReturnType<typeof resolveQualifiedAcpxProfile>;
   try {
-    resolveQualifiedAcpxProfile(acpxAgent, selectedModel);
+    qualifiedProfile = resolveQualifiedAcpxProfile(acpxAgent, selectedModel);
   } catch (error) {
     throw new AndrecompRunnerProviderProfileError(
       "andrecomp_runner_acpx_model_unqualified",
       error instanceof Error ? error.message : "Andrecomp Runner ACPX requires an admitted model.",
     );
+  }
+  if (acpxAgent === "claude") {
+    // The provider pack runs the Claude Code its Agent SDK bundles; name the gap instead of
+    // letting an older CLI fail the turn with an opaque backend error.
+    const minimum = minimumClaudeCliVersionForModel(selectedModel);
+    const bundled = claudeCodeVersionForAgentSdk(qualifiedProfile.agentRuntimeVersion);
+    if (minimum && bundled && !claudeCliVersionAtLeast(bundled, minimum)) {
+      throw new AndrecompRunnerProviderProfileError(
+        "andrecomp_runner_claude_cli_version_incompatible",
+        `${selectedModel} requires Claude Code ${minimum} or newer; this Andrecomp Runner bundles Claude Code ${bundled}. Choose another model or use the legacy Claude runner until the Runner is updated.`,
+      );
+    }
+  }
+  if (acpxAgent === "codex") {
+    // ACPX Codex runs the qualified runtime pin, so the backend would reject a newer model.
+    const minimum = minimumCodexCliVersionForModel(selectedModel);
+    const bundled = qualifiedProfile.agentRuntimeVersion;
+    if (minimum && bundled && !codexCliVersionAtLeast(bundled, minimum)) {
+      throw new AndrecompRunnerProviderProfileError(
+        "andrecomp_runner_codex_cli_version_incompatible",
+        `${selectedModel} requires Codex ${minimum} or newer; this Andrecomp Runner bundles Codex ${bundled}. Choose another model or use the legacy Codex runner until the Runner is updated.`,
+      );
+    }
   }
   return {
     provider: "acpx",
