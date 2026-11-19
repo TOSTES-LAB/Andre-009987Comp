@@ -2,6 +2,7 @@ import { projectDiscoverySchema, createProjectSchema, createIssueSchema, setIssu
 import { z } from "zod";
 import { CAPABILITY_SEMANTIC_TOOL_CATALOG } from "../vendor/andrecomp-runner/index.js";
 import { badRequest } from "../errors.js";
+import { fetchAndrecompApi } from "./andrecomp-api-loopback.js";
 
 export const PROJECT_TOOL_NAMES = ["create_project", "list_project_repositories", "list_projects"];
 export function projectToolDefinitions(workMode: string, includeTask = false) {
@@ -62,13 +63,11 @@ export async function callProjectTool(input: {
       idempotencyKey: `chat-handoff:${input.issueId}:${key}`,
     });
   } else throw badRequest("Unknown project tool");
-  const response = await fetch(`${input.apiUrl.replace(/\/+$/, "").replace(/\/api$/, "")}/api${path}`, {
+  const response = await fetchAndrecompApi({
+    apiUrl: input.apiUrl, token: input.token, path,
     method: input.name === "set_task_title" ? "PUT" : body ? "POST" : "GET",
-    headers: { Authorization: `Bearer ${input.token}`, "Content-Type": "application/json",
-      ...(input.receiptOnly ? { "X-Andrecomp-Receipt-Only": "true" } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-    signal: AbortSignal.timeout(60_000),
+    ...(body ? { body } : {}),
+    ...(input.receiptOnly ? { headers: { "X-Andrecomp-Receipt-Only": "true" } } : {}),
   });
   if (input.receiptOnly && response.status === 204) return undefined;
   const result = await response.json();

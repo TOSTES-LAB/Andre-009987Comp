@@ -320,6 +320,10 @@ export const toolsApi = {
     api.post<ConnectToolAppResult>(`/companies/${companyId}/tools/apps/connect`, input),
   createMachineSignIn: (companyId: string, input: import("@andrecomp/shared").CreateMachineSignIn) =>
     api.post<import("@andrecomp/shared").MachineSignInSetupResult>(`/companies/${companyId}/tools/machine-sign-in`, input),
+  getAwsSetup: (connectionId: string, accessLevel?: "read_only" | "full") =>
+    api.get<import("@andrecomp/shared").AwsConnectionSetup>(
+      `/tool-connections/${connectionId}/aws-setup${accessLevel ? `?accessLevel=${accessLevel}` : ""}`,
+    ),
   getMachineSignIn: (connectionId: string) =>
     api.get<import("@andrecomp/shared").MachineSignInStatus>(`/tool-connections/${connectionId}/machine-sign-in`),
   testMachineSignIn: (connectionId: string, input: import("@andrecomp/shared").TestMachineSignIn) =>

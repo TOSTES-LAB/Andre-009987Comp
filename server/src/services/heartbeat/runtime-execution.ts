@@ -660,6 +660,7 @@ export async function executeHeartbeatRuntime(db: Db, input: HeartbeatRuntimeExe
           (markDispatchStarted) => {
             return executeAndrecompNativeSession({
               casesEnabled: context.andrecompCasesEnabled === true,
+              responsibilitiesEnabled: context.andrecompResponsibilitiesEnabled === true,
               db,
               execution: nativeExecution,
               observability,

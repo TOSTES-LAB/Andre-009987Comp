@@ -51,6 +51,8 @@ export const EXECUTION_PREPARATION_SPAN_ATTRS = {
   runId: "andrecomp.task.run.run_id",
   fileCount: "andrecomp.execution.fileCount",
   bytes: "andrecomp.execution.bytes",
+  catalogEntryCount: "andrecomp.execution.catalogEntryCount",
+  connectionCount: "andrecomp.execution.connectionCount",
   repositoryCacheOutcome: "andrecomp.execution.repositoryCache.outcome",
   repositoryCacheReferenceSupplied: "andrecomp.execution.repositoryCache.reference_supplied",
 } as const;
