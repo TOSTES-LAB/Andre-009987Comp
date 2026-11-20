@@ -37,6 +37,12 @@
 // still captures `window.onerror` and `window.onunhandledrejection`
 // (`GlobalHandlers`), the two React error boundaries, deduplicates a repeat
 // event (`Dedupe`), and links a caused-by chain (`LinkedErrors`).
+//
+// Without `Breadcrumbs`, nothing in the SDK wraps `fetch`, so a browser's
+// stackless `TypeError: Failed to fetch` arrives with no caller. Once a DSN
+// starts monitoring, `fetch-rejection-origin.ts` wraps `fetch` itself and
+// tags an unhandled rejection with an enum for who started the request. It
+// sends no URL, path, or stack text.
 
 import {
   buildBrowserErrorContext,
@@ -48,6 +54,11 @@ import {
   takeRejectionEventSnapshot,
   type BrowserErrorDetails,
 } from "./browser-error-context";
+import {
+  readFetchInitiator,
+  readFetchWrapperState,
+  startFetchRejectionDiagnostics,
+} from "./fetch-rejection-origin";
 import { isIntentionalAbortReason } from "./intentional-abort";
 
 let queue: Promise<void> = Promise.resolve();
@@ -86,6 +97,9 @@ export function initBrowserErrorMonitoring(dsn: string, environment?: string | n
       // `onunhandledrejection` handler. Diagnostics never block monitoring.
       try {
         startPageDiagnostics();
+      } catch { /* diagnostic unavailable */ }
+      try {
+        startFetchRejectionDiagnostics();
       } catch { /* diagnostic unavailable */ }
       Sentry.init(buildBrowserSentryInitOptions(dsn, environment));
       sentry = Sentry;
@@ -191,6 +205,18 @@ function enqueueCapture(
   });
 }
 
+const POSTHOG_REQUEST_TIMEOUT_MESSAGE = /^PostHog request timed out(?: after \d+ms)?$/;
+
+export function isPostHogRequestTimeout(reason: unknown): boolean {
+  try {
+    return reason instanceof Error
+      && reason.name === "AbortError"
+      && POSTHOG_REQUEST_TIMEOUT_MESSAGE.test(reason.message);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Build the `Sentry.init` options object. A pure function, split out from
  * `initBrowserErrorMonitoring` so a test can call it with the real
@@ -211,12 +237,16 @@ export function buildBrowserSentryInitOptions(
         : undefined,
     tracesSampleRate: 0,
     sendDefaultPii: false,
+    ignoreErrors: ["__firefox__"],
     beforeSend: (event, hint) => {
       const isUnhandledRejection = event.exception?.values?.some((value) =>
         value.mechanism?.type === "onunhandledrejection"
         || value.mechanism?.type === "auto.browser.global_handlers.onunhandledrejection",
       ) ?? false;
-      if (isUnhandledRejection && isIntentionalAbortReason(hint.originalException)) {
+      if (
+        isUnhandledRejection
+        && (isIntentionalAbortReason(hint.originalException) || isPostHogRequestTimeout(hint.originalException))
+      ) {
         takeRejectionEventSnapshot(classifyRejectionReason(hint.originalException));
         return null;
       }
@@ -238,6 +268,13 @@ export function buildBrowserSentryInitOptions(
           // reading object properties, coercing strings, or copying its value.
           const kind = classifyRejectionReason(hint.originalException);
           event.tags.browser_rejection_kind = kind;
+          if (kind === "object") {
+            // A stackless network error carries no caller. Record who started
+            // the request, as an enum, and whether another script wraps fetch.
+            event.tags.browser_fetch_initiator = readFetchInitiator(hint.originalException);
+            const wrapper = readFetchWrapperState();
+            if (wrapper) event.tags.browser_fetch_wrapper = wrapper;
+          }
           // Whether the browser or a script dispatched the event, and which
           // promise implementation carried it. Without a stack these are the
           // remaining attribution facts for an `undefined` rejection.

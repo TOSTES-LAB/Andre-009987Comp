@@ -4018,7 +4018,7 @@ export function createCapabilityRunnerdProviderEnvironment(input: Parameters<typ
   return applyProviderObservabilityEnvironment(createCapabilityRunnerdProviderEnvironmentBase(input), input.options.observability, input.provider === "acpx");
 }
 
-const OPEN_CODE_RUNNER_ENVIRONMENT_KEYS = new Set([
+export const OPEN_CODE_RUNNER_ENVIRONMENT_KEYS = new Set([
   "ANDRECOMP_AI_PROVIDER_KEY",
   "ANDRECOMP_AI_PROVIDER_URL",
   "ANDRECOMP_AGENT_KEY_ID", "ANDRECOMP_AGENT_PUBLIC_KEY", "ANDRECOMP_AGENT_PRIVATE_KEY",
