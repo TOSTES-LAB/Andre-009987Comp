@@ -65,6 +65,7 @@ export function resolveRunnerProviderAssetsRoot(moduleUrl: string, provider: Nat
       if (provider !== "copilot") packageRoot = join(packageRoot, "dist/vendor/andrecomp-runner");
     } else if (new RegExp(`/(?:src|dist)/drivers/acpx/${provider}-installation\\.(?:ts|js)$`).test(url.pathname)) packageRoot = fileURLToPath(new URL("../../../", url));
     else if (/\/dist\/cli\/acpx-runtime-sidecar\.(?:cjs|js)$/.test(url.pathname)) packageRoot = fileURLToPath(new URL("../../", url));
+    else if (provider === "copilot" && /\/dist\/cli\/copilot-metadata-probe\.(?:cjs|js)$/.test(url.pathname)) packageRoot = fileURLToPath(new URL("../../", url));
     else if (new RegExp(`/dist/vendor/andrecomp-runner/drivers/acpx/${provider}-installation\\.(?:js)$`).test(url.pathname)) packageRoot = fileURLToPath(new URL("../../", url));
     else if (/\/dist\/vendor\/andrecomp-runner\/cli\/acpx-runtime-sidecar\.(?:cjs|js)$/.test(url.pathname)) packageRoot = fileURLToPath(new URL("../", url));
     else throw new Error("Provider factory is outside a verified package layout");

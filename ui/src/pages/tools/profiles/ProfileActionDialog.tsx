@@ -1,5 +1,5 @@
 import { AlertTriangle } from "lucide-react";
-import type { ToolProfileWithDetails } from "@andrecomp/shared";
+import type { ToolProfileListItem } from "@andrecomp/shared";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,7 +22,7 @@ export function ProfileActionDialog({
   onDelete,
 }: {
   kind: ProfileActionDialogKind | null;
-  profile: ToolProfileWithDetails | null;
+  profile: Pick<ToolProfileListItem, "summary"> | null;
   pending: boolean;
   onClose: () => void;
   onArchive: () => void;

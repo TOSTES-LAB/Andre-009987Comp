@@ -18,6 +18,8 @@ export type DevServerHealthStatus = {
 };
 
 export type CloudInstanceHealthStatus = {
+  /** Operator-supplied harness IDs. Absent means unrestricted; [] allows none. */
+  availableHarnesses?: string[];
   managed: true;
   managedBy: "andrecomp-cloud";
   stackSlug: string | null;

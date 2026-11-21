@@ -116,6 +116,20 @@ describe("GET /health", () => {
     });
   });
 
+  it("publishes deployment harness policy and reflects configuration updates", async () => {
+    const env = {
+      ANDRECOMP_CLOUD_TENANT_SERVER_TOKEN: "tenant-token",
+      ANDRECOMP_PRIMARY_HOST: "example.andrecomp.app",
+      ANDRECOMP_AVAILABLE_HARNESSES: '["gemini_local","plugin:example"]',
+    };
+    const app = createApp(undefined, testServerInfo, undefined, env);
+    expect((await request(app).get("/health")).body.cloud.availableHarnesses).toEqual(["gemini_local", "plugin:example"]);
+    env.ANDRECOMP_AVAILABLE_HARNESSES = "[]";
+    expect((await request(app).get("/health")).body.cloud.availableHarnesses).toEqual([]);
+    env.ANDRECOMP_AVAILABLE_HARNESSES = "invalid";
+    expect((await request(app).get("/health")).body.cloud.availableHarnesses).toEqual([]);
+  });
+
   it("lists operator-hidden settings and drops unknown keys", async () => {
     const app = createApp(undefined, testServerInfo, undefined, {
       ANDRECOMP_HIDDEN_SETTINGS: "instance.plugins,instance.adapters,instance.bogus",
