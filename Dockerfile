@@ -314,7 +314,7 @@ COPY --link --from=runner-artifacts-build /out-transport/ /
 FROM base AS build
 WORKDIR /app
 COPY --from=deps /app /app
-COPY . .
+COPY --exclude=docker/remote-runtimes . .
 COPY --from=runner-artifacts /runner-package/dist /app/packages/andrecomp-runner/dist
 COPY --from=runner-artifacts /runner-package/node_modules/.cache/andrecomp-runner-build-inputs.json /app/packages/andrecomp-runner/node_modules/.cache/andrecomp-runner-build-inputs.json
 ARG ANDRECOMP_RUNNER_EXPECT_INPUTS_DIGEST=""
@@ -406,6 +406,13 @@ COPY --chown=node:node --exclude=node_modules --from=build /app /app
 COPY --link --chown=0:0 --from=runner-provider-pack /provider-pack-large/ /opt/andrecomp-runner/provider-pack/
 COPY --chown=0:0 --from=runner-provider-pack /provider-pack /opt/andrecomp-runner/provider-pack
 COPY --from=runner-provider-pack /provider-pack-transport/ /opt/andrecomp-runner/
+ARG ANDRECOMP_BUILD_COMMIT=""
+ARG ANDRECOMP_MACOS_RUNTIME_INPUTS_DIGEST=""
+RUN --mount=type=bind,source=docker/remote-runtimes,target=/tmp/andrecomp-remote-runtimes \
+  mkdir -p /opt/andrecomp-runner/remote-runtimes \
+  && node scripts/macos-runner-runtime.mjs install /tmp/andrecomp-remote-runtimes /opt/andrecomp-runner/remote-runtimes "${ANDRECOMP_BUILD_COMMIT}" "${ANDRECOMP_MACOS_RUNTIME_INPUTS_DIGEST}" \
+  && chmod -R a+rX /opt/andrecomp-runner/remote-runtimes \
+  && find /opt/andrecomp-runner/remote-runtimes -exec touch -h -d @0 {} +
 # Managed deployments can remap node's UID at startup. This immutable pack
 # contains public code and integrity metadata, never credentials; it must remain
 # readable afterward. The Runner build grants a+rX, and every copy up to this
@@ -422,7 +429,6 @@ ENV ANDRECOMP_RUNNER_REMOTE_PROVIDER_PACK_PATH=/opt/andrecomp-runner/provider-pa
 # The build stage still receives the commit before writing dist/build-info.json.
 # Empty for local builds, preserving the server's normal version fallbacks.
 ARG ANDRECOMP_BUILD_VERSION=""
-ARG ANDRECOMP_BUILD_COMMIT=""
 ENV NODE_ENV=production \
   HOME=/andrecomp \
   HOST=0.0.0.0 \
