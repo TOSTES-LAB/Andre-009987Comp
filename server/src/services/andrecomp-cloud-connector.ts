@@ -224,6 +224,31 @@ export class AndrecompCloudConnectorError extends Error {
   }
 }
 
+/**
+ * True when the broker never gave a verdict: it was unreachable, rate-limited
+ * the request, or failed on its side. Such a failure says nothing about the
+ * instance's enrollment or which sign-ins it has.
+ */
+export function isTransientAndrecompCloudConnectorError(error: unknown): boolean {
+  if (!(error instanceof AndrecompCloudConnectorError)) return false;
+  if (error.code === "CONNECTOR_UNAVAILABLE" || error.brokerReason === UNREADABLE_RESPONSE) return true;
+  const status = error.status ?? 0;
+  return status === 408 || status === 429 || status >= 500;
+}
+
+const UNREADABLE_RESPONSE = "UNREADABLE_RESPONSE";
+
+// Last answers the broker confirmed, per connector identity, for this process.
+// The generation stops a request that started before an invalidation from
+// saving its older answer over the newer state.
+const lastKnownCapabilities = new Map<string, AndrecompCloudConnectorProfileId[]>();
+const lastKnownInstanceStatus = new Map<string, "active" | "suspended" | "removed">();
+let savedAnswerGeneration = 0;
+
+function connectorConfigKey(config: AndrecompCloudConnectorConfig): string {
+  return `${config.baseUrl}|${config.instanceId}|${config.environment}`;
+}
+
 export function andrecompCloudConnectorConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): AndrecompCloudConnectorConfig | null {
@@ -301,6 +326,11 @@ export function createAndrecompCloudConnector(input: {
   const now = input.now ?? Date.now;
   const signingKey = privateKey(config.signPrivateKey, "ed25519");
   const sealKey = privateKey(config.sealPrivateKey, "x25519");
+  const configKey = connectorConfigKey(config);
+  function remember<T>(store: Map<string, T>, value: T, generation: number): T {
+    if (generation === savedAnswerGeneration) store.set(configKey, value);
+    return value;
+  }
   let eventWakeVersion: 1 | null = null;
 
   async function call(
@@ -370,7 +400,16 @@ export function createAndrecompCloudConnector(input: {
     try {
       return await response.json() as ConnectorResponse;
     } catch {
-      throw new AndrecompCloudConnectorError("Andrecomp Cloud connector returned an invalid response", "CONNECTOR_BAD_RESPONSE");
+      // A body that is not JSON (for example a gateway page during an outage)
+      // is no verdict; a readable answer with the wrong shape stays a
+      // protocol error.
+      throw new AndrecompCloudConnectorError(
+        "Andrecomp Cloud connector returned an invalid response",
+        "CONNECTOR_BAD_RESPONSE",
+        response.status,
+        undefined,
+        UNREADABLE_RESPONSE,
+      );
     }
   }
 
@@ -410,6 +449,36 @@ export function createAndrecompCloudConnector(input: {
       throw new AndrecompCloudConnectorError("Andrecomp Cloud scope grant did not match", "REAUTHORIZATION_REQUIRED");
     }
     return credentials;
+  }
+
+  async function readCapabilities(): Promise<{ profiles: AndrecompCloudConnectorProfileId[]; confirmed: boolean }> {
+    const generation = savedAnswerGeneration;
+    let response: ConnectorResponse;
+    try {
+      response = await call("status", {
+        subject: "instance-capabilities",
+        companyId: "instance-capabilities",
+      });
+    } catch (error) {
+      // A rate limit or outage says nothing about which sign-ins this
+      // instance has. Falling back to "none" hid managed sign-in and offered
+      // a pasted key instead, so keep the last confirmed list.
+      if (isTransientAndrecompCloudConnectorError(error)) {
+        return { profiles: lastKnownCapabilities.get(configKey) ?? [], confirmed: false };
+      }
+      // A rejection (for example a removed registration) is an answer: a
+      // later outage must not bring the old sign-ins back.
+      return { profiles: remember(lastKnownCapabilities, [], generation), confirmed: false };
+    }
+    if (response.active !== true || response.status !== "active" || !Array.isArray(response.profiles)) {
+      return { profiles: remember(lastKnownCapabilities, [], generation), confirmed: true };
+    }
+    return {
+      profiles: remember(lastKnownCapabilities, [...new Set(response.profiles.flatMap((value) =>
+        typeof value === "string" && isAndrecompCloudConnectorProfileId(value) ? [value] : []
+      ))], generation),
+      confirmed: true,
+    };
   }
 
   return {
@@ -492,6 +561,22 @@ export function createAndrecompCloudConnector(input: {
       return opened;
     },
     async getInstanceStatus(): Promise<"active" | "suspended" | "removed"> {
+      const generation = savedAnswerGeneration;
+      const settle = (status: "active" | "suspended" | "removed") => {
+        remember(lastKnownInstanceStatus, status, generation);
+        // An inactive registration has no usable sign-ins either, including
+        // the gallery's cached list. Advancing both generations stops reads
+        // already in flight from saving or caching their pre-removal list.
+        // A response from before a later invalidation is stale: it must not
+        // fence out the answers of checks that started after it.
+        if (status !== "active" && generation === savedAnswerGeneration) {
+          remember(lastKnownCapabilities, [], generation);
+          savedAnswerGeneration += 1;
+          capabilityCacheGeneration += 1;
+          if (capabilityCache?.key === configKey) capabilityCache = null;
+        }
+        return status;
+      };
       let response: ConnectorResponse;
       try {
         response = await call("status", {
@@ -499,28 +584,21 @@ export function createAndrecompCloudConnector(input: {
           companyId: "instance-status",
         });
       } catch (error) {
-        if (error instanceof AndrecompCloudConnectorError && error.status === 401) return "removed";
+        if (error instanceof AndrecompCloudConnectorError && error.status === 401) return settle("removed");
+        // A busy or unreachable broker gave no verdict on this instance. Keep
+        // the standing it last confirmed rather than reporting it unenrolled.
+        const known = lastKnownInstanceStatus.get(configKey);
+        if (known && isTransientAndrecompCloudConnectorError(error)) return known;
         throw error;
       }
-      if (response.status === "active" && response.active === true) return "active";
-      if (response.status === "suspended" && response.active === false) return "suspended";
-      if (response.status === "removed" && response.active === false) return "removed";
+      if (response.status === "active" && response.active === true) return settle("active");
+      if (response.status === "suspended" && response.active === false) return settle("suspended");
+      if (response.status === "removed" && response.active === false) return settle("removed");
       throw new AndrecompCloudConnectorError("Andrecomp Cloud connector returned an invalid instance status", "CONNECTOR_BAD_RESPONSE");
     },
+    readCapabilities,
     async getCapabilities(): Promise<AndrecompCloudConnectorProfileId[]> {
-      let response: ConnectorResponse;
-      try {
-        response = await call("status", {
-          subject: "instance-capabilities",
-          companyId: "instance-capabilities",
-        });
-      } catch {
-        return [];
-      }
-      if (response.active !== true || response.status !== "active" || !Array.isArray(response.profiles)) return [];
-      return [...new Set(response.profiles.flatMap((value) =>
-        typeof value === "string" && isAndrecompCloudConnectorProfileId(value) ? [value] : []
-      ))];
+      return (await readCapabilities()).profiles;
     },
     async getSlackManagerAppId(): Promise<string | null> {
       const response = await call("status", { subject: "instance-capabilities", companyId: "instance-capabilities" });
@@ -734,7 +812,8 @@ function parseCloudHandoff(value: unknown): { kind: "andrecomp_cloud"; session: 
   return { kind: "andrecomp_cloud", session };
 }
 
-export type AndrecompCloudConnector = Omit<ReturnType<typeof createAndrecompCloudConnector>, "instanceIdentity" | "slackFormOperation"> & {
+export type AndrecompCloudConnector = Omit<ReturnType<typeof createAndrecompCloudConnector>, "instanceIdentity" | "slackFormOperation" | "readCapabilities"> & {
+  readCapabilities?: ReturnType<typeof createAndrecompCloudConnector>["readCapabilities"];
   instanceIdentity?: () => Readonly<{ instanceId: string; environment: AndrecompCloudConnectorEnvironment }>;
   slackFormOperation?: ReturnType<typeof createAndrecompCloudConnector>["slackFormOperation"];
 };
@@ -773,10 +852,14 @@ export function andrecompCloudConnectorConsentAllowed(profile: string): boolean 
 
 let capabilityCache: { key: string; expiresAt: number; profiles: AndrecompCloudConnectorProfileId[] } | null = null;
 let capabilityCacheGeneration = 0;
+const UNCONFIRMED_CAPABILITIES_TTL_MS = 5_000;
 
 export function invalidateAndrecompCloudConnectorCapabilities(): void {
   capabilityCacheGeneration += 1;
   capabilityCache = null;
+  savedAnswerGeneration += 1;
+  lastKnownCapabilities.clear();
+  lastKnownInstanceStatus.clear();
 }
 
 export async function andrecompCloudConnectorCapabilitiesFromEnv(
@@ -794,13 +877,16 @@ export async function andrecompCloudConnectorCapabilitiesFromEnv(
     throw error;
   }
   if (!config) return [];
-  const key = `${config.baseUrl}|${config.instanceId}|${config.environment}`;
+  const key = connectorConfigKey(config);
   if (capabilityCache?.key === key && capabilityCache.expiresAt > Date.now()) return capabilityCache.profiles;
   const generation = capabilityCacheGeneration;
   const connector = createAndrecompCloudConnector({ config });
-  const profiles = await connector.getCapabilities();
+  const { profiles, confirmed } = await connector.readCapabilities();
+  // An unanswered check keeps its fallback only briefly, so the next gallery
+  // read soon asks Cloud again without sending one request per read to a
+  // broker that is already failing.
   if (generation === capabilityCacheGeneration) {
-    capabilityCache = { key, expiresAt: Date.now() + 60_000, profiles };
+    capabilityCache = { key, expiresAt: Date.now() + (confirmed ? 60_000 : UNCONFIRMED_CAPABILITIES_TTL_MS), profiles };
   }
   return profiles;
 }

@@ -46,7 +46,14 @@ export type AndrecompCloudConnectorIdentity = {
 
 export type AndrecompCloudConnectorEnrollmentStatus = {
   configured: boolean;
-  status: AndrecompCloudConnectorIdentity["status"] | "not_configured" | "suspended" | "unverified";
+  /**
+   * `unverified`: a saved self-hosted identity belongs to another broker;
+   * registering again fixes it. `misconfigured`: managed identity settings are
+   * incomplete; self-hosted registration is unavailable, so an administrator
+   * must finish them. `unreachable`: the identity is complete, but Cloud did
+   * not answer the check (rate limit, outage, network); a retry is the fix.
+   */
+  status: AndrecompCloudConnectorIdentity["status"] | "not_configured" | "suspended" | "unverified" | "misconfigured" | "unreachable";
   brokerBaseUrl: string;
   instanceId: string | null;
   environment: LocalConnectorEnvironment;
@@ -84,7 +91,7 @@ export function andrecompCloudConnectorEnrollmentStatus(
     if (!managedInstanceId || !managedSignPrivateKey || !managedSealPrivateKey || !managedEnvironment) {
       return {
         configured: false,
-        status: "unverified",
+        status: "misconfigured",
         brokerBaseUrl,
         instanceId: null,
         environment,

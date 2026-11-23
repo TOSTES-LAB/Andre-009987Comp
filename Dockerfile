@@ -127,8 +127,9 @@ COPY scripts/create-provider-pack-archive.mjs scripts/link-plugin-dev-sdk.mjs sc
 COPY packages/andrecomp-eval-kernel /packages/andrecomp-eval-kernel
 COPY packages/andrecomp-runner /packages/andrecomp-runner
 # build:typescript checks the Runner's generated provider-failure contract
-# against this copy, which @andrecomp/shared owns.
-COPY packages/shared/src/provider-failure.generated.ts /packages/shared/src/
+# and the Antigravity model catalog against these copies, which
+# @andrecomp/shared owns.
+COPY packages/shared/src/provider-failure.generated.ts packages/shared/src/antigravity-models.generated.ts /packages/shared/src/
 
 # Debian bookworm is the oldest glibc any consumer runs, so a daemon compiled
 # here also runs on trixie. The pack copies this Node binary as its own

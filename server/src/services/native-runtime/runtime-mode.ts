@@ -8,6 +8,7 @@ import {
   resolveAndrecompRunnerProviderProfile,
   type AndrecompRunnerProviderProfile,
 } from "./provider-profile.js";
+import { antigravityCandidateTarget } from "./antigravity-release.js";
 
 /**
  * Public compatibility resolver version. This value is persisted by the
@@ -111,7 +112,8 @@ export function resolveNativeRuntimeMode(input: {
   }
   let runnerProfile: AndrecompRunnerProviderProfile;
   try {
-    runnerProfile = resolveAndrecompRunnerProviderProfile(input.adapterConfig, { companyId: input.agent.companyId });
+    runnerProfile = resolveAndrecompRunnerProviderProfile(input.adapterConfig, { companyId: input.agent.companyId,
+      candidateTarget: antigravityCandidateTarget((input.target?.kind ?? "local") === "remote") });
   } catch (error) {
     if (error instanceof AndrecompRunnerProviderProfileError) {
       throw ineligible(error.code, error.message);

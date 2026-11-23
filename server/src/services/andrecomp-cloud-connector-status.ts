@@ -4,6 +4,7 @@ import {
 } from "./andrecomp-cloud-connector-enrollment.js";
 import {
   createAndrecompCloudConnector,
+  isTransientAndrecompCloudConnectorError,
   andrecompCloudConnectorConfigFromEnv,
 } from "./andrecomp-cloud-connector.js";
 
@@ -20,7 +21,11 @@ export async function reconcileAndrecompCloudConnectorEnrollmentStatus(
     if (status === "active") return { ...local, configured: true, status: "active" };
     if (status === "suspended") return { ...local, configured: false, status: "suspended" };
     return { ...local, configured: false, status: "not_configured" };
-  } catch {
-    return { ...local, configured: false, status: "unverified" };
+  } catch (error) {
+    return {
+      ...local,
+      configured: false,
+      status: isTransientAndrecompCloudConnectorError(error) ? "unreachable" : "unverified",
+    };
   }
 }

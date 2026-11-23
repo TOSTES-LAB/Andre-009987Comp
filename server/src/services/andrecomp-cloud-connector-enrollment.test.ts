@@ -403,7 +403,7 @@ describe("Andrecomp Cloud self-host enrollment", () => {
       delete partialManagedEnv[omitted];
       expect(andrecompCloudConnectorEnrollmentStatus(partialManagedEnv)).toMatchObject({
         configured: false,
-        status: "unverified",
+        status: "misconfigured",
         instanceId: null,
         environment: "staging",
       });

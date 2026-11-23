@@ -46,7 +46,7 @@ const reply=(id,result)=>process.stdout.write(JSON.stringify({jsonrpc:'2.0',id,r
 reader.on('line',line=>{
  const request=JSON.parse(line);requests.push(request);fs.writeFileSync(path.join(home,'requests.json'),JSON.stringify(requests));
  if(request.method==='initialize') {
-  reply(request.id,{protocolVersion:1,agentInfo:{name:'antigravity-acp',version:'1.4.3'},agentCapabilities:{_meta:{antigravity:{andrecompAdmission:1,andrecompModels:mode==='old-patch'?0:1}}},authMethods:[{id:'oauth-personal'}]});
+  reply(request.id,{protocolVersion:1,agentInfo:{name:'antigravity-acp',version:'1.5.2'},agentCapabilities:{_meta:{antigravity:{andrecompAdmission:1,andrecompModels:mode==='old-patch'?0:1}}},authMethods:[{id:'oauth-personal'}]});
  } else if(request.method==='_andrecomp/models') {
   if(mode==='blocked'||mode==='stubborn') return;
   if(mode==='error') {process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,error:{code:-32000,message:'private-token-do-not-expose'}})+'\\n');return;}
