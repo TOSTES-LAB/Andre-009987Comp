@@ -4,7 +4,7 @@ import type { ActorInfo, DbTransaction } from "../types.js";
 import { withAccountHomeSecretMutationLock } from "@andrecomp/adapter-codex-local/server";
 import { createOAuthClientProtocol, storedOAuthTokenEndpointAuthMethod } from "./client.js";
 import { oauthConfig, normalizeOauthScopes, resolveGrantedOauthScopes } from "./metadata.js";
-import { googleWorkspaceEffectiveScopes, googleWorkspaceSubmittedScopesIn, isGoogleWorkspaceScopeGrant } from "@andrecomp/shared";
+import { GOOGLE_SIGN_IN_CLOUD_ONLY_MESSAGE, googleWorkspaceEffectiveScopes, googleWorkspaceSubmittedScopesIn, isGoogleWorkspaceScopeGrant } from "@andrecomp/shared";
 import { emitConnectionUpdated } from "../../connector-telemetry.js";
 import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "@andrecomp/db";
@@ -149,9 +149,12 @@ export function createOAuthGrantRefresh(db: Db, { now, store, leases, currentClo
                 throw new AndrecompCloudConnectorError("Google did not return verifiable permissions", "REAUTHORIZATION_REQUIRED");
               }
             } catch (error) {
+              const cloudOnly = error instanceof AndrecompCloudConnectorError
+                && profile.provider === "google"
+                && error.brokerReason === "PROVIDER_CLOUD_ONLY";
               if (
                 error instanceof AndrecompCloudConnectorError &&
-                error.code === "REAUTHORIZATION_REQUIRED"
+                (error.code === "REAUTHORIZATION_REQUIRED" || cloudOnly)
               ) {
                 await db
                   .update(connectionGrants)
@@ -163,9 +166,10 @@ export function createOAuthGrantRefresh(db: Db, { now, store, leases, currentClo
                     ),
                   );
                 throw unprocessable(
-                  "Managed authorization must be reconnected",
+                  cloudOnly ? `Reconnect required. ${GOOGLE_SIGN_IN_CLOUD_ONLY_MESSAGE}` : "Managed authorization must be reconnected",
                   {
                     code: "oauth_reauthorization_required",
+                    ...(cloudOnly ? { reason: "google_sign_in_cloud_only" } : {}),
                     setupUrl: connectionSetupUrl(connection),
                     reconnectUrl: connectionReconnectUrl(connection),
                   },

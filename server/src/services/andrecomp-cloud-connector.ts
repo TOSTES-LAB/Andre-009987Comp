@@ -1,6 +1,6 @@
 import { assertMcpClientMirrorEnvelope } from "./public-mcp/client-mirror-wire.js";
 import { providerRetryAt } from "./provider-retry-after.js";
-import { SLACK_MANAGER_SCOPES, ASANA_CONNECTOR_SCOPES, isAsanaConnectorProfileId, type AsanaConnectorProfileId } from "@andrecomp/shared";
+import { SLACK_MANAGER_SCOPES, ASANA_CONNECTOR_SCOPES, appDefinitionForDeployment, isAsanaConnectorProfileId, type AsanaConnectorProfileId } from "@andrecomp/shared";
 import {
   createDecipheriv,
   createHash,
@@ -160,7 +160,7 @@ const BROKER_REJECTION_REASONS = new Set([
   "REQUEST_EXPIRED", "REQUEST_REPLAYED", "SIGNATURE_REJECTED",
   "AUDIENCE_MISMATCH", "OPERATION_MISMATCH", "PAYLOAD_MISMATCH",
   "MALFORMED_REQUEST", "UNSUPPORTED_ALGORITHM", "RATE_LIMITED",
-  "PROVIDER_OPERATION_FAILED", "PROVIDER_REAUTHORIZATION_REQUIRED", "REVOCATION_NOT_AVAILABLE",
+  "PROVIDER_OPERATION_FAILED", "PROVIDER_REAUTHORIZATION_REQUIRED", "REVOCATION_NOT_AVAILABLE", "PROVIDER_CLOUD_ONLY",
   "SLACK_ENROLLMENT_GENERATION_CHANGED", "SLACK_ENROLLMENT_IDENTITY_CHANGED",
   "SLACK_ENROLLMENT_CHANGED", "SLACK_ENROLLMENT_UNSETTLED", "SLACK_ENROLLMENT_DISABLED",
   "SLACK_COMPANY_MISMATCH", "SLACK_EVENTS_UNAVAILABLE",
@@ -481,6 +481,43 @@ export function createAndrecompCloudConnector(input: {
     };
   }
 
+  async function instanceStatus(): Promise<{ status: "active" | "suspended" | "removed"; confirmed: boolean }> {
+    const generation = savedAnswerGeneration;
+    const settle = (status: "active" | "suspended" | "removed") => {
+      remember(lastKnownInstanceStatus, status, generation);
+      // An inactive registration has no usable sign-ins either, including
+      // the gallery's cached list. Advancing both generations stops reads
+      // already in flight from saving or caching their pre-removal list.
+      // A response from before a later invalidation is stale: it must not
+      // fence out the answers of checks that started after it.
+      if (status !== "active" && generation === savedAnswerGeneration) {
+        remember(lastKnownCapabilities, [], generation);
+        savedAnswerGeneration += 1;
+        capabilityCacheGeneration += 1;
+        if (capabilityCache?.key === configKey) capabilityCache = null;
+      }
+      return status;
+    };
+    let response: ConnectorResponse;
+    try {
+      response = await call("status", {
+        subject: "instance-status",
+        companyId: "instance-status",
+      });
+    } catch (error) {
+      if (error instanceof AndrecompCloudConnectorError && error.status === 401) return { status: settle("removed"), confirmed: false };
+      // A busy or unreachable broker gave no verdict on this instance. Keep
+      // the standing it last confirmed rather than reporting it unenrolled.
+      const known = lastKnownInstanceStatus.get(configKey);
+      if (known && isTransientAndrecompCloudConnectorError(error)) return { status: known, confirmed: false };
+      throw error;
+    }
+    if (response.status === "active" && response.active === true) return { status: settle("active"), confirmed: true };
+    if (response.status === "suspended" && response.active === false) return { status: settle("suspended"), confirmed: true };
+    if (response.status === "removed" && response.active === false) return { status: settle("removed"), confirmed: true };
+    throw new AndrecompCloudConnectorError("Andrecomp Cloud connector returned an invalid instance status", "CONNECTOR_BAD_RESPONSE");
+  }
+
   return {
     instanceIdentity: () => Object.freeze({ instanceId: config.instanceId, environment: config.environment }),
     async syncMcpClientMirror(serialized: string): Promise<unknown> {
@@ -561,40 +598,11 @@ export function createAndrecompCloudConnector(input: {
       return opened;
     },
     async getInstanceStatus(): Promise<"active" | "suspended" | "removed"> {
-      const generation = savedAnswerGeneration;
-      const settle = (status: "active" | "suspended" | "removed") => {
-        remember(lastKnownInstanceStatus, status, generation);
-        // An inactive registration has no usable sign-ins either, including
-        // the gallery's cached list. Advancing both generations stops reads
-        // already in flight from saving or caching their pre-removal list.
-        // A response from before a later invalidation is stale: it must not
-        // fence out the answers of checks that started after it.
-        if (status !== "active" && generation === savedAnswerGeneration) {
-          remember(lastKnownCapabilities, [], generation);
-          savedAnswerGeneration += 1;
-          capabilityCacheGeneration += 1;
-          if (capabilityCache?.key === configKey) capabilityCache = null;
-        }
-        return status;
-      };
-      let response: ConnectorResponse;
-      try {
-        response = await call("status", {
-          subject: "instance-status",
-          companyId: "instance-status",
-        });
-      } catch (error) {
-        if (error instanceof AndrecompCloudConnectorError && error.status === 401) return settle("removed");
-        // A busy or unreachable broker gave no verdict on this instance. Keep
-        // the standing it last confirmed rather than reporting it unenrolled.
-        const known = lastKnownInstanceStatus.get(configKey);
-        if (known && isTransientAndrecompCloudConnectorError(error)) return known;
-        throw error;
-      }
-      if (response.status === "active" && response.active === true) return settle("active");
-      if (response.status === "suspended" && response.active === false) return settle("suspended");
-      if (response.status === "removed" && response.active === false) return settle("removed");
-      throw new AndrecompCloudConnectorError("Andrecomp Cloud connector returned an invalid instance status", "CONNECTOR_BAD_RESPONSE");
+      return (await instanceStatus()).status;
+    },
+    async getConfirmedInstanceStatus(): Promise<"active" | "suspended" | "removed" | "unknown_instance"> {
+      const { status, confirmed } = await instanceStatus();
+      return status === "removed" && !confirmed ? "unknown_instance" : status;
     },
     readCapabilities,
     async getCapabilities(): Promise<AndrecompCloudConnectorProfileId[]> {
@@ -828,9 +836,10 @@ export function isAndrecompCloudConnectorStrategy(value: unknown): boolean {
 export function appWithAndrecompCloudConnectorAvailability(
   app: AppDefinition,
   profiles: readonly string[],
+  cloudHosted: boolean,
 ): AppDefinition {
   const enabledProfiles = new Set(profiles);
-  const methods = app.methods.filter((method) =>
+  const methods = appDefinitionForDeployment(app, { cloudHosted }).methods.filter((method) =>
     !isAndrecompCloudConnectorStrategy(method.oauthStrategy)
     || Boolean(method.connectorProfile && enabledProfiles.has(method.connectorProfile)
       && andrecompCloudConnectorConsentAllowed(method.connectorProfile))

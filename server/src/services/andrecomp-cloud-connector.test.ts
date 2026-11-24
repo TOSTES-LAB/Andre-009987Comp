@@ -16,6 +16,7 @@ import {
 } from "@andrecomp/shared";
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
+import { andrecompGoogleSignInAvailable } from "./google-sign-in-availability.js";
 
 import {
   appWithAndrecompCloudConnectorAvailability,
@@ -316,18 +317,55 @@ describe("Andrecomp Cloud connector", () => {
     expect(managedGoogle.filter(({ method }) => (method.defaults?.scopesHint ?? []).some((value) => !submitted.has(value)))
       .map(({ id }) => id)).toEqual(savedConnectionsOnly);
     for (const app of APP_DEFINITIONS) {
-      const offered = appWithAndrecompCloudConnectorAvailability(app, [...GOOGLE_WORKSPACE_CONNECTOR_PROFILE_IDS]);
+      const offered = appWithAndrecompCloudConnectorAvailability(app, [...GOOGLE_WORKSPACE_CONNECTOR_PROFILE_IDS], true);
       for (const method of offered.methods.filter((candidate) => candidate.oauthStrategy === "andrecomp_cloud_connector")) {
         expect(savedConnectionsOnly).not.toContain(`${app.slug}/${method.key}`);
         for (const value of method.defaults?.scopesHint ?? []) expect(submitted, `${app.slug}/${method.key}`).toContain(value);
       }
     }
-    const gmail = appWithAndrecompCloudConnectorAvailability(APP_DEFINITIONS.find((app) => app.slug === "gmail")!, [...GOOGLE_WORKSPACE_CONNECTOR_PROFILE_IDS]);
+    const gmail = appWithAndrecompCloudConnectorAvailability(APP_DEFINITIONS.find((app) => app.slug === "gmail")!, [...GOOGLE_WORKSPACE_CONNECTOR_PROFILE_IDS], true);
     expect(gmail.methods.map((method) => method.key)).toEqual([
       "andrecomp-read", "customer-read-oauth", "andrecomp-draft", "customer-draft-oauth", "customer-archive-oauth",
     ]);
-    const chat = appWithAndrecompCloudConnectorAvailability(APP_DEFINITIONS.find((app) => app.slug === "google-chat")!, [...GOOGLE_WORKSPACE_CONNECTOR_PROFILE_IDS]);
+    const chat = appWithAndrecompCloudConnectorAvailability(APP_DEFINITIONS.find((app) => app.slug === "google-chat")!, [...GOOGLE_WORKSPACE_CONNECTOR_PROFILE_IDS], true);
     expect(chat.ownershipAvailability?.platform_shared).toBe(false);
+  });
+
+  it("offers Andrecomp's Google sign-in only on Andrecomp Cloud and keeps other managed methods", () => {
+    const workspace = APP_DEFINITIONS.find((app) => app.slug === "google-workspace")!;
+    const asana = APP_DEFINITIONS.find((app) => app.methods.some((method) => method.connectorProfile === "asana.mcp"))!;
+    const advertised = [...GOOGLE_WORKSPACE_CONNECTOR_PROFILE_IDS, "asana.mcp"];
+    const cloud = appWithAndrecompCloudConnectorAvailability(workspace, advertised, true);
+    expect(cloud.methods.map((method) => method.key)).toEqual(["andrecomp-workspace", "customer-workspace-oauth"]);
+    expect(cloud.ownershipAvailability?.platform_shared).toBe(true);
+    const selfHosted = appWithAndrecompCloudConnectorAvailability(workspace, advertised, false);
+    expect(selfHosted.methods.map((method) => method.key)).toEqual(["customer-workspace-oauth"]);
+    expect(selfHosted.ownershipAvailability?.platform_shared).toBe(false);
+    expect(appWithAndrecompCloudConnectorAvailability(asana, advertised, false).methods)
+      .toEqual(appWithAndrecompCloudConnectorAvailability(asana, advertised, true).methods);
+  });
+
+  it("decides Cloud or self-hosted from the instance's Cloud markers", () => {
+    vi.stubEnv("ANDRECOMP_CLOUD_TENANT_SERVER_TOKEN", "");
+    vi.stubEnv("ANDRECOMP_MANAGED_CONFIG", undefined);
+    try {
+      expect(andrecompGoogleSignInAvailable()).toBe(false);
+      vi.stubEnv("ANDRECOMP_CLOUD_TENANT_SERVER_TOKEN", "tenant-token-fixture");
+      expect(andrecompGoogleSignInAvailable()).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("keeps the broker's cloud-only refusal as a known reason", async () => {
+    const connector = createAndrecompCloudConnector({
+      config: config().config,
+      request: vi.fn(async () => Response.json({ error: "PROVIDER_CLOUD_ONLY" }, { status: 409 })) as typeof fetch,
+    });
+    await expect(connector.refresh({ subject, companyId, profile: "workspace.all", refreshToken: "refresh-fixture" }))
+      .rejects.toMatchObject({ code: "REAUTHORIZATION_REQUIRED", brokerReason: "PROVIDER_CLOUD_ONLY" });
+    expect(await rejection(Response.json({ error: "PROVIDER_CLOUD_ONLY" }, { status: 403 })))
+      .toMatchObject({ code: "CONNECTOR_REQUEST_FAILED", status: 403, brokerReason: "PROVIDER_CLOUD_ONLY" });
   });
 
   it("signs selected Workspace scopes without substituting the full profile", async () => {
@@ -718,6 +756,17 @@ describe("Andrecomp Cloud connector", () => {
     });
 
     await expect(connector.getInstanceStatus()).resolves.toBe("removed");
+    await expect(connector.getConfirmedInstanceStatus()).resolves.toBe("unknown_instance");
+  });
+
+  it("confirms a removal only when Cloud answers that the instance is removed", async () => {
+    const keys = config();
+    const connector = createAndrecompCloudConnector({
+      config: keys.config,
+      request: vi.fn(async () => Response.json({ active: false, status: "removed" })) as typeof fetch,
+    });
+
+    await expect(connector.getConfirmedInstanceStatus()).resolves.toBe("removed");
   });
 
   it("does not expose a broker response body when a request fails", async () => {

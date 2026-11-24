@@ -257,6 +257,11 @@ the local result. See "Removing a managed Google connection" in
 
 ### Configure each originating Andrecomp instance
 
+These steps apply to Andrecomp Cloud workspaces. Andrecomp's own Google
+sign-in is not available on a self-hosted Andrecomp; a self-hosted instance
+connects Gmail with its own Google OAuth client. See
+[Self-hosted instances: use your own Google client](GOOGLE-WORKSPACE.md#self-hosted-instances-use-your-own-google-client).
+
 Generate the two long-lived instance keys once. PEM-encoded PKCS#8 keys work
 directly with Andrecomp:
 
@@ -286,17 +291,22 @@ HTTP is accepted only for a loopback Andrecomp Cloud URL; staging and production
 must use HTTPS.
 
 Cloud-hosted stacks receive these values automatically through the existing
-per-stack secret-reference delivery path. Self-hosted instances normally use
-the Apps enrollment action instead of running the OpenSSL commands manually;
-it generates the keys and writes them to the ignored instance secret directory
-with owner-only permissions.
+per-stack secret-reference delivery path. A self-hosted instance does not use
+these keys for Google. Its Apps enrollment action still serves other
+Andrecomp-managed providers, such as GitHub and Asana: it generates the keys
+and writes them to the ignored instance secret directory with owner-only
+permissions.
 
 `ANDRECOMP_ID_CONNECTOR_*` values are not aliases for this protocol. Andrecomp
 ID used different endpoints, signing metadata, envelope purposes, and Google
 client credentials. An instance with only those legacy values fails with
-`CONNECTOR_MIGRATION_REQUIRED`. Enroll it with Andrecomp Cloud and reconnect
-each legacy Google grant. Cloud-hosted fleets must deliver the new enrollment
-keys before they deploy a binary that enables the Cloud connector.
+`CONNECTOR_MIGRATION_REQUIRED`. On Andrecomp Cloud, deliver the new enrollment
+keys and reconnect each legacy Google grant. On a self-hosted instance, reconnect
+Gmail with your own Google OAuth client. A Google grant that a self-hosted
+instance already holds through Andrecomp keeps refreshing until the Andrecomp
+Cloud sunset date; after that date, Andrecomp asks the user to reconnect with
+their own Google OAuth client. Cloud-hosted fleets must deliver the new
+enrollment keys before they deploy a binary that enables the Cloud connector.
 
 ## Andrecomp access defaults
 

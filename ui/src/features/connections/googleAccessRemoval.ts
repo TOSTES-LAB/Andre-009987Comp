@@ -35,6 +35,12 @@ export function googleAccessRemovalNotice(
       body: "Other Andrecomp connections still use this Google account, so Google keeps Andrecomp's access until you remove those too.",
     };
   }
+  if (providerAccess.result === "retrying") {
+    return {
+      tone: "info",
+      body: "Google didn't confirm that Andrecomp's access has ended yet. Andrecomp will keep trying automatically.",
+    };
+  }
   return {
     tone: "warn",
     body: `Andrecomp removed the ${removed} but couldn't end its access at Google. You can remove Andrecomp from your Google account's third-party connections.`,
@@ -54,4 +60,10 @@ export function connectionRemovalToast(input: {
     tone: notice?.tone ?? "success",
     ...(notice?.action ? { action: notice.action } : {}),
   };
+}
+
+export function googleAccessRetrySummary(type: "google_access_ended" | "google_access_not_ended", details: Record<string, unknown> | null): string {
+  if (type === "google_access_ended") return "Google confirmed that Andrecomp's access to this Google account has ended";
+  if (details?.result === "other_connections_remain") return "Google kept Andrecomp's access because other Andrecomp connections use this Google account";
+  return "Andrecomp stopped trying to end its access at Google without a confirmation";
 }
