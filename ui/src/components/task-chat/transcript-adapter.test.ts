@@ -650,7 +650,8 @@ describe("transcriptToTaskChatItems protocol surfaces", () => {
     expect(providerActivityPresentation(item)).toMatchObject({
       runningLabel: "Searching tasks",
       completedLabel: "Searched tasks",
-      detail: "Searching the task index · Andrecomp · search_tasks",
+      // Andrecomp's own tools need no source, and raw tool names are never shown.
+      detail: "Searching the task index",
     });
   });
 

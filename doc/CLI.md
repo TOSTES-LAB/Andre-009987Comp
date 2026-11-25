@@ -577,12 +577,17 @@ npx andrecomp agent inbox-mine --user-id <board-user-id>
 npx andrecomp agent wake <agent-id-or-shortname> [--company-id <company-id>] [--reason "..."] [--payload '{"issueId":"..."}']
 npx andrecomp agent pause <agent-id>
 npx andrecomp agent resume <agent-id>
+npx andrecomp agent clear-error <agent-id>
 npx andrecomp agent approve <agent-id>
 npx andrecomp agent terminate <agent-id>
 npx andrecomp agent heartbeat:invoke <agent-id>
 npx andrecomp agent claude-login <agent-id>
 npx andrecomp agent local-cli <agent-id-or-shortname> --company-id <company-id>
 ```
+
+`agent clear-error` uses the server's existing clear-error action. The server
+checks permissions and the agent state. Use it to clear an error after addressing
+its cause; use `agent resume` to resume a paused agent.
 
 Agent configuration and runtime endpoints:
 

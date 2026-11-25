@@ -1,4 +1,4 @@
-import { googleWorkspaceRestFallbackDefinition, googleWorkspaceRestToolDefinition } from "../google-workspace-rest-dispatch.js";
+import { googleWorkspaceRestShippedSchemaHashes, googleWorkspaceRestToolDefinition } from "../google-workspace-rest-dispatch.js";
 import type { toolConnections } from "@andrecomp/db";
 import { pluginConnectionMethod, pluginConnectionToolDefinition } from "../plugin-connector-runtime.js";
 import { shouldQuarantineNewEntries } from "../tool-access/catalog/descriptors.js";
@@ -17,12 +17,12 @@ type Connection = { config: Record<string, unknown> };
 const ANDRECOMP_DEFINED_TOOL_SOURCES: ReadonlyArray<{
   matches: (connection: Connection) => boolean;
   definition: (toolName: string) => AndrecompDefinedToolDefinition | null;
-  formerDefinition: (toolName: string) => AndrecompDefinedToolDefinition | null;
+  shippedSchemaHashes: (toolName: string) => readonly string[];
 }> = [
   {
     matches: (connection) => connection.config.sourceTemplateKey === "google-workspace",
     definition: googleWorkspaceRestToolDefinition,
-    formerDefinition: googleWorkspaceRestFallbackDefinition,
+    shippedSchemaHashes: googleWorkspaceRestShippedSchemaHashes,
   },
 ];
 
@@ -30,8 +30,8 @@ export function andrecompDefinedTool(connection: Connection, toolName: string): 
   return ANDRECOMP_DEFINED_TOOL_SOURCES.find((source) => source.matches(connection))?.definition(toolName) ?? null;
 }
 
-export function formerAndrecompDefinedTool(connection: Connection, toolName: string): AndrecompDefinedToolDefinition | null {
-  return ANDRECOMP_DEFINED_TOOL_SOURCES.find((source) => source.matches(connection))?.formerDefinition(toolName) ?? null;
+export function shippedAndrecompSchemaHashes(connection: Connection, toolName: string): readonly string[] {
+  return ANDRECOMP_DEFINED_TOOL_SOURCES.find((source) => source.matches(connection))?.shippedSchemaHashes(toolName) ?? [];
 }
 
 export function currentConnectionToolDefinition(connection: typeof toolConnections.$inferSelect, toolName: string): AndrecompDefinedToolDefinition | null {

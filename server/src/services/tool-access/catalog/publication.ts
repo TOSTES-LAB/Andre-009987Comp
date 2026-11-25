@@ -12,7 +12,7 @@ import { connectionMethodForConnection } from "../connection-methods.js";
 import { stableHash, descriptorHash } from "../../tool-catalog-hash.js";
 import { nativeProviderCatalogFor } from "../../native-provider-catalogs.js";
 import { restConnectorFor } from "../../connectors/rest-registry.js";
-import { formerAndrecompDefinedTool, andrecompDefinedTool } from "../../connectors/andrecomp-defined-tools.js";
+import { andrecompDefinedTool, shippedAndrecompSchemaHashes } from "../../connectors/andrecomp-defined-tools.js";
 import { googleWorkspaceToolTarget, googleWorkspaceGrantedScopes, isGoogleWorkspaceToolGranted } from "@andrecomp/shared";
 import { retainMcpConnectionFailure } from "../../mcp-connection-failure.js";
 import { isRemoteMcpConnectorMethod } from "@andrecomp/shared";
@@ -238,8 +238,8 @@ export function createToolCatalogPublication(db: Db, { now, audit, getConnection
         (existing.versionHash !== hash || existing.schemaHash !== schemaHash);
       const andrecompDefined = andrecompDefinedTool(connection, descriptor.name) !== null;
       if (andrecompDefined && existing?.status === "quarantined") releasedNames.add(descriptor.name);
-      const former = !andrecompDefined && existing ? formerAndrecompDefinedTool(connection, descriptor.name) : null;
-      const leavingAndrecompDefinition = Boolean(former && existing && stableHash(former.inputSchema) === existing.schemaHash);
+      const leavingAndrecompDefinition = Boolean(!andrecompDefined && existing?.schemaHash
+        && shippedAndrecompSchemaHashes(connection, descriptor.name).includes(existing.schemaHash));
       const shouldQuarantine =
         quarantineOnRefresh &&
         !andrecompDefined &&
