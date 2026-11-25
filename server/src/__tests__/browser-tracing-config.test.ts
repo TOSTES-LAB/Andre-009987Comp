@@ -23,12 +23,15 @@ describe("resolveBrowserTracingConfig", () => {
       ANDRECOMP_BROWSER_TRACES_ENDPOINT: "https://api.honeycomb.io",
       ANDRECOMP_BROWSER_TRACES_INGEST_KEY: ingestKey,
       SENTRY_ENVIRONMENT: "staging",
+      ANDRECOMP_TRACING_INSTANCE_HOST: "true",
+      ANDRECOMP_PUBLIC_URL: "https://demo.example.com/private",
     });
     expect(config).toEqual({
       tracesUrl: "https://api.honeycomb.io/v1/traces",
       ingestKey,
       serviceName: "andrecomp-web",
       environment: "staging",
+      instanceHost: "demo.example.com",
       sampleRate: 1,
     });
     expect(authSessionSchema.shape.browserTracing.parse(config)).toEqual(config);

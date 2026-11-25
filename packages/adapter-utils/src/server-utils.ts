@@ -4288,12 +4288,12 @@ export function readAndrecompSkillSyncPreference(
   };
 }
 
-function canonicalizeDesiredAndrecompSkillReference(
+export function resolveAndrecompSkillReference(
   reference: string,
-  availableEntries: Array<{ key: string; runtimeName?: string | null }>,
-): string {
-  const normalizedReference = reference.trim().toLowerCase();
-  if (!normalizedReference) return "";
+  availableEntries: ReadonlyArray<{ key: string; runtimeName?: string | null }>,
+): string | null {
+  const normalizedReference = reference.trim().toLowerCase().replace(/^\//, "");
+  if (!normalizedReference) return null;
 
   const exactKey = availableEntries.find(
     (entry) => entry.key.trim().toLowerCase() === normalizedReference,
@@ -4313,7 +4313,15 @@ function canonicalizeDesiredAndrecompSkillReference(
   );
   if (slugMatches.length === 1) return slugMatches[0]!.key;
 
-  return normalizedReference;
+  return null;
+}
+
+function canonicalizeDesiredAndrecompSkillReference(
+  reference: string,
+  availableEntries: Array<{ key: string; runtimeName?: string | null }>,
+): string {
+  return resolveAndrecompSkillReference(reference, availableEntries)
+    ?? reference.trim().toLowerCase();
 }
 
 export function resolveAndrecompDesiredSkillNames(

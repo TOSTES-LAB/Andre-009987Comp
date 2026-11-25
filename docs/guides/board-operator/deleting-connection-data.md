@@ -14,7 +14,27 @@ For each tool call an agent makes through a connection, Andrecomp keeps:
 - Interactive app views that a tool showed in a task
 - The transcript of the run that made the call, which can contain the full result, and of the run that received an approved action's result
 
-This data stays until you delete it. Removing the connection alone does not delete it.
+For most apps, this data stays until you delete it, and removing the connection alone does not delete it. Google connections are different: see the next section.
+
+## Google connections: deleted when access ends
+
+When Andrecomp's access to a Google account ends, Andrecomp deletes what agents read through that Google connection on its own. You do not need to select **Delete data**. This happens when:
+
+- You remove the Google connection.
+- Someone revokes a Google identity on the connection, a person's own or the organization's.
+- Someone removes Andrecomp from their Google account, or Google ends the access, and Andrecomp sees this the next time it renews the access.
+- The person who connected their Google account leaves the company.
+- Andrecomp Cloud removes your Andrecomp instance.
+
+Deletion starts at once. Runs that are still working keep their data until they finish; Andrecomp then deletes it too. While work is still running, Andrecomp checks again every few minutes, and every hour after the first day. If a step fails, Andrecomp keeps trying until it succeeds, also after a restart. The connection's activity shows when the deletion started and when it finished.
+
+The deletion covers everything listed under "What is deleted" for that connection, for all people who used it. If you connect Google again later, Andrecomp saves new data from new calls only. Data that was deleted does not come back. Agents also do not resume the conversations of those runs; their next run starts a new one.
+
+## Technical details from Google
+
+Andrecomp keeps technical details it gets from Google, such as error messages and the descriptions of Google's tools, for at most 30 days. After that it deletes them on its own. When you remove a Google connection, it deletes them at once. The record that a call happened stays.
+
+Andrecomp does not use content from Google to train or test AI models. Feedback you share with Andrecomp and decision training examples leave out runs that read from Google.
 
 ## How to delete it
 
@@ -29,7 +49,7 @@ You need permission to manage the connection.
 **When you remove a connection:**
 
 1. Open **Connectors**, open the connection's menu, and select **Remove connection**.
-2. Select **Also delete data read through this connection**.
+2. Select **Also delete data read through this connection**. For a Google connection, this option is not shown, because the data is always deleted.
 3. Select **Remove connection**.
 
 For a Google connection that Andrecomp set up for you, removing the connection also asks Google to end Andrecomp's access to that Google account. The message after removal tells you whether access was ended. If other Andrecomp connections still use the same Google account, Google keeps Andrecomp's access until you remove those too. If Google could not be reached or did not confirm, the message says so and Andrecomp keeps trying in the background, for up to 30 days, even if Andrecomp restarts. You do not need to do anything. The connection's activity shows when access was ended, or that Andrecomp stopped trying. If Google gave a final answer that Andrecomp cannot end the access, the message says so, and you can remove Andrecomp from your Google account's [third-party connections](https://myaccount.google.com/connections).
@@ -45,6 +65,9 @@ Deletion starts right away and continues in the background. It finishes even if 
 - Interactive app views from those calls
 - The whole transcript of every run that called the connection or received an approved action's result, including that run's other steps and its final summary
 - Tool results too large to pass to the agent directly, which Andrecomp saved as files for those runs
+- Error messages the app returned for those calls
+- The saved conversation that agents resume in later runs, for the runs whose transcript is deleted. The agent's next run starts a new conversation.
+- The run's error text, its copy in the task's continuation summary, the summary handed to the next run, and the run in any decision training example
 
 ## What is kept
 
