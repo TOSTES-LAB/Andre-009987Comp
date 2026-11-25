@@ -4042,13 +4042,21 @@ export const OPEN_CODE_RUNNER_ENVIRONMENT_KEYS = new Set([
   "WINDIR",
   "RUST_BACKTRACE",
   "OPENROUTER_API_KEY",
+  "ANDRECOMP_OPENROUTER_PROXY_URL",
+  "ANDRECOMP_OPENROUTER_PROXY_TOKEN",
 ]);
 
 function createSanitizedOpenCodeRunnerEnvironment(
   source: NodeJS.ProcessEnv | undefined,
 ): NodeJS.ProcessEnv {
   const candidate = { ...process.env, ...source };
-  for (const key of ["ANDRECOMP_AGENT_KEY_ID", "ANDRECOMP_AGENT_PUBLIC_KEY", "ANDRECOMP_AGENT_PRIVATE_KEY"]) {
+  for (const key of [
+    "ANDRECOMP_AGENT_KEY_ID",
+    "ANDRECOMP_AGENT_PUBLIC_KEY",
+    "ANDRECOMP_AGENT_PRIVATE_KEY",
+    "ANDRECOMP_OPENROUTER_PROXY_URL",
+    "ANDRECOMP_OPENROUTER_PROXY_TOKEN",
+  ]) {
     delete candidate[key];
     if (source?.[key] !== undefined) candidate[key] = source[key];
   }

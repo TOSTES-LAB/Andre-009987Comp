@@ -223,6 +223,20 @@ describe("resolveNativeRuntimeMode", () => {
     }));
   });
 
+  it("distinguishes missing task from ineligible workMode for Andrecomp Runner", () => {
+    expect(() => resolveNativeRuntimeMode({ ...eligible, issue: null })).toThrow(expect.objectContaining({
+      code: "andrecomp_runner_task_required",
+      message: expect.stringContaining("requires a task"),
+    }));
+    expect(() => resolveNativeRuntimeMode({
+      ...eligible,
+      issue: { id: "issue", workMode: "unsupported_mode" },
+    })).toThrow(expect.objectContaining({
+      code: "andrecomp_runner_issue_ineligible",
+      message: "Andrecomp Runner requires a standard, planning, ask, or skill test task.",
+    }));
+  });
+
   it("uses adapterConfig as the fresh provider authority", () => {
     expect(resolveNativeRuntimeMode({
       ...eligible,

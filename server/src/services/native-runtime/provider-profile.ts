@@ -21,6 +21,7 @@ import {
   CLAUDE_MANAGED_QUALIFIED_MODEL,
 } from "../provider-profile-qualification.js";
 import { resolveAcpxQualification, resolveAntigravityCandidateAdmission, resolveKimiCandidateAdmission, type AcpxQualificationCandidate } from "./acpx-qualification.js";
+import { antigravityReleasePending } from "./antigravity-release.js";
 import { compatibleCodexModel } from "./codex-model-fallback.js";
 import {
   claudeCliVersionAtLeast,
@@ -43,11 +44,12 @@ export const DEFAULT_ACPX_RUNNER_MODELS = {
   copilot: null,
   pi: null,
   kimi: null,
+  antigravity: null,
 } as const;
 
 export type QualifiedAndrecompRunnerAcpxAgent =
   keyof typeof DEFAULT_ACPX_RUNNER_MODELS;
-type AdmittedAndrecompRunnerAcpxAgent = QualifiedAndrecompRunnerAcpxAgent | AcpxQualificationCandidate | "antigravity";
+type AdmittedAndrecompRunnerAcpxAgent = QualifiedAndrecompRunnerAcpxAgent | AcpxQualificationCandidate;
 
 export type AndrecompRunnerProviderProfile =
   | { provider: "cursor_cloud"; backend: "cursor_cloud_api"; model: string }
@@ -160,6 +162,7 @@ export class AndrecompRunnerProviderProfileError extends Error {
   constructor(
     readonly code: string,
     message: string,
+    readonly detailReason?: string,
   ) {
     super(message);
     this.name = "AndrecompRunnerProviderProfileError";
@@ -214,10 +217,17 @@ export function resolveAndrecompRunnerCursorCloudConfig(config: Record<string, u
 /** Configuration can be saved before pairing; task admission requires a binding. */
 export function validateAndrecompRunnerDotConfig(config: Record<string, unknown>, requireBinding = true): string | null {
   const bindingId = optionalString(config.dotBindingId);
-  if ((requireBinding && !bindingId) || (bindingId && !/^[0-9a-f-]{36}$/i.test(bindingId))
-      || config.allowUnmeteredProvider !== true || (config.lifecycleMode && config.lifecycleMode !== "per_turn")
-      || optionalString(config.model)) {
-    throw new AndrecompRunnerProviderProfileError("andrecomp_runner_dot_config_invalid", "Dot requires per-turn lifecycle and explicit externally billed, unmetered-provider acknowledgement. Pair a binding before assigning work.");
+  const invalidSettings =
+    Boolean(bindingId && !/^[0-9a-f-]{36}$/i.test(bindingId))
+    || config.allowUnmeteredProvider !== true
+    || Boolean(config.lifecycleMode && config.lifecycleMode !== "per_turn")
+    || Boolean(optionalString(config.model));
+  if (invalidSettings || (requireBinding && !bindingId)) {
+    throw new AndrecompRunnerProviderProfileError(
+      "andrecomp_runner_dot_config_invalid",
+      "Dot requires per-turn lifecycle and explicit externally billed, unmetered-provider acknowledgement. Pair a binding before assigning work.",
+      invalidSettings ? "dot_config_invalid" : "dot_pairing_required",
+    );
   }
   return bindingId;
 }
@@ -607,7 +617,12 @@ export function resolveAndrecompRunnerProviderProfile(
   if (acpxAgent === "copilot" && (!model || ["auto", "default"].includes(model.toLowerCase()))) {
     throw new AndrecompRunnerProviderProfileError("andrecomp_runner_acpx_model_required", "GitHub Copilot requires an explicit model ID; there is no default model.");
   }
-  const pendingAcpxProfile = ANDRECOMP_RUNNER_ACPX_PROFILES.find(profile => profile.value === acpxAgent && !profile.qualified);
+  if (acpxAgent === "antigravity" && (!model || ["auto", "default"].includes(model.toLowerCase()))) {
+    throw new AndrecompRunnerProviderProfileError("andrecomp_runner_acpx_model_required", "Google Antigravity requires an explicit model ID; there is no default model.");
+  }
+  const pendingAcpxProfile = acpxAgent === "antigravity"
+    ? (antigravityReleasePending() ? ANDRECOMP_RUNNER_ACPX_PROFILES.find(profile => profile.value === "antigravity") : undefined)
+    : ANDRECOMP_RUNNER_ACPX_PROFILES.find(profile => profile.value === acpxAgent && !profile.qualified);
   if (pendingAcpxProfile) {
     if (!model) throw new AndrecompRunnerProviderProfileError("andrecomp_runner_acpx_model_required", `${pendingAcpxProfile.label} requires an explicit model ID; there is no default model.`);
     if (pendingAcpxProfile.value === "antigravity") {
@@ -641,10 +656,10 @@ export function resolveAndrecompRunnerProviderProfile(
     }
     throw new AndrecompRunnerProviderProfileError("andrecomp_runner_acpx_agent_unavailable", `${pendingAcpxProfile.label} is awaiting native Runner acceptance. Its profile is not enabled for production runs.`);
   }
-  if ((acpxAgent === "cursor" || acpxAgent === "pi" || acpxAgent === "kimi") && !model) {
+  if ((acpxAgent === "cursor" || acpxAgent === "pi" || acpxAgent === "kimi" || acpxAgent === "antigravity") && !model) {
     throw new AndrecompRunnerProviderProfileError("andrecomp_runner_acpx_model_required", "This ACPX agent requires an explicit model ID; there is no default model.");
   }
-  if (acpxAgent !== "claude" && acpxAgent !== "codex" && acpxAgent !== "grok" && acpxAgent !== "cursor" && acpxAgent !== "copilot" && acpxAgent !== "pi" && acpxAgent !== "kimi") {
+  if (acpxAgent !== "claude" && acpxAgent !== "codex" && acpxAgent !== "grok" && acpxAgent !== "cursor" && acpxAgent !== "copilot" && acpxAgent !== "pi" && acpxAgent !== "kimi" && acpxAgent !== "antigravity") {
     throw new AndrecompRunnerProviderProfileError(
       "andrecomp_runner_acpx_agent_unavailable",
       "Andrecomp Runner ACPX requires a qualified agent profile.",

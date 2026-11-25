@@ -1,4 +1,8 @@
-import { googleWorkspaceRestShippedSchemaHashes, googleWorkspaceRestToolDefinition } from "../google-workspace-rest-dispatch.js";
+import {
+  googleWorkspaceAndrecompToolTitle,
+  googleWorkspaceRestShippedSchemaHashes,
+  googleWorkspaceRestToolDefinition,
+} from "../google-workspace-rest-dispatch.js";
 import type { toolConnections } from "@andrecomp/db";
 import { pluginConnectionMethod, pluginConnectionToolDefinition } from "../plugin-connector-runtime.js";
 import { shouldQuarantineNewEntries } from "../tool-access/catalog/descriptors.js";
@@ -18,11 +22,13 @@ const ANDRECOMP_DEFINED_TOOL_SOURCES: ReadonlyArray<{
   matches: (connection: Connection) => boolean;
   definition: (toolName: string) => AndrecompDefinedToolDefinition | null;
   shippedSchemaHashes: (toolName: string) => readonly string[];
+  authoredTitle: (toolName: string) => string | null;
 }> = [
   {
     matches: (connection) => connection.config.sourceTemplateKey === "google-workspace",
     definition: googleWorkspaceRestToolDefinition,
     shippedSchemaHashes: googleWorkspaceRestShippedSchemaHashes,
+    authoredTitle: googleWorkspaceAndrecompToolTitle,
   },
 ];
 
@@ -32,6 +38,10 @@ export function andrecompDefinedTool(connection: Connection, toolName: string): 
 
 export function shippedAndrecompSchemaHashes(connection: Connection, toolName: string): readonly string[] {
   return ANDRECOMP_DEFINED_TOOL_SOURCES.find((source) => source.matches(connection))?.shippedSchemaHashes(toolName) ?? [];
+}
+
+export function andrecompAuthoredToolTitle(connection: Connection, toolName: string): string | null {
+  return ANDRECOMP_DEFINED_TOOL_SOURCES.find((source) => source.matches(connection))?.authoredTitle(toolName) ?? null;
 }
 
 export function currentConnectionToolDefinition(connection: typeof toolConnections.$inferSelect, toolName: string): AndrecompDefinedToolDefinition | null {

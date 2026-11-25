@@ -12,7 +12,11 @@ import { connectionMethodForConnection } from "../connection-methods.js";
 import { stableHash, descriptorHash } from "../../tool-catalog-hash.js";
 import { nativeProviderCatalogFor } from "../../native-provider-catalogs.js";
 import { restConnectorFor } from "../../connectors/rest-registry.js";
-import { andrecompDefinedTool, shippedAndrecompSchemaHashes } from "../../connectors/andrecomp-defined-tools.js";
+import {
+  andrecompAuthoredToolTitle,
+  andrecompDefinedTool,
+  shippedAndrecompSchemaHashes,
+} from "../../connectors/andrecomp-defined-tools.js";
 import { googleWorkspaceToolTarget, googleWorkspaceGrantedScopes, isGoogleWorkspaceToolGranted } from "@andrecomp/shared";
 import { retainMcpConnectionFailure } from "../../mcp-connection-failure.js";
 import { isRemoteMcpConnectorMethod } from "@andrecomp/shared";
@@ -233,9 +237,21 @@ export function createToolCatalogPublication(db: Db, { now, audit, getConnection
       const hash = descriptorHash(descriptor, riskLevel);
       const schemaHash = stableHash(descriptor.inputSchema ?? {});
       const existing = existingByName.get(descriptor.name);
+      const andrecompTitle = andrecompAuthoredToolTitle(connection, descriptor.name);
+      const andrecompTitleOnlyChange = Boolean(
+        existing &&
+        existing.schemaHash === schemaHash &&
+        existing.versionHash !== hash &&
+        andrecompTitle !== null &&
+        andrecompTitle === descriptor.title &&
+        [existing.title ?? null, descriptor.upstreamTitle ?? null].some(
+          (priorTitle) => descriptorHash({ ...descriptor, title: priorTitle }, riskLevel) === existing.versionHash,
+        ),
+      );
       const changed =
         existing &&
-        (existing.versionHash !== hash || existing.schemaHash !== schemaHash);
+        (existing.versionHash !== hash || existing.schemaHash !== schemaHash) &&
+        !andrecompTitleOnlyChange;
       const andrecompDefined = andrecompDefinedTool(connection, descriptor.name) !== null;
       if (andrecompDefined && existing?.status === "quarantined") releasedNames.add(descriptor.name);
       const leavingAndrecompDefinition = Boolean(!andrecompDefined && existing?.schemaHash

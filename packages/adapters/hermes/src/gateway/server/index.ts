@@ -1,6 +1,7 @@
 import type { AdapterSessionCodec } from "@andrecomp/adapter-utils";
 
 export { execute, resolveSessionKey, parseSseFramesForTest, mapFinalResultForTest } from "./execute.js";
+export { hasHermesGatewayTerminalStopProof } from "./terminal-failure.js";
 export { testEnvironment } from "./test.js";
 export { getConfigSchema } from "./config-schema.js";
 

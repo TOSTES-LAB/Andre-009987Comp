@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Db } from "@andrecomp/db";
 
 const resolveConnectionGrantSecret = vi.hoisted(() => vi.fn());
-vi.mock("../../connection-credentials.js", () => ({ resolveConnectionGrantSecret }));
+vi.mock("../../connection-credentials.js", () => ({ resolveConnectionGrantSecret, connectionSecretsUsedByOtherConsumers: async () => new Set<string>() }));
 
 import { createManagedGoogleAccessRemoval, summarizeManagedGoogleAccess } from "./google-access-removal.js";
 import type { AndrecompCloudConnector } from "../../andrecomp-cloud-connector.js";
